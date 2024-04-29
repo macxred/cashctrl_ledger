@@ -43,9 +43,7 @@ jobs:
           . venv/bin/activate
 
       - name: Install dependencies
-        run: |
-          pip install .
-          run: pip install coverage pytest pandas
+        run: pip install coverage pytest pandas .
 
       - name: Install package
         run: python setup.py develop
