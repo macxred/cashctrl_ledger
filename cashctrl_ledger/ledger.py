@@ -19,114 +19,114 @@ class CashCtrlLedger(LedgerEngine):
 
     def _single_account_balance():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass
+        raise NotImplementedError
 
     def account_chart():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass
+        raise NotImplementedError
 
     def add_account():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass
+        raise NotImplementedError
 
     def add_ledger_entry():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass
+        raise NotImplementedError
 
     def add_price():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass  
+        raise NotImplementedError
 
     def add_vat_code():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass  
+        raise NotImplementedError
 
     def base_currency():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass
+        raise NotImplementedError
 
     def delete_account():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass  
+        raise NotImplementedError
 
     def delete_ledger_entry():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass  
+        raise NotImplementedError
 
     def delete_price():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass
+        raise NotImplementedError
 
     def delete_vat_code():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass  
+        raise NotImplementedError
 
     def ledger():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass
+        raise NotImplementedError
 
     def ledger_entry():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass
+        raise NotImplementedError
 
     def modify_account():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass  
+        raise NotImplementedError
 
     def modify_ledger_entry():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass  
+        raise NotImplementedError
 
     def precision():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass  
+        raise NotImplementedError
 
     def price():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass
+        raise NotImplementedError
 
     def price_history():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass  
+        raise NotImplementedError 
 
     def vat_codes():
         """
-        Pass realization
+        Not implemented yet
         """
-        pass  
+        raise NotImplementedError
