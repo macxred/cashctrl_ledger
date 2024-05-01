@@ -3,7 +3,7 @@ Unit tests for basic connectivity in CashCtrlLedger.
 These tests check that essential data is present and not empty.
 """
 
-import pytest  # Using pytest framework for testing
+import pytest
 from cashctrl_ledger import CashCtrlLedger
 from requests.exceptions import HTTPError
 
@@ -14,7 +14,7 @@ def test_data_is_not_empty():
     cashctrl_ledger = CashCtrlLedger()
 
     try:
-        response = cashctrl_ledger._client.get("person/list.json")  # Corrected endpoint
+        response = cashctrl_ledger._client.get("person/list.json")
     except HTTPError as e:
         pytest.fail(f"API request failed with error: {e}")
 
