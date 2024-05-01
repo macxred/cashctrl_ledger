@@ -47,9 +47,8 @@ library.
 
 ## Package Development and Contribution
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+See [CONTRIBUTING.md](macxred/cashctrl_api/CONTRIBUTING.md) for:
 
-- Testing Strategy
 - Setting Up Your Development Environment
 - Type Consistency with DataFrames
 - Standards and Best Practices

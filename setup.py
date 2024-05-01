@@ -5,7 +5,7 @@ setup(
     version="v0.0.1",
     description="Python package that implements the pyledger.LedgerEngine and integrates with cashctrl",
     url='https://github.com/macxred/cashctrl_ledger',
-    author="Lukas Elmiger",
+    author="Lukas Elmiger, Oleksandr Stepanenko",
     python_requires='>3.9',
     install_requires=[
         'pandas',
