@@ -1,0 +1,52 @@
+on:
+  # For all pushes run the tests
+  push:
+  # Also trigger on pull_request, as well as pull_request_target
+  pull_request:
+  pull_request_target:
+  # Run nightly tests at 04:00 UTC
+  schedule:
+    - cron: "0 4 * * *"
+
+name: docker
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    container:
+      image: python:latest
+    env:
+      GITHUB_PAT: ${{ secrets.INSTALL_GITHUB }}
+    # If the PR is coming from a fork (pull_request_target), ensure it is opened
+    # by "dependabot[bot]". Otherwise, clone it normally.
+      CC_API_ORGANISATION: ${{ secrets.CC_API_ORGANISATION }}
+      CC_API_KEY: ${{ secrets.CC_API_KEY }}
+    if: |
+        (github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]') ||
+        (github.event_name != 'pull_request_target' && github.actor != 'dependabot[bot]')
+    steps:
+      - name: Checkout
+        if: ${{ github.event_name != 'pull_request_target' }}
+        uses: actions/checkout@v4
+
+      - name: Checkout PR
+        if: ${{ github.event_name == 'pull_request_target' }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup virtualenv
+        run: |
+          python -V  # Print out python version for debugging
+          pip install virtualenv pytest
+          virtualenv venv
+          . venv/bin/activate
+
+      - name: Install dependencies
+        run: pip install coverage pytest pandas .
+
+      - name: Install package
+        run: python setup.py develop
+
+      - name: Run tests
+        run: pytest -W error
