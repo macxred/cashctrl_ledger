@@ -47,7 +47,7 @@ library.
 
 ## Package Development and Contribution
 
-See [CONTRIBUTING.md](macxred/cashctrl_api/CONTRIBUTING.md) for:
+See [cashctrl_api /CONTRIBUTING.md](https://github.com/macxred/cashctrl_api/blob/main/CONTRIBUTING.md) for:
 
 - Setting Up Your Development Environment
 - Type Consistency with DataFrames
