@@ -34,27 +34,25 @@ def test_add_vat_code_valid_inputs():
     """ Test adding VAT code with valid inputs """
     cashctrl_ledger = CashCtrlLedger()
     cashctrl_ledger.add_vat_code(
-        accountId=1,
-        name="Standard Tax",
-        percentage=20.0,
-        percentageFlat=15.0,
-        calcType="NET",
-        documentName="VAT 20%",
-        isInactive=False
+        account=1, code="Standard Tax", rate=20.0, inclusive=True, text="VAT 20%"
     )
 
 def test_add_vat_code_invalid_account_id():
     """ Test invalid accountId (negative) """
     cashctrl_ledger = CashCtrlLedger()
-    with pytest.raises(ValueError) as excinfo:
-        cashctrl_ledger.add_vat_code(-1, "Standard Tax", 20.0, 15.0)
-    assert "Invalid accountId" in str(excinfo.value)
+    with pytest.raises(Exception) as excinfo:
+        cashctrl_ledger.add_vat_code(
+            account=-11, code="Standard Tax", rate=20.0, inclusive=True, text="VAT 20%"
+        )
+    assert "API call failed" in str(excinfo.value)
 
 def test_add_vat_code_invalid_name_length():
     """ Test name parameter exceeding max length """
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.add_vat_code(1, "x" * 51, 20.0, 15.0)  # 51 chars long
+        cashctrl_ledger.add_vat_code(
+            account=-11, code="x"*51, rate=20.0, inclusive=True, text="VAT 20%"
+        )  # 51 chars long
 
 def test_add_vat_code_invalid_percentage():
     """ Test invalid percentage (out of bounds) """
@@ -68,23 +66,21 @@ def test_add_vat_code_invalid_percentage_flat():
     with pytest.raises(ValueError):
         cashctrl_ledger.add_vat_code(1, "Standard Tax", 20.0, -10.0)  # < 0.0
 
-def test_add_vat_code_invalid_calc_type():
-    """ Test invalid calcType """
+def test_add_vat_code_invalid_inclusive():
+    """ Test invalid inclusive """
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.add_vat_code(1, "Standard Tax", 20.0, 15.0, calcType="XYZ")
+        cashctrl_ledger.add_vat_code(
+            account=-11, code="x"*51, rate=20.0, inclusive="434", text="VAT 20%"
+        )  # 51 chars long
 
 def test_add_vat_code_invalid_document_name():
     """ Test invalid documentName length """
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.add_vat_code(1, "Standard Tax", 20.0, 15.0, documentName="x" * 51)
-
-def test_add_vat_code_invalid_is_inactive_type():
-    """ Test isInactive flag with incorrect type """
-    cashctrl_ledger = CashCtrlLedger()
-    with pytest.raises(ValueError):
-        cashctrl_ledger.add_vat_code(1, "Standard Tax", 20.0, 15.0, isInactive="true")
+        cashctrl_ledger.add_vat_code(
+            account=-11, code="x", rate=20.0, inclusive="434", text="x"*51
+        )  # 51 chars long
 
 def test_valid_update():
     """
@@ -93,7 +89,9 @@ def test_valid_update():
     once.
     """
     cashctrl_ledger = CashCtrlLedger()
-    cashctrl_ledger.update_vat_code(4, 1, 'test_api_update', 22, 'test_api_update')
+    cashctrl_ledger.update_vat_code(
+        code=4, account=1, name='test_api_update', rate=22, text='test_api_update'
+    )
 
 def test_name_too_long():
     """
@@ -102,7 +100,9 @@ def test_name_too_long():
     """
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_vat_code(accountId=4, id=1, name="x" * 51, percentage=15.0)
+        cashctrl_ledger.update_vat_code(
+            code=4, account=1, name="x"*51, rate=22, text='test_api_update'
+        )
 
 def test_document_name_too_long():
     """
@@ -111,7 +111,9 @@ def test_document_name_too_long():
     """
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_vat_code(accountId=4, id=1, name="VAT", percentage=15.0, documentName="x" * 51)
+        cashctrl_ledger.update_vat_code(
+            code=4, account=1, name="x", rate=22, text="x"*51
+        )
 
 def test_percentage_out_of_bounds():
     """
@@ -120,16 +122,9 @@ def test_percentage_out_of_bounds():
     """
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_vat_code(accountId=4, id=1, name="Reduced VAT", percentage=101.0)
-
-def test_percentage_flat_out_of_bounds():
-    """
-    Test that the method validates the 'percentageFlat' parameter (when provided)
-    within the range 0.0 to 100.0, raising a ValueError if it exceeds these bounds.
-    """
-    cashctrl_ledger = CashCtrlLedger()
-    with pytest.raises(ValueError):
-        cashctrl_ledger.update_vat_code(accountId=4, id=1, name="Reduced VAT", percentage=10.0, percentageFlat=101.0)
+        cashctrl_ledger.update_vat_code(
+            code=4, account=1, name="x", rate=101.0, text="x",
+        )
 
 def test_invalid_boolean():
     """
@@ -138,13 +133,6 @@ def test_invalid_boolean():
     """
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_vat_code(accountId=4, id=1, name="Reduced VAT", percentage=10.0, isInactive="true")
-
-def test_valid_inactive_flag():
-    """
-    Verify that the method correctly handles a valid boolean 'isInactive' flag
-    without raising an exception and ensures the network client's post method
-    is called once.
-    """
-    cashctrl_ledger = CashCtrlLedger()
-    cashctrl_ledger.update_vat_code(4, 1, 'test_api_update', 22, 'test_api_update', isInactive=True)
+        cashctrl_ledger.update_vat_code(
+            code=4, account=1, name="x", rate=101.0, text="x", inclusive="kjn"
+        )
