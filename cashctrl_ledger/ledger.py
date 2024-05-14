@@ -16,55 +16,35 @@ class CashCtrlLedger(LedgerEngine):
 
     def __init__(self, client: CashCtrlClient | None = None):
         super().__init__()
-        self.client = CashCtrlClient() if client is None else client
+        self._client = CashCtrlClient() if client is None else client
 
-    @property
-    def client(self):
-        """The getter method that returns the CashCtrlClient instance."""
-        return self._client
-
-    @client.setter
-    def client(self, value):
+    def vat_codes(self) -> pd.DataFrame:
         """
-        The setter method that sets the value of tne CashCtrlClient 
-        instance. Validate value to be a CashCtrlClient instance.
-        """
-        if isinstance(value, CashCtrlClient):
-            self._client = value
-        else:
-            raise ValueError("Value must be an instance of CashCtrlClient class")
-
-    def get_vat_codes(self) -> pd.DataFrame:
-        """
-        Retrieves VAT codes from the CashCtrl account and transforms the data
-        into the required format for processing in other parts of the system.
+        Retrieves VAT codes from the remote CashCtrl account and converts to standard
+        pyledger format.
 
         Returns:
-            pd.DataFrame: A DataFrame with VAT codes from the remote system, with columns
-                        formatted as 'api_id', 'id' (code name), 'text' (document name),
-                        'account' (account number), 'rate' (percentage rate), and
-                        'inclusive' (True if NET calculation, False if GROSS).
-
+            pd.DataFrame: A DataFrame from the remote system with pyledger.VAT_CODE 
+                        column schema.
         """
-        vat_codes = self.client.list_tax_rates()
+        vat_codes = self._client.list_tax_rates()
+        accounts = self._client.list_accounts()
 
         columns_mapper = {
-            'id': 'api_id',
             'name': 'id',
             'documentName': 'text',
-            'number': 'account',
+            'accountId': 'account',
             'percentage': 'rate',
             'isGrossCalcType': 'inclusive',
         }
 
-        # Renaming the columns: invert the mapper dictionary first
-        vat_codes_mapped = vat_codes.rename(columns=columns_mapper)
+        vat_codes_mapped = vat_codes[list(columns_mapper.keys())].rename(columns=columns_mapper)
+        vat_codes_mapped['inclusive'] = ~vat_codes_mapped['inclusive']
+        vat_codes_mapped = pd.merge(vat_codes_mapped, accounts[['id', 'number']], left_on='account', right_on='id', how='left')
+        vat_codes_mapped.drop(columns=['account', 'id_y'], inplace=True)
+        vat_codes_mapped.rename(columns={'number': 'account', 'id_x': 'id'}, inplace=True)
 
-        # Negate the 'inclusive' column if it exists
-        if 'inclusive' in vat_codes_mapped.columns:
-            vat_codes_mapped['inclusive'] = ~vat_codes_mapped['inclusive']
-
-        return vat_codes_mapped
+        return StandaloneLedger.standardize_vat_codes(vat_codes_mapped)
     
     def mirror_vat_codes(self, target_state: pd.DataFrame, delete: bool = True):
         """
@@ -108,7 +88,7 @@ class CashCtrlLedger(LedgerEngine):
         standardized_vat_codes = StandaloneLedger.standardize_vat_codes(target_state)
 
         # Retrieve and merge account data from the remote system with VAT codes
-        account_data = self.client.list_accounts()
+        account_data = self._client.list_accounts()
         vat_with_accounts = current_remote_vat_codes.merge(
             account_data, left_on='accountId', right_on='id', how='left'
         )
@@ -214,24 +194,27 @@ class CashCtrlLedger(LedgerEngine):
 
         Parameters:
             code (str): The VAT code to be added.
-            rate (float): The percentage rate of the VAT.
+            rate (float): The percentage rate of the VAT, must be between 0 and 1.
             account (str): The account identifier to which the VAT is applied.
             inclusive (bool): Determines whether the VAT is calculated as 'NET' 
                             (True, default) or 'GROSS' (False).
             text (str): Additional text or description associated with the VAT code.
 
-        Returns:
-            None: This method does not return any value but raises exceptions if
-                the input parameters are not valid or the API request fails.
-
         Raises:
             ValueError: If any of the inputs are invalid (wrong type or out of allowed range).
             Exception: If there is an issue with the server connection or the API request.
         """
-        # Prepare payload for the API request
+        accounts = self._client.list_accounts()
+        vat_account = accounts.loc[accounts['number'] == account].iloc[0]
+
+        if not vat_account.empty:
+            account = vat_account['id']
+        else:
+            account = None
+
         payload = {
             "name": code,
-            "percentage": rate,
+            "percentage": rate*100,
             "accountId": account,
             "calcType": "NET" if inclusive else "GROSS",
             "documentName": text,
@@ -239,94 +222,83 @@ class CashCtrlLedger(LedgerEngine):
 
         if not isinstance(payload['name'], str) or len(payload['name']) > 50:
             raise ValueError(
-                "Invalid name. It must be a string with a maximum of 50 characters."
+                "Invalid code. It must be a string with a maximum of 50 characters."
             )
 
         if not isinstance(payload['percentage'], (int, float)) \
                 or not (0.0 <= payload['percentage'] <= 100.0):
             raise ValueError(
-                "Invalid percentage. It must be a number between 0.0 and 100.0."
+                "Invalid rate. It must be a number between 0 and 1"
             )
-
-        if payload['calcType'] not in ["NET", "GROSS"]:
-            raise ValueError("Invalid calcType. It must be either 'NET' or 'GROSS'.")
 
         if not isinstance(payload['documentName'], str) \
                 or len(payload['documentName']) > 50:
             raise ValueError(
-                "Invalid documentName. It must be a string with a maximum of 50 characters."
+                "Invalid text. It must be a string with a maximum of 50 characters."
             )
 
-        try:
-            self.client.post("tax/create.json", data=payload)
-        except Exception as e:
-            raise Exception(
-                f"An error occurred while posting data to the server: {e}"
-            )
+        self._client.post("tax/create.json", data=payload)
         
     def update_vat_code(
         self, code: str, rate: float, account: str,
-        inclusive: bool = True, text: str = "", name: str = "",
+        inclusive: bool = True, text: str = ""
     ):
         """
         Updates an existing VAT code in the CashCtrl account with new parameters. 
-        If a VAT code is already in use, some parameters like 'percentage' might not be changeable.
 
         Parameters:
-            code (str): The unique identifier for the VAT code to be updated, max 50 characters.
-            rate (float): The new percentage rate of the VAT, must be between 0.0 and 100.0.
+            code (str): The VAT code to be updated.
+            rate (float): The new percentage rate of the VAT, must be between 0 and 1.
             account (str): The account identifier to which the VAT is applied.
             inclusive (bool): Determines whether the VAT is calculated as 'NET' 
                             (True, default) or 'GROSS' (False).
             text (str): Additional text or description associated with the VAT code,
                         defaults to empty if not provided.
 
-        Returns:
-            None: This method does not return any value but raises exceptions if
-                the input parameters are not valid or the API request fails.
-
         Raises:
             ValueError: If any of the inputs are invalid (wrong type or out of allowed range).
-            Exception: If there is an issue with the server connection or the API request.
         """
-        # Prepare payload for the API request
+
+        accounts = self._client.list_accounts()
+        vat_account = accounts.loc[accounts['number'] == account]
+
+        if not vat_account.empty:
+            account = vat_account['id'].iloc[0]
+        else:
+            account = None
+
+        remote_vats = self._client.list_tax_rates()
+        remote_vat = remote_vats.loc[remote_vats['name'] == code]
+        remote_vat_id = remote_vat['id'].iloc[0] if not remote_vat.empty else None
+
         payload = {
-            "id": code,
-            "percentage": rate,
+            "id": remote_vat_id,
+            "percentage": rate*100,
             "accountId": account,
             "calcType": "NET" if inclusive else "GROSS",
-            "name": name,
+            "name": code,
             "documentName": text,
         }
+
+
+        if not isinstance(payload['name'], str) or len(payload['name']) > 50:
+            raise ValueError(
+                "Invalid code. It must be a string with a maximum of 50 characters."
+            )
 
         if not isinstance(payload['percentage'], (int, float)) \
                 or not (0.0 <= payload['percentage'] <= 100.0):
             raise ValueError(
-                "Invalid percentage. It must be a number between 0.0 and 100.0."
+                "Invalid rate. It must be a number between 0 and 1"
             )
-
-        if payload['calcType'] not in ["NET", "GROSS"]:
-            raise ValueError("Invalid calcType. It must be either 'NET' or 'GROSS'.")
 
         if not isinstance(payload['documentName'], str) \
                 or len(payload['documentName']) > 50:
             raise ValueError(
-                "Invalid documentName. It must be a string with a maximum of 50 characters."
-            )
-        
-        if not isinstance(payload['name'], str) \
-                or len(payload['name']) > 50:
-            raise ValueError(
-                "Invalid name. It must be a string with a maximum of 50 characters."
+                "Invalid text. It must be a string with a maximum of 50 characters."
             )
 
-        try:
-            self.client.post("tax/update.json", data=payload)
-        except Exception as e:
-            raise Exception(
-                f"An error occurred while posting data to the server: {e}"
-            )
-
+        self._client.post("tax/update.json", data=payload)
 
     def base_currency():
         """
@@ -354,32 +326,19 @@ class CashCtrlLedger(LedgerEngine):
 
     def delete_vat_code(self, code: str):
         """
-        Deletes a VAT code from the tax system via a POST request to the API.
-
-        Sends a POST request to the 'tax/delete.json' endpoint to delete the VAT code
-        specified by the 'code' parameter. The 'code' should be a string identifier
-        for the VAT code.
+        Deletes a VAT code from the remote CashCtrl account.
 
         Parameters:
         ----------
         code : str
-            The identifier for the VAT code to be deleted.
-
-        Raises:
-        ------
-        Exception
-            An exception is raised with a detailed error message if the API request fails.
-
-        Returns:
-        -------
-        None
-            This method does not return any value but will raise an exception if unsuccessful.
+            The VAT code name to be deleted.
         """
-        try:
-            self.client.post('tax/delete.json', {'ids': code})
-        except Exception as e:
-            raise Exception(f"An error occurred: {e}")
 
+        remote_vats = self._client.list_tax_rates()
+        remote_vat_to_delete = remote_vats.loc[remote_vats['name'] == code]
+        delete_ids = ",".join(remote_vat_to_delete['id'].astype(str)) if not remote_vat_to_delete.empty else None
+
+        self._client.post('tax/delete.json', {'ids': delete_ids})
 
     def ledger():
         """
@@ -422,9 +381,3 @@ class CashCtrlLedger(LedgerEngine):
         Not implemented yet
         """
         raise NotImplementedError 
-
-    def vat_codes():
-        """
-        Not implemented yet
-        """
-        raise NotImplementedError
