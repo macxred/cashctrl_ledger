@@ -14,7 +14,7 @@ def test_data_is_not_empty():
     cashctrl_ledger = CashCtrlLedger()
 
     try:
-        response = cashctrl_ledger.client.get("person/list.json")
+        response = cashctrl_ledger._client.get("person/list.json")
     except HTTPError as e:
         pytest.fail(f"API request failed with error: {e}")
 
