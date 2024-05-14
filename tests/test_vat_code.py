@@ -5,21 +5,13 @@ Unit tests for vat codes operation methods.
 import pytest
 from cashctrl_ledger import CashCtrlLedger
 
-def test_delete_vat_code_unimplemented():
-    """
-    Test for deletion of a used VAT code, expecting failure since it's already used.
-    """
-    cashctrl_ledger = CashCtrlLedger()
-    with pytest.raises(Exception):
-        cashctrl_ledger.delete_vat_code("3")
 
-def test_delete_vat_code_with_empty_input_should_fail():
+def test_delete_vat_code_with_empty_input():
     """
-    Test deleting a VAT code with empty input should raise an exception.
+    Test deleting a VAT code with empty input
     """
     cashctrl_ledger = CashCtrlLedger()
-    with pytest.raises(Exception):
-        cashctrl_ledger.delete_vat_code("")
+    cashctrl_ledger.delete_vat_code("")
 
 def test_add_vat_code_valid_inputs():
     """ Test adding VAT code with valid inputs """

@@ -24,27 +24,22 @@ class CashCtrlLedger(LedgerEngine):
         pyledger format.
 
         Returns:
-            pd.DataFrame: A DataFrame from the remote system with pyledger.VAT_CODE 
-                        column schema.
+            pd.DataFrame: A DataFrame with pyledger.VAT_CODE column schema.
         """
-        vat_codes = self._client.list_tax_rates()
+        tax_rates = self._client.list_tax_rates()
         accounts = self._client.list_accounts()
+        account_map = accounts.set_index('id')['number'].to_dict()
+        if not tax_rates['accountId'].isin(account_map).all():
+            raise ValueError("Unknown 'accountId' in CashCtrl tax rates.")
+        result = pd.DataFrame({
+            'id': tax_rates['name'],
+            'text': tax_rates['documentName'],
+            'number': tax_rates['accountId'].map(account_map),
+            'percentage': tax_rates['percentage'] / 100,
+            'inclusive': ~ tax_rates['isGrossCalcType'],
+        })
 
-        columns_mapper = {
-            'name': 'id',
-            'documentName': 'text',
-            'accountId': 'account',
-            'percentage': 'rate',
-            'isGrossCalcType': 'inclusive',
-        }
-
-        vat_codes_mapped = vat_codes[list(columns_mapper.keys())].rename(columns=columns_mapper)
-        vat_codes_mapped['inclusive'] = ~vat_codes_mapped['inclusive']
-        vat_codes_mapped = pd.merge(vat_codes_mapped, accounts[['id', 'number']], left_on='account', right_on='id', how='left')
-        vat_codes_mapped.drop(columns=['account', 'id_y'], inplace=True)
-        vat_codes_mapped.rename(columns={'number': 'account', 'id_x': 'id'}, inplace=True)
-
-        return StandaloneLedger.standardize_vat_codes(vat_codes_mapped)
+        return StandaloneLedger.standardize_vat_codes(result)
     
     def mirror_vat_codes(self, target_state: pd.DataFrame, delete: bool = True):
         """
@@ -91,7 +86,7 @@ class CashCtrlLedger(LedgerEngine):
 
         Parameters:
             code (str): The VAT code to be added.
-            rate (float): The percentage rate of the VAT, must be between 0 and 1.
+            rate (float): The VAT rate, must be between 0 and 1.
             account (str): The account identifier to which the VAT is applied.
             inclusive (bool): Determines whether the VAT is calculated as 'NET' 
                             (True, default) or 'GROSS' (False).
@@ -99,20 +94,13 @@ class CashCtrlLedger(LedgerEngine):
 
         Raises:
             ValueError: If any of the inputs are invalid (wrong type or out of allowed range).
-            Exception: If there is an issue with the server connection or the API request.
         """
         accounts = self._client.list_accounts()
-        vat_account = accounts.loc[accounts['number'] == account].iloc[0]
-
-        if not vat_account.empty:
-            account = vat_account['id']
-        else:
-            account = None
-
+        account_map = accounts.set_index('number')['id'].to_dict()
         payload = {
             "name": code,
             "percentage": rate*100,
-            "accountId": account,
+            "accountId": account_map.get(account, None),
             "calcType": "NET" if inclusive else "GROSS",
             "documentName": text,
         }
@@ -226,16 +214,14 @@ class CashCtrlLedger(LedgerEngine):
         Deletes a VAT code from the remote CashCtrl account.
 
         Parameters:
-        ----------
-        code : str
-            The VAT code name to be deleted.
+            code (str): The VAT code name to be deleted.
         """
+        tax_rates = self._client.list_tax_rates()
+        to_delete = tax_rates.loc[tax_rates['name'] == code, 'id']
 
-        remote_vats = self._client.list_tax_rates()
-        remote_vat_to_delete = remote_vats.loc[remote_vats['name'] == code]
-        delete_ids = ",".join(remote_vat_to_delete['id'].astype(str)) if not remote_vat_to_delete.empty else None
-
-        self._client.post('tax/delete.json', {'ids': delete_ids})
+        if len(to_delete) > 0:
+            delete_ids = ",".join(to_delete.astype(str))
+            self._client.post('tax/delete.json', {'ids': delete_ids})
 
     def ledger():
         """
