@@ -121,21 +121,17 @@ class CashCtrlLedger(LedgerEngine):
         """
 
         accounts = self._client.list_accounts()
-        vat_account = accounts.loc[accounts['number'] == account]
-
-        if not vat_account.empty:
-            account = vat_account['id'].iloc[0]
-        else:
-            account = None
-
+        account_map = accounts.set_index('number')['id'].to_dict()
         remote_vats = self._client.list_tax_rates()
         remote_vat = remote_vats.loc[remote_vats['name'] == code]
-        remote_vat_id = remote_vat['id'].iloc[0] if not remote_vat.empty else None
+
+        if len(remote_vat) != 1:
+            raise ValueError("There is no one or more than one VAT")
 
         payload = {
-            "id": remote_vat_id,
+            "id": remote_vat['id'].iloc[0],
             "percentage": rate*100,
-            "accountId": account,
+            "accountId": account_map.get(account, None),
             "calcType": "NET" if inclusive else "GROSS",
             "name": code,
             "documentName": text,
@@ -173,6 +169,8 @@ class CashCtrlLedger(LedgerEngine):
 
         Parameters:
             code (str): The VAT code name to be deleted.
+            allow_missing (bool): If True, no error is raised if the VAT
+                code is not found; if False, raises ValueError.
         """
         tax_rates = self._client.list_tax_rates()
         to_delete = tax_rates.loc[tax_rates['name'] == code, 'id']
