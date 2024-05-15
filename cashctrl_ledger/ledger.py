@@ -43,9 +43,38 @@ class CashCtrlLedger(LedgerEngine):
     
     def mirror_vat_codes(self, target_state: pd.DataFrame, delete: bool = True):
         """
-        Not implemented yet
+        Aligns VAT rates on the remote CashCtrl account with the desired state provided as a DataFrame.
+
+        Parameters:
+            target_state (pd.DataFrame): DataFrame containing VAT rates in the pyledger.vat_codes format.
+            delete (bool, optional): If True, deletes VAT codes on the remote account that are not present in the target_state DataFrame.
         """
-        raise NotImplementedError
+        current_state = self.vat_codes()
+        unique_entries = current_state.drop_duplicates(keep='first')
+        duplicates = current_state.loc[current_state.index.duplicated(keep=False)]
+
+        new_entries = target_state.loc[~target_state.index.isin(unique_entries.index)]
+        common_indices = unique_entries.index.intersection(target_state.index)
+        entries_to_update = target_state.loc[common_indices]
+        not_in_desired = unique_entries.loc[~unique_entries.index.isin(target_state.index)]
+        entries_to_delete = pd.concat([duplicates, not_in_desired]).drop_duplicates()
+
+        if delete:
+            for idx in entries_to_delete.index:
+                self.delete_vat_code(code=idx)
+        else:
+            delete_indices = ', '.join(entries_to_delete.index.astype(str))
+            print(f"These remote VAT rates should be deleted: '{delete_indices}'")
+
+        for idx, row in new_entries.iterrows():
+            self.add_vat_code(code=idx, text=row["text"], account=row["account"],
+                rate=row["rate"], inclusive=row["inclusive"]
+            )
+
+        for idx, row in entries_to_update.iterrows():
+            self.update_vat_code(code=idx, text=row["text"], account=row["account"],
+                rate=row["rate"], inclusive=row["inclusive"]
+            )
 
     def _single_account_balance():
         """

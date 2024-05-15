@@ -1,5 +1,5 @@
 """
-Unit tests for vat codes accessor and mutator methods.
+Unit tests for vat codes accessor, mutator, and mirror methods.
 """
 
 import pytest
@@ -94,3 +94,24 @@ def test_update_vat_with_not_valid_account_raise_error():
         cashctrl_ledger.update_vat_code(code="TestCode", text='VAT 20%',
             account=7777, rate=0.02, inclusive=True
         )
+
+# Tests the mirroring functionality of VAT codes.
+def test_mirror_vat_codes():
+    cashctrl_ledger = CashCtrlLedger()
+    initial_vat_codes = cashctrl_ledger.vat_codes()
+    updated_vat_codes = initial_vat_codes.copy()
+
+    new_vat_entry = ["VAT 20%", 2200, 0.02000, True, '1900-01-01', None]
+    updated_vat_codes.loc['test_mirror'] = new_vat_entry
+    first_vat_code_index = updated_vat_codes.index[0]
+    updated_vat_codes.at[first_vat_code_index, 'text'] = "test_vat_name"
+
+    cashctrl_ledger.mirror_vat_codes(updated_vat_codes)
+    mirrored_vat_codes = cashctrl_ledger.vat_codes()
+    updated_vat_codes_str = updated_vat_codes.astype(str).reset_index(drop=True)
+    mirrored_vat_codes_str = mirrored_vat_codes.astype(str).reset_index(drop=True)
+    assert updated_vat_codes_str.equals(mirrored_vat_codes_str)
+
+    cashctrl_ledger.mirror_vat_codes(initial_vat_codes)
+    rolled_back_vat_codes = cashctrl_ledger.vat_codes()
+    assert rolled_back_vat_codes.equals(initial_vat_codes)
