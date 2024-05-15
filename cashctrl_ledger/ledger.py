@@ -102,6 +102,9 @@ class CashCtrlLedger(LedgerEngine):
             "documentName": text,
         }
 
+        if payload['accountId'] == None:
+            raise ValueError(f"Account '{account}' does not exist.")
+
         self._client.post("tax/create.json", data=payload)
         
     def update_vat_code(
@@ -125,8 +128,13 @@ class CashCtrlLedger(LedgerEngine):
         remote_vats = self._client.list_tax_rates()
         remote_vat = remote_vats.loc[remote_vats['name'] == code]
 
-        if len(remote_vat) != 1:
-            raise ValueError("There is no one or more than one VAT")
+        if len(remote_vat) < 1:
+            raise ValueError(f"There is no VAT code '{code}'.")
+        elif len(remote_vat) > 1:
+            raise ValueError(f"VAT code '{code}' is duplicated.")
+        
+        if account_map.get(account, None) == None:
+            raise ValueError(f"Account '{account}' does not exist.")
 
         payload = {
             "id": remote_vat['id'].iloc[0],
@@ -179,7 +187,7 @@ class CashCtrlLedger(LedgerEngine):
             delete_ids = ",".join(to_delete.astype(str))
             self._client.post('tax/delete.json', {'ids': delete_ids})
         elif not allow_missing:
-            raise ValueError("VAT code not found.")
+            raise ValueError(f"VAT code {code} not found.")
 
     def ledger():
         """
