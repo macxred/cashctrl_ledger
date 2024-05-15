@@ -34,8 +34,8 @@ class CashCtrlLedger(LedgerEngine):
         result = pd.DataFrame({
             'id': tax_rates['name'],
             'text': tax_rates['documentName'],
-            'number': tax_rates['accountId'].map(account_map),
-            'percentage': tax_rates['percentage'] / 100,
+            'account': tax_rates['accountId'].map(account_map),
+            'rate': tax_rates['percentage'] / 100,
             'inclusive': ~ tax_rates['isGrossCalcType'],
         })
 
@@ -91,9 +91,6 @@ class CashCtrlLedger(LedgerEngine):
             inclusive (bool): Determines whether the VAT is calculated as 'NET' 
                             (True, default) or 'GROSS' (False).
             text (str): Additional text or description associated with the VAT code.
-
-        Raises:
-            ValueError: If any of the inputs are invalid (wrong type or out of allowed range).
         """
         accounts = self._client.list_accounts()
         account_map = accounts.set_index('number')['id'].to_dict()
@@ -104,23 +101,6 @@ class CashCtrlLedger(LedgerEngine):
             "calcType": "NET" if inclusive else "GROSS",
             "documentName": text,
         }
-
-        if not isinstance(payload['name'], str) or len(payload['name']) > 50:
-            raise ValueError(
-                "Invalid code. It must be a string with a maximum of 50 characters."
-            )
-
-        if not isinstance(payload['percentage'], (int, float)) \
-                or not (0.0 <= payload['percentage'] <= 100.0):
-            raise ValueError(
-                "Invalid rate. It must be a number between 0 and 1"
-            )
-
-        if not isinstance(payload['documentName'], str) \
-                or len(payload['documentName']) > 50:
-            raise ValueError(
-                "Invalid text. It must be a string with a maximum of 50 characters."
-            )
 
         self._client.post("tax/create.json", data=payload)
         
@@ -133,15 +113,11 @@ class CashCtrlLedger(LedgerEngine):
 
         Parameters:
             code (str): The VAT code to be updated.
-            rate (float): The new percentage rate of the VAT, must be between 0 and 1.
+            rate (float): The VAT rate, must be between 0 and 1.
             account (str): The account identifier to which the VAT is applied.
             inclusive (bool): Determines whether the VAT is calculated as 'NET' 
                             (True, default) or 'GROSS' (False).
-            text (str): Additional text or description associated with the VAT code,
-                        defaults to empty if not provided.
-
-        Raises:
-            ValueError: If any of the inputs are invalid (wrong type or out of allowed range).
+            text (str): Additional text or description associated with the VAT code.
         """
 
         accounts = self._client.list_accounts()
@@ -164,24 +140,6 @@ class CashCtrlLedger(LedgerEngine):
             "name": code,
             "documentName": text,
         }
-
-
-        if not isinstance(payload['name'], str) or len(payload['name']) > 50:
-            raise ValueError(
-                "Invalid code. It must be a string with a maximum of 50 characters."
-            )
-
-        if not isinstance(payload['percentage'], (int, float)) \
-                or not (0.0 <= payload['percentage'] <= 100.0):
-            raise ValueError(
-                "Invalid rate. It must be a number between 0 and 1"
-            )
-
-        if not isinstance(payload['documentName'], str) \
-                or len(payload['documentName']) > 50:
-            raise ValueError(
-                "Invalid text. It must be a string with a maximum of 50 characters."
-            )
 
         self._client.post("tax/update.json", data=payload)
 
@@ -209,7 +167,7 @@ class CashCtrlLedger(LedgerEngine):
         """
         raise NotImplementedError
 
-    def delete_vat_code(self, code: str):
+    def delete_vat_code(self, code: str, allow_missing: bool = False):
         """
         Deletes a VAT code from the remote CashCtrl account.
 
@@ -222,6 +180,8 @@ class CashCtrlLedger(LedgerEngine):
         if len(to_delete) > 0:
             delete_ids = ",".join(to_delete.astype(str))
             self._client.post('tax/delete.json', {'ids': delete_ids})
+        elif not allow_missing:
+            raise ValueError("VAT code not found.")
 
     def ledger():
         """
