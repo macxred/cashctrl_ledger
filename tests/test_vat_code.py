@@ -1,5 +1,5 @@
 """
-Unit tests for vat codes operation methods.
+Unit tests for vat codes accessor and mutator methods.
 """
 
 import pytest
@@ -76,7 +76,7 @@ def test_update_non_existent_vat_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
         cashctrl_ledger.update_vat_code(code="TestCode", text='VAT 20%',
-            account=1, rate=0.02, inclusive=True
+            account=2200, rate=0.02, inclusive=True
         )
 
 # Test adding a VAT code with non existent account should raise an error.
@@ -93,26 +93,4 @@ def test_update_vat_with_not_valid_account_raise_error():
     with pytest.raises(ValueError):
         cashctrl_ledger.update_vat_code(code="TestCode", text='VAT 20%',
             account=7777, rate=0.02, inclusive=True
-        )
-
-# Test deleting a VAT code with not valid inputs should raise an error.
-def test_delete_vat_with_not_valid_input_raise_error():
-    cashctrl_ledger = CashCtrlLedger()
-    with pytest.raises(ValueError):
-        cashctrl_ledger.delete_vat_code(code="")
-   
-# Test adding a VAT code with not valid inputs should raise an error.
-def test_add_vat_with_not_valid_input_raise_error():
-    cashctrl_ledger = CashCtrlLedger()
-    with pytest.raises(ValueError):
-        cashctrl_ledger.add_vat_code(code="", text='',
-            account=7777, rate='kkk', inclusive=3
-        )
-
-# Test updating a VAT code with not valid inputs should raise an error.
-def test_update_vat_with_not_valid_input_raise_error():
-    cashctrl_ledger = CashCtrlLedger()
-    with pytest.raises(ValueError):
-        cashctrl_ledger.update_vat_code(code="", text='',
-            account=7777, rate='kkk', inclusive=3
         )

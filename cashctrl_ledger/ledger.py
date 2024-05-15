@@ -88,23 +88,21 @@ class CashCtrlLedger(LedgerEngine):
             code (str): The VAT code to be added.
             rate (float): The VAT rate, must be between 0 and 1.
             account (str): The account identifier to which the VAT is applied.
-            inclusive (bool): Determines whether the VAT is calculated as 'NET' 
+            inclusive (bool): Determines whether the VAT is calculated as 'NET'
                             (True, default) or 'GROSS' (False).
             text (str): Additional text or description associated with the VAT code.
         """
         accounts = self._client.list_accounts()
         account_map = accounts.set_index('number')['id'].to_dict()
+        if account not in account_map:
+            raise ValueError(f"Account '{account}' does not exist.")
         payload = {
             "name": code,
             "percentage": rate*100,
-            "accountId": account_map.get(account, None),
+            "accountId": account_map[account],
             "calcType": "NET" if inclusive else "GROSS",
             "documentName": text,
         }
-
-        if payload['accountId'] == None:
-            raise ValueError(f"Account '{account}' does not exist.")
-
         self._client.post("tax/create.json", data=payload)
         
     def update_vat_code(
@@ -112,39 +110,39 @@ class CashCtrlLedger(LedgerEngine):
         inclusive: bool = True, text: str = ""
     ):
         """
-        Updates an existing VAT code in the CashCtrl account with new parameters. 
+        Updates an existing VAT code in the CashCtrl account with new parameters.
 
         Parameters:
             code (str): The VAT code to be updated.
             rate (float): The VAT rate, must be between 0 and 1.
             account (str): The account identifier to which the VAT is applied.
-            inclusive (bool): Determines whether the VAT is calculated as 'NET' 
+            inclusive (bool): Determines whether the VAT is calculated as 'NET'
                             (True, default) or 'GROSS' (False).
             text (str): Additional text or description associated with the VAT code.
         """
-
+        # Find remote account id
         accounts = self._client.list_accounts()
         account_map = accounts.set_index('number')['id'].to_dict()
+        if account not in account_map:
+            raise ValueError(f"Account '{account}' does not exist.")
+
+        # Find remote tax id
         remote_vats = self._client.list_tax_rates()
         remote_vat = remote_vats.loc[remote_vats['name'] == code]
-
         if len(remote_vat) < 1:
             raise ValueError(f"There is no VAT code '{code}'.")
         elif len(remote_vat) > 1:
             raise ValueError(f"VAT code '{code}' is duplicated.")
-        
-        if account_map.get(account, None) == None:
-            raise ValueError(f"Account '{account}' does not exist.")
 
+        # Update remote tax record
         payload = {
-            "id": remote_vat['id'].iloc[0],
+            "id": remote_vat['id'].item(),
             "percentage": rate*100,
-            "accountId": account_map.get(account, None),
+            "accountId": account_map[account],
             "calcType": "NET" if inclusive else "GROSS",
             "name": code,
             "documentName": text,
         }
-
         self._client.post("tax/update.json", data=payload)
 
     def base_currency():
@@ -187,7 +185,7 @@ class CashCtrlLedger(LedgerEngine):
             delete_ids = ",".join(to_delete.astype(str))
             self._client.post('tax/delete.json', {'ids': delete_ids})
         elif not allow_missing:
-            raise ValueError(f"VAT code {code} not found.")
+            raise ValueError(f"There is no VAT code '{code}'.")
 
     def ledger():
         """
