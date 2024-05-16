@@ -3,7 +3,10 @@ Unit tests for vat codes accessor, mutator, and mirror methods.
 """
 
 import pytest
+from io import StringIO
+import pandas as pd
 from cashctrl_ledger import CashCtrlLedger
+from pyledger import StandaloneLedger
 
 # Ensure there is no 'TestCode' vat_code on the remote account
 def test_delete_vat_non_existent():
@@ -97,18 +100,61 @@ def test_update_vat_with_not_valid_account_raise_error():
 
 # Tests the mirroring functionality of VAT codes.
 def test_mirror_vat_codes():
+    target_csv = """
+    id,account,rate,inclusive,text
+    OutStd,2200,0.077,True,VAT at the regular 7.7% rate on goods or services
+    OutRed,2200,0.025,True,VAT at the reduced 2.5% rate on goods or services
+    OutAcc,2200,0.038,True,XXXXX
+    OutStdEx,2200,0.077,False,VAT at the regular 7.7% rate on goods or services
+    InStd,1170,0.077,True,Input Tax (Vorsteuer) at the regular 7.7% rate on
+    InRed,1170,0.025,True,Input Tax (Vorsteuer) at the reduced 2.5% rate on
+    InAcc,1170,0.038,True,YYYYY
+    """
+
+    target_state = pd.read_csv(StringIO(target_csv), skipinitialspace=True)
+    standardized_target_state = StandaloneLedger.standardize_vat_codes(target_state)
     cashctrl_ledger = CashCtrlLedger()
     initial_vat_codes = cashctrl_ledger.vat_codes()
-    updated_vat_codes = initial_vat_codes.copy()
-    updated_vat_codes.loc['test_mirror'] = ["VAT 20%", 2200, 0.02000, True, '1900-01-01', None]
-    updated_vat_codes.at[updated_vat_codes.index[0], 'text'] = "test_vat_name"
 
-    cashctrl_ledger.mirror_vat_codes(updated_vat_codes)
+    cashctrl_ledger.mirror_vat_codes(standardized_target_state, delete=False)
     mirrored_vat_codes = cashctrl_ledger.vat_codes()
-    updated_vat_codes_reset_index = updated_vat_codes.astype(str).reset_index(drop=True)
-    mirrored_vat_codes_str_reset_index  = mirrored_vat_codes.astype(str).reset_index(drop=True)
-    assert updated_vat_codes_reset_index.equals(mirrored_vat_codes_str_reset_index), "Mirroring failed: VAT codes do not match expected state"
+    reset_standardized_target_state = standardized_target_state.reset_index(drop=False)
+    reset_mirrored_vat_codes = mirrored_vat_codes.reset_index(drop=False)
+    merged_vat_codes = reset_standardized_target_state.merge(
+        reset_mirrored_vat_codes, how='left', indicator=True
+    )
+    missing_codes_after_mirroring = merged_vat_codes[
+        merged_vat_codes['_merge'] == 'left_only'
+    ]
+    assert missing_codes_after_mirroring.empty, 'Mirroring error: Some target VAT codes were not mirrored'
 
-    cashctrl_ledger.mirror_vat_codes(target_state=initial_vat_codes)
-    rolled_back_vat_codes = cashctrl_ledger.vat_codes()
-    assert rolled_back_vat_codes.equals(initial_vat_codes), "Rollback failed: VAT codes do not match initial state"
+    # Mirroring VAT codes with deletion
+    cashctrl_ledger.mirror_vat_codes(standardized_target_state, delete=True)
+    mirrored_vat_codes_after_deletion = cashctrl_ledger.vat_codes()
+    reset_mirrored_vat_codes_after_deletion = mirrored_vat_codes_after_deletion.reset_index(drop=False)
+    merged_vat_codes_after_deletion = reset_standardized_target_state.merge(
+        reset_mirrored_vat_codes_after_deletion, how='left', indicator=True
+    )
+    missing_codes_after_deletion = merged_vat_codes_after_deletion[
+        merged_vat_codes_after_deletion['_merge'] == 'left_only'
+    ]
+    assert len(standardized_target_state) == len(mirrored_vat_codes_after_deletion), (
+        'Mirroring error: The number of VAT codes after deletion does not match the target'
+    )
+    assert missing_codes_after_deletion.empty, 'Mirroring error: Some target VAT codes were not mirrored after deletion'
+
+    cashctrl_ledger.mirror_vat_codes(initial_vat_codes, delete=True)
+    restored_initial_vat_codes = cashctrl_ledger.vat_codes()
+    reset_initial_vat_codes = initial_vat_codes.reset_index(drop=False)
+    reset_restored_initial_vat_codes = restored_initial_vat_codes.reset_index(drop=False)
+    merged_initial_vat_codes = reset_initial_vat_codes.merge(
+        reset_restored_initial_vat_codes, how='left', indicator=True
+    )
+    missing_initial_codes = merged_initial_vat_codes[
+        merged_initial_vat_codes['_merge'] == 'left_only'
+    ]
+    assert len(initial_vat_codes) == len(restored_initial_vat_codes), (
+        'Restoration error: The number of initial VAT codes after restoration does not match the original'
+    )
+    assert missing_initial_codes.empty, 'Restoration error: Some initial VAT codes were not restored'
+

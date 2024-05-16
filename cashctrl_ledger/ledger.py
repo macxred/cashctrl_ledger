@@ -54,16 +54,16 @@ class CashCtrlLedger(LedgerEngine):
         duplicates = current_state[current_state.index.duplicated(keep=False)]
         new_entries = target_state[~target_state.index.isin(unique_entries.index)]
         common_indices = unique_entries.index.intersection(target_state.index)
-        entries_to_update = target_state.loc[common_indices]
+        aligned_current = unique_entries.loc[common_indices].reindex(columns=target_state.columns)
+        aligned_target = target_state.loc[common_indices]
+        differing_entries = (aligned_current != aligned_target).any(axis=1)
+        entries_to_update = aligned_target[differing_entries]
         not_in_desired = unique_entries[~unique_entries.index.isin(target_state.index)]
         entries_to_delete = pd.concat([duplicates, not_in_desired]).drop_duplicates()
 
         if delete:
             for idx in entries_to_delete.index:
                 self.delete_vat_code(code=idx)
-        else:
-            delete_indices = ", ".join(entries_to_delete.index.astype(str))
-            print(f"These remote VAT rates should be deleted: '{delete_indices}'")
 
         for idx, row in new_entries.iterrows():
             self.add_vat_code(code=idx, text=row["text"], account=row["account"],
