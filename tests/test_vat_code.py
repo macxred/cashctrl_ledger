@@ -100,18 +100,15 @@ def test_mirror_vat_codes():
     cashctrl_ledger = CashCtrlLedger()
     initial_vat_codes = cashctrl_ledger.vat_codes()
     updated_vat_codes = initial_vat_codes.copy()
-
-    new_vat_entry = ["VAT 20%", 2200, 0.02000, True, '1900-01-01', None]
-    updated_vat_codes.loc['test_mirror'] = new_vat_entry
-    first_vat_code_index = updated_vat_codes.index[0]
-    updated_vat_codes.at[first_vat_code_index, 'text'] = "test_vat_name"
+    updated_vat_codes.loc['test_mirror'] = ["VAT 20%", 2200, 0.02000, True, '1900-01-01', None]
+    updated_vat_codes.at[updated_vat_codes.index[0], 'text'] = "test_vat_name"
 
     cashctrl_ledger.mirror_vat_codes(updated_vat_codes)
     mirrored_vat_codes = cashctrl_ledger.vat_codes()
-    updated_vat_codes_str = updated_vat_codes.astype(str).reset_index(drop=True)
-    mirrored_vat_codes_str = mirrored_vat_codes.astype(str).reset_index(drop=True)
-    assert updated_vat_codes_str.equals(mirrored_vat_codes_str)
+    updated_vat_codes_reset_index = updated_vat_codes.astype(str).reset_index(drop=True)
+    mirrored_vat_codes_str_reset_index  = mirrored_vat_codes.astype(str).reset_index(drop=True)
+    assert updated_vat_codes_reset_index.equals(mirrored_vat_codes_str_reset_index), "Mirroring failed: VAT codes do not match expected state"
 
-    cashctrl_ledger.mirror_vat_codes(initial_vat_codes)
+    cashctrl_ledger.mirror_vat_codes(target_state=initial_vat_codes)
     rolled_back_vat_codes = cashctrl_ledger.vat_codes()
-    assert rolled_back_vat_codes.equals(initial_vat_codes)
+    assert rolled_back_vat_codes.equals(initial_vat_codes), "Rollback failed: VAT codes do not match initial state"
