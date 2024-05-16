@@ -95,17 +95,110 @@ class CashCtrlLedger(LedgerEngine):
         """
         raise NotImplementedError
 
-    def account_chart():
-        """
-        Not implemented yet
-        """
-        raise NotImplementedError
+    def account_chart(self) -> pd.DataFrame:
+        """Retrieves the account chart from a remote CashCtrl instance, formatted to the pyledger schema."""
+        accounts = self._client.list_accounts()
+        result = pd.DataFrame({
+            'account': accounts['number'],
+            'currency': accounts['currencyCode'],
+            'text': accounts['name'],
+            'vat_code': accounts['taxName'],
+            'group': accounts['path'],
+        })
 
-    def add_account():
+        return StandaloneLedger.standardize_account_chart(result)
+
+    def add_account(self, account: str, currency: str, text: str, vat_code: str | None = None, group: str | None = None):
         """
-        Not implemented yet
+        Adds a new account to the remote CashCtrl instance.
+
+        Parameters:
+            account (str): The account number or identifier to be added.
+            currency (str): The currency associated with the account.
+            text (str): Additional text or description associated with the account.
+            vat_code (str, optional): The VAT code to be applied to the account, if any.
+            group (str, optional): The category group to which the account belongs, if any.
         """
-        raise NotImplementedError
+
+        def get_single_record(df, column, value, error_message):
+            records = df[df[column] == value]
+            if len(records) != 1:
+                if len(records) < 1:
+                    raise ValueError(f"{error_message}: '{value}'.")
+                raise ValueError(f"{error_message} '{value}' is duplicated.")
+            return records['id'].item()
+
+        currency_data = self._client.get("currency/list.json")['data']
+        currency_id = get_single_record(pd.DataFrame(currency_data), 'text', currency, "There is no such currency")
+
+        tax_id = None
+        if vat_code:
+            tax_data = self._client.list_tax_rates()
+            tax_id = get_single_record(pd.DataFrame(tax_data), 'text', vat_code, "There is no VAT code")
+
+        category_id = None
+        if group:
+            category_data = self._client.list_categories('account')
+            category_id = get_single_record(pd.DataFrame(category_data), 'path', group, "There is no such group")
+
+        payload = {
+            "number": account,
+            "currencyId": currency_id,
+            "name": text,
+            "taxId": tax_id,
+            "categoryId": category_id,
+        }
+
+        self._client.post("account/create.json", data=payload)
+
+    def update_account(self, account: str, currency: str, text: str, vat_code: str | None = None, group: str | None = None):
+        """
+        Updates an existing account in the remote CashCtrl instance.
+
+        Parameters:
+            account (str): The account number or identifier to be added.
+            currency (str): The currency associated with the account.
+            text (str): Additional text or description associated with the account.
+            vat_code (str, optional): The VAT code to be applied to the account, if any.
+            group (str, optional): The category group to which the account belongs, if any.
+        """
+
+        accounts = self._client.list_accounts()
+        account_map = accounts.set_index('number')['id'].to_dict()
+        if account not in account_map:
+            raise ValueError(f"Account '{account}' does not exist.")
+
+        def get_single_record(df, column, value, error_message):
+            records = df[df[column] == value]
+            if len(records) != 1:
+                if len(records) < 1:
+                    raise ValueError(f"{error_message}: '{value}'.")
+                raise ValueError(f"{error_message} '{value}' is duplicated.")
+            return records['id'].item()
+
+        currency_data = self._client.get("currency/list.json")['data']
+        currency_id = get_single_record(pd.DataFrame(currency_data), 'text', currency, "There is no such currency")
+
+        tax_id = None
+        if vat_code:
+            tax_data = self._client.list_tax_rates()
+            tax_id = get_single_record(pd.DataFrame(tax_data), 'text', vat_code, "There is no VAT code")
+
+        category_id = None
+        if group:
+            category_data = self._client.list_categories('account')
+            category_id = get_single_record(pd.DataFrame(category_data), 'path', group, "There is no such group")
+
+        payload = {
+            "id": account_map[account],
+            "number": account,
+            "currencyId": currency_id,
+            "name": text,
+            "taxId": tax_id,
+            "categoryId": category_id,
+        }
+
+        self._client.post("account/update.json", data=payload)
 
     def add_ledger_entry():
         """
@@ -193,11 +286,16 @@ class CashCtrlLedger(LedgerEngine):
         """
         raise NotImplementedError
 
-    def delete_account():
-        """
-        Not implemented yet
-        """
-        raise NotImplementedError
+    def delete_account(self, account: str, allow_missing: bool = False):
+        """Deletes an account from the remote CashCtrl instance."""
+        accounts = self._client.list_accounts()
+        to_delete = accounts.loc[accounts['number'] == account, 'id']
+
+        if len(to_delete) > 0:
+            delete_ids = ",".join(to_delete.astype(str))
+            self._client.post('account/delete.json', {'ids': delete_ids})
+        elif not allow_missing:
+            raise ValueError(f"There is no Account '{account}'.")
 
     def delete_ledger_entry():
         """
