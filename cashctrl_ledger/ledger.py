@@ -38,8 +38,14 @@ class CashCtrlLedger(LedgerEngine):
             'rate': tax_rates['percentage'] / 100,
             'inclusive': ~ tax_rates['isGrossCalcType'],
         })
+        standardized_result = StandaloneLedger.standardize_vat_codes(result)
+        duplicates = standardized_result[standardized_result.index.duplicated(keep=False)]
+        if not duplicates.empty:
+            raise ValueError(
+                f"Duplicated VAT codes in the remote system: '{', '.join(map(str, duplicates.index))}'"
+            )
 
-        return StandaloneLedger.standardize_vat_codes(result)
+        return standardized_result
 
     def mirror_vat_codes(self, target_state: pd.DataFrame, delete: bool = True):
         """
