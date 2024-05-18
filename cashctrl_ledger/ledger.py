@@ -55,29 +55,33 @@ class CashCtrlLedger(LedgerEngine):
             target_state (pd.DataFrame): DataFrame containing VAT rates in the pyledger.vat_codes format.
             delete (bool, optional): If True, deletes VAT codes on the remote account that are not present in the target_state DataFrame.
         """
-        current_state = self.vat_codes()
-        unique_entries = current_state.drop_duplicates(keep='first')
-        duplicates = current_state[current_state.index.duplicated(keep=False)]
-        new_entries = target_state[~target_state.index.isin(unique_entries.index)]
-        common_indices = unique_entries.index.intersection(target_state.index)
-        aligned_current = unique_entries.loc[common_indices].reindex(columns=target_state.columns)
-        aligned_target = target_state.loc[common_indices]
-        differing_entries = (aligned_current != aligned_target).any(axis=1)
-        entries_to_update = aligned_target[differing_entries]
-        not_in_desired = unique_entries[~unique_entries.index.isin(target_state.index)]
-        entries_to_delete = pd.concat([duplicates, not_in_desired]).drop_duplicates()
+        target_df = StandaloneLedger.standardize_vat_codes(target_state).reset_index()
+        current_state = self.vat_codes().reset_index()
 
         if delete:
-            for idx in entries_to_delete.index:
+            for idx in set(current_state['id']).difference(set(target_df['id'])):
                 self.delete_vat_code(code=idx)
 
-        for idx, row in new_entries.iterrows():
-            self.add_vat_code(code=idx, text=row["text"], account=row["account"],
-                rate=row["rate"], inclusive=row["inclusive"]
+        #creating new VAT codes in remote state
+        ids = set(target_df['id']).difference(set(current_state['id']))
+        to_add = target_df.loc[target_df['id'].isin(ids)].to_dict('records')
+        for row in to_add:
+            self.add_vat_code(
+                code=row['id'],
+                text=row['text'],
+                account=row['account'],
+                rate=row['rate'],
+                inclusive=row['inclusive'],
             )
 
-        for idx, row in entries_to_update.iterrows():
-            self.update_vat_code(code=idx, text=row["text"], account=row["account"],
+        #updating remote state
+        both = set(target_df['id']).intersection(set(current_state['id']))
+        l = target_df.loc[target_df['id'].isin(both)]
+        r = current_state.loc[current_state['id'].isin(both)]
+        merged = pd.merge(l, r, how="outer", indicator=True)
+        update = merged[merged['_merge'] == 'left_only']
+        for _, row in update.iterrows():
+            self.update_vat_code(code=row['id'], text=row["text"], account=row["account"],
                 rate=row["rate"], inclusive=row["inclusive"]
             )
 
