@@ -38,14 +38,13 @@ class CashCtrlLedger(LedgerEngine):
             'rate': tax_rates['percentage'] / 100,
             'inclusive': ~ tax_rates['isGrossCalcType'],
         })
-        standardized_result = StandaloneLedger.standardize_vat_codes(result)
-        duplicates = standardized_result[standardized_result.index.duplicated(keep=False)]
-        if not duplicates.empty:
-            raise ValueError(
-                f"Duplicated VAT codes in the remote system: '{', '.join(map(str, duplicates.index))}'"
-            )
 
-        return standardized_result
+        duplicates = set(result.loc[result['id'].duplicated(), 'id'])
+        if duplicates:
+            raise ValueError(
+                f"Duplicated VAT codes in the remote system: '{', '.join(map(str, duplicates))}'"
+            )
+        return StandaloneLedger.standardize_vat_codes(result)
 
     def mirror_vat_codes(self, target_state: pd.DataFrame, delete: bool = True):
         """
@@ -53,19 +52,20 @@ class CashCtrlLedger(LedgerEngine):
 
         Parameters:
             target_state (pd.DataFrame): DataFrame containing VAT rates in the pyledger.vat_codes format.
-            delete (bool, optional): If True, deletes VAT codes on the remote account that are not present in the target_state DataFrame.
+            delete (bool, optional): If True, deletes VAT codes on the remote account that are not present in target_state.
         """
         target_df = StandaloneLedger.standardize_vat_codes(target_state).reset_index()
         current_state = self.vat_codes().reset_index()
 
+        # Delete superfluous VAT codes on remote
         if delete:
             for idx in set(current_state['id']).difference(set(target_df['id'])):
                 self.delete_vat_code(code=idx)
 
-        #creating new VAT codes in remote state
+        # Create new VAT codes on remote
         ids = set(target_df['id']).difference(set(current_state['id']))
-        to_add = target_df.loc[target_df['id'].isin(ids)].to_dict('records')
-        for row in to_add:
+        to_add = target_df.loc[target_df['id'].isin(ids)]
+        for row in to_add.to_dict('records'):
             self.add_vat_code(
                 code=row['id'],
                 text=row['text'],
@@ -74,15 +74,19 @@ class CashCtrlLedger(LedgerEngine):
                 inclusive=row['inclusive'],
             )
 
-        #updating remote state
+        # Update modified VAT cods on remote
         both = set(target_df['id']).intersection(set(current_state['id']))
         l = target_df.loc[target_df['id'].isin(both)]
         r = current_state.loc[current_state['id'].isin(both)]
         merged = pd.merge(l, r, how="outer", indicator=True)
-        update = merged[merged['_merge'] == 'left_only']
-        for _, row in update.iterrows():
-            self.update_vat_code(code=row['id'], text=row["text"], account=row["account"],
-                rate=row["rate"], inclusive=row["inclusive"]
+        to_update = merged[merged['_merge'] == 'left_only']
+        for row in to_update.to_dict('records'):
+            self.update_vat_code(
+                code=row['id'],
+                text=row['text'],
+                account=row['account'],
+                rate=row['rate'],
+                inclusive=row['inclusive'],
             )
 
     def _single_account_balance():

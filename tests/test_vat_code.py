@@ -121,7 +121,6 @@ def test_mirror_vat_codes():
     cashctrl_ledger.mirror_vat_codes(target_df, delete=False)
     mirrored_df = cashctrl_ledger.vat_codes().reset_index()
     m = standardized_df.merge(mirrored_df, how='left', indicator=True)
-
     assert (m['_merge'] == 'both').all(), (
             'Mirroring error: Some target VAT codes were not mirrored'
         )
@@ -133,6 +132,9 @@ def test_mirror_vat_codes():
     assert (m['_merge'] == 'both').all(), (
             'Mirroring error: Some target VAT codes were not mirrored'
         )
+
+    # Reshuffle target data randomly
+    target_df = target_df.sample(frac=1).reset_index(drop=True)
 
     # Mirror target vat codes onto server with updating
     target_df.loc[target_df.index[0], 'rate'] = 0.9
