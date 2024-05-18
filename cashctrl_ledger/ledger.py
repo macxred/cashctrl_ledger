@@ -96,7 +96,9 @@ class CashCtrlLedger(LedgerEngine):
         raise NotImplementedError
 
     def account_chart(self) -> pd.DataFrame:
-        """Retrieves the account chart from a remote CashCtrl instance, formatted to the pyledger schema."""
+        """
+        Retrieves the account chart from a remote CashCtrl instance, formatted to the pyledger schema.
+        """
         accounts = self._client.list_accounts()
         result = pd.DataFrame({
             'account': accounts['number'],
@@ -105,7 +107,6 @@ class CashCtrlLedger(LedgerEngine):
             'vat_code': accounts['taxName'],
             'group': accounts['path'],
         })
-
         return StandaloneLedger.standardize_account_chart(result)
 
     def add_account(self, account: str, currency: str, text: str, vat_code: str | None = None, group: str | None = None):
@@ -120,26 +121,27 @@ class CashCtrlLedger(LedgerEngine):
             group (str, optional): The category group to which the account belongs, if any.
         """
 
-        def get_single_record(df, column, value, error_message):
-            records = df[df[column] == value]
-            if len(records) != 1:
-                if len(records) < 1:
-                    raise ValueError(f"{error_message}: '{value}'.")
-                raise ValueError(f"{error_message} '{value}' is duplicated.")
-            return records['id'].item()
-
-        currency_data = self._client.get("currency/list.json")['data']
-        currency_id = get_single_record(pd.DataFrame(currency_data), 'text', currency, "There is no such currency")
+        currencies = pd.DataFrame(self._client.get("currency/list.json")['data'])
+        currency_map = currencies.set_index('text')['id'].to_dict()
+        if currency not in currency_map:
+            raise ValueError(f"Currency '{currency}' does not exist.")
+        currency_id = currency_map[currency]
 
         tax_id = None
         if vat_code:
             tax_data = self._client.list_tax_rates()
-            tax_id = get_single_record(pd.DataFrame(tax_data), 'text', vat_code, "There is no VAT code")
+            tax_map = tax_data.set_index('text')['id'].to_dict()
+            if vat_code not in tax_map:
+                raise ValueError(f"VAT code '{vat_code}' does not exist.")
+            tax_id = tax_map[vat_code]
 
         category_id = None
         if group:
-            category_data = self._client.list_categories('account')
-            category_id = get_single_record(pd.DataFrame(category_data), 'path', group, "There is no such group")
+            categories = self._client.list_categories('account')
+            categories_map = categories.set_index('path')['id'].to_dict()
+            if group not in categories_map:
+                raise ValueError(f"Group '{group}' does not exist.")
+            category_id = categories_map[group]
 
         payload = {
             "number": account,

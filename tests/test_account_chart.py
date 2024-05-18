@@ -1,11 +1,12 @@
 """
-Unit tests for account charts accessor and mutator methods.
+Unit tests for account chart accessor and mutator methods.
 """
 
 import pytest
+import pandas as pd
 from cashctrl_ledger import CashCtrlLedger
 
-# Ensure there is no '2222' account on the remote system
+# Ensure there is no '7777' account on the remote system
 def test_delete_account_non_existent():
     cashctrl_ledger = CashCtrlLedger()
     cashctrl_ledger.delete_account(7777, allow_missing=True)
@@ -24,8 +25,8 @@ def test_add_account():
     }
     cashctrl_ledger.add_account(**new_account)
     updated_accounts= cashctrl_ledger.account_chart().reset_index()
-    created_accounts = updated_accounts[
-        ~updated_accounts.apply(tuple, 1).isin(initial_accounts.apply(tuple, 1))]
+    outer_join = pd.merge(initial_accounts, updated_accounts, how='outer', indicator=True)
+    created_accounts = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1)
 
     assert len(created_accounts) == 1, "Expected exactly one row to be added"
     assert created_accounts['account'].item() == new_account['account']
@@ -48,8 +49,8 @@ def test_update_account():
     }
     cashctrl_ledger.update_account(**new_account)
     updated_accounts = cashctrl_ledger.account_chart().reset_index()
-    modified_accounts = updated_accounts[
-        ~updated_accounts.apply(tuple, 1).isin(initial_accounts.apply(tuple, 1))]
+    outer_join = pd.merge(initial_accounts, updated_accounts, how='outer', indicator=True)
+    modified_accounts = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1)
 
     assert len(modified_accounts) == 1, "Expected exactly one updated row"
     assert modified_accounts['account'].item() == new_account['account']
@@ -64,7 +65,6 @@ def test_delete_account():
     cashctrl_ledger = CashCtrlLedger()
     cashctrl_ledger.delete_account(account=7777)
     updated_accounts = cashctrl_ledger.account_chart()
-
     assert 7777 not in updated_accounts.index
 
 # Test deleting a non existent account should raise an error.
@@ -81,19 +81,42 @@ def test_update_non_existent_account_raise_error():
             text='test create account', vat_code='MwSt. 2.6%', group='/Anlagevermögen'
         )
 
-# Test adding an account with not valid vat code should raise an error.
-def test_update_non_existent_account_raise_error():
+# Test adding an account without currency should raise an error.
+def test_update_account_without_currency_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
         cashctrl_ledger.update_account(account=7777, currency='',
             text='test create account', vat_code='MwSt. 2.6%', group='/Anlagevermögen'
         )
 
-
-# Test updating an account with not valid vat code should raise an error.
-def test_update_account_with_not_valid_currency_raise_error():
+# Test updating an account with not valid VAT code should raise an error.
+def test_update_account_with_not_valid_vat_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_account(account=7777, currency='',
-            text='test create account', vat_code='MwSt. 2.6%', group='/Anlagevermögen'
+        cashctrl_ledger.update_account(account=7777, currency='USD',
+            text='test create account', vat_code='Non-Existing Tax Code', group='/Anlagevermögen'
+        )
+
+# Test updating an account without VAT code should raise an error.
+def test_update_account_without_vat_raise_error():
+    cashctrl_ledger = CashCtrlLedger()
+    with pytest.raises(ValueError):
+        cashctrl_ledger.update_account(account=7777, currency='USD',
+            text='test create account', vat_code='', group='/Anlagevermögen'
+        )
+
+# Test updating an account without group should raise an error.
+def test_update_account_with_not_valid_group_raise_error():
+    cashctrl_ledger = CashCtrlLedger()
+    with pytest.raises(ValueError):
+        cashctrl_ledger.update_account(account=7777, currency='USD',
+            text='test create account', vat_code='MwSt. 2.6%', group='/ABC'
+        )
+
+# Test updating an account without group should raise an error.
+def test_update_account_without_group_raise_error():
+    cashctrl_ledger = CashCtrlLedger()
+    with pytest.raises(ValueError):
+        cashctrl_ledger.update_account(account=7777, currency='USD',
+            text='test create account', vat_code='MwSt. 2.6%', group=''
         )
