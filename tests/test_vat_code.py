@@ -135,10 +135,10 @@ def test_mirror_vat_codes():
         )
 
     # Mirror target vat codes onto server with updating
-    target_df.iloc[0]['rate'] = 0.9
+    target_df.loc[target_df.index[0], 'rate'] = 0.9
     cashctrl_ledger.mirror_vat_codes(target_df, delete=True)
     mirrored_df = cashctrl_ledger.vat_codes().reset_index()
-    m = standardized_df.merge(mirrored_df, how='outer', indicator=True)
+    m = target_df.merge(mirrored_df, how='outer', indicator=True)
     assert (m['_merge'] == 'both').all(), (
             'Mirroring error: Some target VAT codes were not mirrored'
         )
