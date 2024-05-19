@@ -1,9 +1,12 @@
 """
-Unit tests for vat codes accessor and mutator methods.
+Unit tests for vat codes accessor, mutator, and mirror methods.
 """
 
 import pytest
+from io import StringIO
+import pandas as pd
 from cashctrl_ledger import CashCtrlLedger
+from pyledger import StandaloneLedger
 
 # Ensure there is no 'TestCode' vat_code on the remote account
 def test_delete_vat_non_existent():
@@ -94,3 +97,59 @@ def test_update_vat_with_not_valid_account_raise_error():
         cashctrl_ledger.update_vat_code(code="TestCode", text='VAT 20%',
             account=7777, rate=0.02, inclusive=True
         )
+
+# Tests the mirroring functionality of VAT codes.
+def test_mirror_vat_codes():
+    target_csv = """
+    id,account,rate,inclusive,text
+    OutStd,2200,0.038,True,VAT at the regular 7.7% rate on goods or services
+    OutRed,2200,0.025,True,VAT at the reduced 2.5% rate on goods or services
+    OutAcc,2200,0.038,True,XXXXX
+    OutStdEx,2200,0.077,False,VAT at the regular 7.7% rate on goods or services
+    InStd,1170,0.077,True,Input Tax (Vorsteuer) at the regular 7.7% rate on
+    InRed,1170,0.025,True,Input Tax (Vorsteuer) at the reduced 2.5% rate on
+    InAcc,1170,0.038,True,YYYYY
+    """
+    target_df = pd.read_csv(StringIO(target_csv), skipinitialspace=True)
+    standardized_df = StandaloneLedger.standardize_vat_codes(target_df).reset_index()
+    cashctrl_ledger = CashCtrlLedger()
+
+    # Save initial VAT codes
+    initial_vat_codes = cashctrl_ledger.vat_codes().reset_index()
+
+    # Mirror test vat codes onto server with delete=False
+    cashctrl_ledger.mirror_vat_codes(target_df, delete=False)
+    mirrored_df = cashctrl_ledger.vat_codes().reset_index()
+    m = standardized_df.merge(mirrored_df, how='left', indicator=True)
+    assert (m['_merge'] == 'both').all(), (
+            'Mirroring error: Some target VAT codes were not mirrored'
+        )
+
+    # Mirror target vat codes onto server with delete=True
+    cashctrl_ledger.mirror_vat_codes(target_df, delete=True)
+    mirrored_df = cashctrl_ledger.vat_codes().reset_index()
+    m = standardized_df.merge(mirrored_df, how='outer', indicator=True)
+    assert (m['_merge'] == 'both').all(), (
+            'Mirroring error: Some target VAT codes were not mirrored'
+        )
+
+    # Reshuffle target data randomly
+    target_df = target_df.sample(frac=1).reset_index(drop=True)
+
+    # Mirror target vat codes onto server with updating
+    target_df.loc[target_df.index[0], 'rate'] = 0.9
+    cashctrl_ledger.mirror_vat_codes(target_df, delete=True)
+    mirrored_df = cashctrl_ledger.vat_codes().reset_index()
+    m = target_df.merge(mirrored_df, how='outer', indicator=True)
+    assert (m['_merge'] == 'both').all(), (
+            'Mirroring error: Some target VAT codes were not mirrored'
+        )
+
+    # Mirror initial vat codes onto server with delete=True to restore original state
+    cashctrl_ledger.mirror_vat_codes(initial_vat_codes, delete=True)
+    mirrored_df = cashctrl_ledger.vat_codes().reset_index()
+    m = initial_vat_codes.merge(mirrored_df, how='outer', indicator=True)
+    assert (m['_merge'] == 'both').all(), (
+            'Mirroring error: Some target VAT codes were not mirrored'
+        )
+

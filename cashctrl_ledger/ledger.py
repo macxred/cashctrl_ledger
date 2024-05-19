@@ -39,13 +39,55 @@ class CashCtrlLedger(LedgerEngine):
             'inclusive': ~ tax_rates['isGrossCalcType'],
         })
 
+        duplicates = set(result.loc[result['id'].duplicated(), 'id'])
+        if duplicates:
+            raise ValueError(
+                f"Duplicated VAT codes in the remote system: '{', '.join(map(str, duplicates))}'"
+            )
         return StandaloneLedger.standardize_vat_codes(result)
-    
+
     def mirror_vat_codes(self, target_state: pd.DataFrame, delete: bool = True):
         """
-        Not implemented yet
+        Aligns VAT rates on the remote CashCtrl account with the desired state provided as a DataFrame.
+
+        Parameters:
+            target_state (pd.DataFrame): DataFrame containing VAT rates in the pyledger.vat_codes format.
+            delete (bool, optional): If True, deletes VAT codes on the remote account that are not present in target_state.
         """
-        raise NotImplementedError
+        target_df = StandaloneLedger.standardize_vat_codes(target_state).reset_index()
+        current_state = self.vat_codes().reset_index()
+
+        # Delete superfluous VAT codes on remote
+        if delete:
+            for idx in set(current_state['id']).difference(set(target_df['id'])):
+                self.delete_vat_code(code=idx)
+
+        # Create new VAT codes on remote
+        ids = set(target_df['id']).difference(set(current_state['id']))
+        to_add = target_df.loc[target_df['id'].isin(ids)]
+        for row in to_add.to_dict('records'):
+            self.add_vat_code(
+                code=row['id'],
+                text=row['text'],
+                account=row['account'],
+                rate=row['rate'],
+                inclusive=row['inclusive'],
+            )
+
+        # Update modified VAT cods on remote
+        both = set(target_df['id']).intersection(set(current_state['id']))
+        l = target_df.loc[target_df['id'].isin(both)]
+        r = current_state.loc[current_state['id'].isin(both)]
+        merged = pd.merge(l, r, how="outer", indicator=True)
+        to_update = merged[merged['_merge'] == 'left_only']
+        for row in to_update.to_dict('records'):
+            self.update_vat_code(
+                code=row['id'],
+                text=row['text'],
+                account=row['account'],
+                rate=row['rate'],
+                inclusive=row['inclusive'],
+            )
 
     def _single_account_balance():
         """
@@ -104,7 +146,7 @@ class CashCtrlLedger(LedgerEngine):
             "documentName": text,
         }
         self._client.post("tax/create.json", data=payload)
-        
+
     def update_vat_code(
         self, code: str, rate: float, account: str,
         inclusive: bool = True, text: str = ""
@@ -227,4 +269,4 @@ class CashCtrlLedger(LedgerEngine):
         """
         Not implemented yet
         """
-        raise NotImplementedError 
+        raise NotImplementedError
