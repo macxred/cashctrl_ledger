@@ -324,6 +324,66 @@ class CashCtrlLedger(LedgerEngine):
         }
         self._client.post("tax/update.json", data=payload)
 
+    def add_ledger_entry(
+        self,
+        date: str,
+        account: str,
+        counter_account: str,
+        amount: float,
+        currency: str,
+        text: str,
+        vat_code: str,
+        document: str
+    ):
+        """
+        Adds a new ledger entry to the remote CashCtrl instance.
+
+        Parameters:
+            date (str): The date ledger entry was created.
+            account (str): The account on the credit side.
+            counter_account (str): The account on the debit side.
+            amount (float): The amount of the book entry.
+            currency (str): The currency associated with the account.
+            text (str, optional): The description of the book entry.
+            vat_code (str, optional): The VAT code to be applied to the account, if any.
+            document (str, optional): reference for the book entry.
+        """
+
+        accounts = self._client.list_accounts()
+        account_map = accounts.set_index('number')['id'].to_dict()
+        if account not in account_map or counter_account not in account_map:
+            raise ValueError(f"Account '{account}' does not exist.")
+        elif counter_account not in account_map:
+            raise ValueError(f"Account '{counter_account}' does not exist.")
+
+        currencies = pd.DataFrame(self._client.get("currency/list.json")['data'])
+        currency_map = currencies.set_index('text')['id'].to_dict()
+        if currency not in currency_map:
+            raise ValueError(f"Currency '{currency}' does not exist.")
+        currency_id = currency_map[currency]
+
+        tax_id = None
+        if vat_code is not None:
+            tax_data = self._client.list_tax_rates()
+            tax_map = tax_data.set_index('text')['id'].to_dict()
+            if vat_code not in tax_map:
+                raise ValueError(f"VAT code '{vat_code}' does not exist.")
+            tax_id = tax_map[vat_code]
+
+        # Create remote journal record
+        payload = {
+            "dateAdded": date,
+            "amount": amount,
+            "debitId": account_map[account],
+            "creditId": account_map[counter_account],
+            "currencyId": currency_id,
+            "title": text,
+            "taxId": tax_id,
+            "reference": document,
+        }
+
+        self._client.post("journal/create.json", data=payload)
+
     def base_currency():
         """
         Not implemented yet
@@ -371,11 +431,41 @@ class CashCtrlLedger(LedgerEngine):
         elif not allow_missing:
             raise ValueError(f"There is no VAT code '{code}'.")
 
-    def ledger():
+    def ledger(self) -> pd.DataFrame:
         """
-        Not implemented yet
+        Retrieves the account remote ledger from CashCtrl instance formatted to the pyledger schema.
+
+        Returns:
+            pd.DataFrame: A DataFrame with enforced data types.
         """
-        raise NotImplementedError
+        ledger = self._client.list_journal_entries()
+        tax_rates = self._client.list_tax_rates()
+        rates_map = tax_rates.set_index('id')['name'].to_dict()
+        accounts = self._client.list_accounts()
+        account_map = accounts.set_index('id')['number'].to_dict()
+        currencies = pd.DataFrame(self._client.get("currency/list.json")['data'])
+        currency_map = currencies.set_index('text')['id'].to_dict()
+
+        result = pd.DataFrame({
+            'date': ledger['dateAdded'],
+            'account': ledger.apply(
+                lambda row: account_map[row['creditId']]
+                if row['amount'] > 0
+                else account_map[row['debitId']], axis=1
+            ),
+            'counter_account': ledger.apply(
+                lambda row: account_map[row['debitId']]
+                if row['amount'] > 0
+                else account_map[row['creditId']], axis=1
+            ),
+            'amount': ledger['amount'],
+            'currency': ledger['currencyCode'].map(currency_map),
+            'text': ledger['title'],
+            'vat_code': ledger['taxId'].map(rates_map),
+            'document': ledger['reference'],
+        })
+
+        return StandaloneLedger.standardize_ledger(result)
 
     def ledger_entry():
         """
