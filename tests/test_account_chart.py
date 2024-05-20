@@ -90,7 +90,7 @@ def test_update_account_without_vat_not_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     initial_accounts = cashctrl_ledger.account_chart().reset_index()
     new_account = {
-        'account': 1140,
+        'account': 7777,
         'currency': 'USD',
         'text': 'test update account without VAT',
         'vat_code': None,
