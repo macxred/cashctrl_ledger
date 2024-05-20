@@ -17,13 +17,17 @@ jobs:
       image: python:latest
     env:
       GITHUB_PAT: ${{ secrets.INSTALL_GITHUB }}
-    # If the PR is coming from a fork (pull_request_target), ensure it is opened
-    # by "dependabot[bot]". Otherwise, clone it normally.
       CC_API_ORGANISATION: ${{ secrets.CC_API_ORGANISATION }}
       CC_API_KEY: ${{ secrets.CC_API_KEY }}
     if: |
         (github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]') ||
         (github.event_name != 'pull_request_target' && github.actor != 'dependabot[bot]')
+
+    # Add concurrency to ensure only one run at a time per branch
+    concurrency:
+      group: ${{ github.ref }}
+      cancel-in-progress: true
+
     steps:
       - name: Checkout
         if: ${{ github.event_name != 'pull_request_target' }}
@@ -48,5 +52,5 @@ jobs:
       - name: Install package
         run: python setup.py develop
 
-      - name: Run tests
-        run: pytest -W error
+      - name: Run tests sequentially
+        run: pytest -W error --maxfail=1 --disable-warnings
