@@ -7,15 +7,17 @@ import requests
 import pandas as pd
 from cashctrl_ledger import CashCtrlLedger
 
-# Ensure there is no '7777' account on the remote system
-def test_delete_account_non_existent():
+def test_account_mutators():
     cashctrl_ledger = CashCtrlLedger()
-    cashctrl_ledger.delete_account(7777, allow_missing=True)
-    assert 7777 not in cashctrl_ledger.account_chart().index
 
-# Test adding an account
-def test_add_account():
-    cashctrl_ledger = CashCtrlLedger()
+    # Ensure there is no account '1145' or '1146' on the remote system
+    cashctrl_ledger.delete_account(1145, allow_missing=True)
+    cashctrl_ledger.delete_account(1146, allow_missing=True)
+    account_chart = cashctrl_ledger.account_chart()
+    assert 1145 not in account_chart.index
+    assert 1146 not in account_chart.index
+
+    # Test adding an account
     initial_accounts = cashctrl_ledger.account_chart().reset_index()
     new_account = {
         'account': 1145,
@@ -37,12 +39,10 @@ def test_add_account():
     assert created_accounts['vat_code'].item() == '<values><de>MwSt. 2.6%</de><en>VAT 2.6%</en><fr>TVA 2.6%</fr><it>IVA 2.6%</it></values>'
     assert created_accounts['group'].item() == new_account['group']+'/'+new_account['text']
 
-# Test adding an account without VAT
-def test_add_account():
-    cashctrl_ledger = CashCtrlLedger()
+    # Test adding an account without VAT
     initial_accounts = cashctrl_ledger.account_chart().reset_index()
     new_account = {
-        'account': 7777,
+        'account': 1146,
         'currency': 'CHF',
         'text': 'test create account',
         'vat_code': None,
@@ -61,12 +61,10 @@ def test_add_account():
     assert pd.isna(created_accounts['vat_code'].item())
     assert created_accounts['group'].item() == new_account['group']+'/'+new_account['text']
 
-# Test updating an account.
-def test_update_account():
-    cashctrl_ledger = CashCtrlLedger()
+    # Test updating an account.
     initial_accounts = cashctrl_ledger.account_chart().reset_index()
     new_account = {
-        'account': 7777,
+        'account': 1146,
         'currency': 'CHF',
         'text': 'test update account',
         'vat_code': 'MwSt. 2.6%',
@@ -85,12 +83,10 @@ def test_update_account():
     assert modified_accounts['vat_code'].item() == '<values><de>MwSt. 2.6%</de><en>VAT 2.6%</en><fr>TVA 2.6%</fr><it>IVA 2.6%</it></values>'
     assert modified_accounts['group'].item() == new_account['group']+'/'+new_account['text']
 
-# Test updating an account without VAT code.
-def test_update_account_without_vat_not_raise_error():
-    cashctrl_ledger = CashCtrlLedger()
+    # Test updating an account without VAT code.
     initial_accounts = cashctrl_ledger.account_chart().reset_index()
     new_account = {
-        'account': 1140,
+        'account': 1145,
         'currency': 'USD',
         'text': 'test update account without VAT',
         'vat_code': None,
@@ -109,24 +105,28 @@ def test_update_account_without_vat_not_raise_error():
     assert pd.isna(created_accounts['vat_code'].item())
     assert created_accounts['group'].item() == new_account['group']+'/'+new_account['text']
 
-# Test deleting an account.
-def test_delete_account():
+    # Test deleting the accounts added above.
     cashctrl_ledger = CashCtrlLedger()
-    cashctrl_ledger.delete_account(account=7777)
+    cashctrl_ledger.delete_account(account=1145)
+    cashctrl_ledger.delete_account(account=1146)
     updated_accounts = cashctrl_ledger.account_chart()
-    assert 7777 not in updated_accounts.index
+    assert 1145 not in updated_accounts.index
+    assert 1146 not in updated_accounts.index
 
 # Test deleting a non existent account should raise an error.
 def test_delete_non_existing_account_raise_error():
     cashctrl_ledger = CashCtrlLedger()
+    # Ensure there is no account '1141'
+    cashctrl_ledger.delete_account(1141, allow_missing=True)
+    assert 1141 not in cashctrl_ledger.account_chart().index
     with pytest.raises(ValueError):
-        cashctrl_ledger.delete_account(7777)
+        cashctrl_ledger.delete_account(1141)
 
 # Test adding an already existing account should raise an error.
 def test_add_pre_existing_account_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(requests.exceptions.RequestException):
-        cashctrl_ledger.add_account(account=1045, currency='EUR',
+        cashctrl_ledger.add_account(account=1000, currency='EUR',
             text='test account', vat_code=None, group='/Anlagevermögen'
         )
 
@@ -134,7 +134,7 @@ def test_add_pre_existing_account_raise_error():
 def test_add_account_with_invalid_currency_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.add_account(account=1146, currency='',
+        cashctrl_ledger.add_account(account=1142, currency='',
             text='test account', vat_code=None, group='/Anlagevermögen'
         )
 
@@ -142,7 +142,7 @@ def test_add_account_with_invalid_currency_error():
 def test_add_account_with_invalid_vat_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_account(account=1147, currency='USD',
+        cashctrl_ledger.update_account(account=1143, currency='USD',
             text='test account', vat_code='Non-Existing Tax Code', group='/Anlagevermögen'
         )
 
@@ -150,7 +150,7 @@ def test_add_account_with_invalid_vat_raise_error():
 def test_add_account_with_invalid_group_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.add_account(account=1148, currency='USD',
+        cashctrl_ledger.add_account(account=1144, currency='USD',
             text='test account', vat_code='MwSt. 2.6%', group='/ABC'
         )
 
@@ -158,7 +158,7 @@ def test_add_account_with_invalid_group_raise_error():
 def test_update_non_existing_account_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_account(account=8888, currency='CHF',
+        cashctrl_ledger.update_account(account=1147, currency='CHF',
             text='test account', vat_code='MwSt. 2.6%', group='/Anlagevermögen'
         )
 
@@ -166,7 +166,7 @@ def test_update_non_existing_account_raise_error():
 def test_update_account_with_invalid_currency_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_account(account=1140, currency='not-existing-currency',
+        cashctrl_ledger.update_account(account=1148, currency='not-existing-currency',
             text='test account', vat_code=None, group='/Anlagevermögen'
         )
 
@@ -174,7 +174,7 @@ def test_update_account_with_invalid_currency_error():
 def test_update_account_with_invalid_vat_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_account(account=1140, currency='USD',
+        cashctrl_ledger.update_account(account=1149, currency='USD',
             text='test create account', vat_code='Non-Existing Tax Code', group='/Anlagevermögen'
         )
 
@@ -182,6 +182,6 @@ def test_update_account_with_invalid_vat_raise_error():
 def test_update_account_with_invalid_group_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_account(account=1140, currency='USD',
+        cashctrl_ledger.update_account(account=1149, currency='USD',
             text='test create account', vat_code='MwSt. 2.6%', group='/ABC'
         )

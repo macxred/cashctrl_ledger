@@ -85,17 +85,21 @@ def test_update_non_existent_vat_raise_error():
 # Test adding a VAT code with non existent account should raise an error.
 def test_add_vat_with_not_valid_account_raise_error():
     cashctrl_ledger = CashCtrlLedger()
+    cashctrl_ledger.delete_account(8888, allow_missing=True)
+    assert 8888 not in cashctrl_ledger.account_chart().index
     with pytest.raises(ValueError):
         cashctrl_ledger.add_vat_code(code="TestCode", text='VAT 20%',
-            account=7777, rate=0.02, inclusive=True
+            account=8888, rate=0.02, inclusive=True
         )
 
 # Test updating a VAT code with non existent account should raise an error.
 def test_update_vat_with_not_valid_account_raise_error():
     cashctrl_ledger = CashCtrlLedger()
+    cashctrl_ledger.delete_account(8888, allow_missing=True)
+    assert 8888 not in cashctrl_ledger.account_chart().index
     with pytest.raises(ValueError):
         cashctrl_ledger.update_vat_code(code="TestCode", text='VAT 20%',
-            account=7777, rate=0.02, inclusive=True
+            account=8888, rate=0.02, inclusive=True
         )
 
 # Tests the mirroring functionality of VAT codes.
