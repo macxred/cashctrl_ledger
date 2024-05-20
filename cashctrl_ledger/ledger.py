@@ -127,12 +127,13 @@ class CashCtrlLedger(LedgerEngine):
             raise ValueError(f"Currency '{currency}' does not exist.")
         currency_id = currency_map[currency]
 
+        tax_id = None
         if vat_code is not None:
             tax_data = self._client.list_tax_rates()
             tax_map = tax_data.set_index('text')['id'].to_dict()
             if vat_code not in tax_map:
                 raise ValueError(f"VAT code '{vat_code}' does not exist.")
-            vat_code = tax_map[vat_code]
+            tax_id = tax_map[vat_code]
 
         categories = self._client.list_categories('account')
         categories_map = categories.set_index('path')['id'].to_dict()
@@ -144,7 +145,7 @@ class CashCtrlLedger(LedgerEngine):
             "number": account,
             "currencyId": currency_id,
             "name": text,
-            "taxId": vat_code,
+            "taxId": tax_id,
             "categoryId": category_id,
         }
 
@@ -173,12 +174,13 @@ class CashCtrlLedger(LedgerEngine):
             raise ValueError(f"Currency '{currency}' does not exist.")
         currency_id = currency_map[currency]
 
+        tax_id = None
         if vat_code is not None:
             tax_data = self._client.list_tax_rates()
             tax_map = tax_data.set_index('text')['id'].to_dict()
             if vat_code not in tax_map:
                 raise ValueError(f"VAT code '{vat_code}' does not exist.")
-            vat_code = tax_map[vat_code]
+            tax_id = tax_map[vat_code]
 
         categories = self._client.list_categories('account')
         categories_map = categories.set_index('path')['id'].to_dict()
@@ -192,7 +194,7 @@ class CashCtrlLedger(LedgerEngine):
             "number": account,
             "currencyId": currency_id,
             "name": text,
-            "taxId": vat_code,
+            "taxId": tax_id,
             "categoryId": category_id,
         }
 
