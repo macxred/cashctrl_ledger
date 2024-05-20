@@ -21,15 +21,15 @@ jobs:
     # by "dependabot[bot]". Otherwise, clone it normally.
       CC_API_ORGANISATION: ${{ secrets.CC_API_ORGANISATION }}
       CC_API_KEY: ${{ secrets.CC_API_KEY }}
+    # This job will run if:
+    # 1. The event is not a pull request, and the repository is not a fork.
+    # 2. The event is a pull request, and either:
+    #    a) The repository is a fork.
+    #    b) The actor is "dependabot[bot]".
     if: >
       (github.event_name != 'pull_request' && !github.event.pull_request.head.repo.fork) ||
       (github.event_name == 'pull_request' &&
       (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]'))
-
-    # Add concurrency to ensure only one run at a time per branch
-    concurrency:
-      group: ${{ github.ref }}
-      cancel-in-progress: true
 
     steps:
       - name: Checkout
