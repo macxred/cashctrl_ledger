@@ -18,9 +18,7 @@ jobs:
       GITHUB_PAT: ${{ secrets.INSTALL_GITHUB }}
       CC_API_ORGANISATION: ${{ secrets.CC_API_ORGANISATION }}
       CC_API_KEY: ${{ secrets.CC_API_KEY }}
-    if: |
-        (github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]') ||
-        (github.event_name != 'pull_request_target' && github.actor != 'dependabot[bot]')
+    if: (github.event_name != 'pull_request' && ! github.event.pull_request.head.repo.fork) || (github.event_name == 'pull_request' && (github.event.pull_request.head.repo.fork || github.actor == 'dependabot[bot]'))
 
     # Add concurrency to ensure only one run at a time per branch
     concurrency:
@@ -51,5 +49,5 @@ jobs:
       - name: Install package
         run: python setup.py develop
 
-      - name: Run tests sequentially
+      - name: Run tests
         run: pytest -W error --maxfail=1 --disable-warnings
