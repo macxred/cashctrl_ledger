@@ -85,7 +85,7 @@ def test_update_non_existent_account_raise_error():
 def test_update_account_without_currency_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_account(account=7777, currency='',
+        cashctrl_ledger.update_account(account=1140, currency='',
             text='test create account', vat_code='MwSt. 2.6%', group='/Anlagevermögen'
         )
 
@@ -93,23 +93,23 @@ def test_update_account_without_currency_error():
 def test_update_account_with_not_valid_vat_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_account(account=7777, currency='USD',
+        cashctrl_ledger.update_account(account=1140, currency='USD',
             text='test create account', vat_code='Non-Existing Tax Code', group='/Anlagevermögen'
         )
 
-# Test updating an account without VAT code should raise an error.
-def test_update_account_without_vat_raise_error():
+# Test updating an account without VAT code should not raise an error.
+def test_update_account_without_vat_not_raise_error():
     cashctrl_ledger = CashCtrlLedger()
-    with pytest.raises(ValueError):
-        cashctrl_ledger.update_account(account=7777, currency='USD',
-            text='test create account', vat_code=None, group='/Anlagevermögen'
-        )
+    cashctrl_ledger.update_account(account=1140, currency='USD',
+        text='test create account', vat_code=None, group='/Anlagevermögen'
+    )
+
 
 # Test updating an account with invalid group should raise an error.
 def test_update_account_with_not_valid_group_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_account(account=7777, currency='USD',
+        cashctrl_ledger.update_account(account=1140, currency='USD',
             text='test create account', vat_code='MwSt. 2.6%', group='/ABC'
         )
 

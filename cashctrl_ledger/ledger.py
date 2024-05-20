@@ -109,7 +109,7 @@ class CashCtrlLedger(LedgerEngine):
         })
         return StandaloneLedger.standardize_account_chart(result)
 
-    def add_account(self, account: str, currency: str, text: str, vat_code: str | None = None, group: str | None = None):
+    def add_account(self, account: str, currency: str, text: str, group: str, vat_code: str | None = None):
         """
         Adds a new account to the remote CashCtrl instance.
 
@@ -117,8 +117,8 @@ class CashCtrlLedger(LedgerEngine):
             account (str): The account number or identifier to be added.
             currency (str): The currency associated with the account.
             text (str): Additional text or description associated with the account.
+            group (str): The category group to which the account belongs.
             vat_code (str, optional): The VAT code to be applied to the account, if any.
-            group (str, optional): The category group to which the account belongs, if any.
         """
 
         currencies = pd.DataFrame(self._client.get("currency/list.json")['data'])
@@ -135,13 +135,11 @@ class CashCtrlLedger(LedgerEngine):
                 raise ValueError(f"VAT code '{vat_code}' does not exist.")
             tax_id = tax_map[vat_code]
 
-        category_id = None
-        if group:
-            categories = self._client.list_categories('account')
-            categories_map = categories.set_index('path')['id'].to_dict()
-            if group not in categories_map:
-                raise ValueError(f"Group '{group}' does not exist.")
-            category_id = categories_map[group]
+        categories = self._client.list_categories('account')
+        categories_map = categories.set_index('path')['id'].to_dict()
+        if group not in categories_map:
+            raise ValueError(f"Group '{group}' does not exist.")
+        category_id = categories_map[group]
 
         payload = {
             "number": account,
@@ -153,7 +151,7 @@ class CashCtrlLedger(LedgerEngine):
 
         self._client.post("account/create.json", data=payload)
 
-    def update_account(self, account: str, currency: str, text: str, vat_code: str | None = None, group: str | None = None):
+    def update_account(self, account: str, currency: str, text: str, group: str, vat_code: str | None = None):
         """
         Updates an existing account in the remote CashCtrl instance.
 
@@ -161,8 +159,8 @@ class CashCtrlLedger(LedgerEngine):
             account (str): The account number or identifier to be added.
             currency (str): The currency associated with the account.
             text (str): Additional text or description associated with the account.
+            group (str): The category group to which the account belongs.
             vat_code (str, optional): The VAT code to be applied to the account, if any.
-            group (str, optional): The category group to which the account belongs, if any.
         """
 
         accounts = self._client.list_accounts()
@@ -176,28 +174,26 @@ class CashCtrlLedger(LedgerEngine):
             raise ValueError(f"Currency '{currency}' does not exist.")
         currency_id = currency_map[currency]
 
-        tax_id = None
-        if vat_code:
+        if vat_code is not None:
             tax_data = self._client.list_tax_rates()
             tax_map = tax_data.set_index('text')['id'].to_dict()
             if vat_code not in tax_map:
                 raise ValueError(f"VAT code '{vat_code}' does not exist.")
-            tax_id = tax_map[vat_code]
+            vat_code = tax_map[vat_code]
 
-        category_id = None
-        if group:
-            categories = self._client.list_categories('account')
-            categories_map = categories.set_index('path')['id'].to_dict()
-            if group not in categories_map:
-                raise ValueError(f"Group '{group}' does not exist.")
-            category_id = categories_map[group]
+        categories = self._client.list_categories('account')
+        categories_map = categories.set_index('path')['id'].to_dict()
+        if group not in categories_map:
+            raise ValueError(f"Group '{group}' does not exist.")
+        category_id = categories_map[group]
+
 
         payload = {
             "id": account_map[account],
             "number": account,
             "currencyId": currency_id,
             "name": text,
-            "taxId": tax_id,
+            "taxId": vat_code,
             "categoryId": category_id,
         }
 
