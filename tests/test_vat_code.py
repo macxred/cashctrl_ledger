@@ -27,8 +27,8 @@ def test_add_vat_code():
     }
     cashctrl_ledger.add_vat_code(**new_vat_code)
     updated_vat_codes = cashctrl_ledger.vat_codes().reset_index()
-    created_vat_codes = updated_vat_codes[
-        ~updated_vat_codes.apply(tuple, 1).isin(initial_vat_codes.apply(tuple, 1))]
+    outer_join = pd.merge(initial_vat_codes, updated_vat_codes, how='outer', indicator=True)
+    created_vat_codes = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1)
 
     assert len(created_vat_codes) == 1, "Expected exactly one row to be added"
     assert created_vat_codes['id'].item() == new_vat_code['code']
@@ -50,8 +50,8 @@ def test_update_vat_code():
     }
     cashctrl_ledger.update_vat_code(**new_vat_code)
     updated_vat_codes = cashctrl_ledger.vat_codes().reset_index()
-    modified_vat_codes = updated_vat_codes[
-        ~updated_vat_codes.apply(tuple, 1).isin(initial_vat_codes.apply(tuple, 1))]
+    outer_join = pd.merge(initial_vat_codes, updated_vat_codes, how='outer', indicator=True)
+    modified_vat_codes = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1)
 
     assert len(modified_vat_codes) == 1, "Expected exactly one updated row"
     assert modified_vat_codes['id'].item() == new_vat_code['code']

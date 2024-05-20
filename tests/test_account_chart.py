@@ -24,7 +24,7 @@ def test_add_account():
         'group': '/Anlagevermögen'
     }
     cashctrl_ledger.add_account(**new_account)
-    updated_accounts= cashctrl_ledger.account_chart().reset_index()
+    updated_accounts = cashctrl_ledger.account_chart().reset_index()
     outer_join = pd.merge(initial_accounts, updated_accounts, how='outer', indicator=True)
     created_accounts = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1)
 
@@ -102,10 +102,10 @@ def test_update_account_without_vat_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
         cashctrl_ledger.update_account(account=7777, currency='USD',
-            text='test create account', vat_code='', group='/Anlagevermögen'
+            text='test create account', vat_code=None, group='/Anlagevermögen'
         )
 
-# Test updating an account without group should raise an error.
+# Test updating an account with invalid group should raise an error.
 def test_update_account_with_not_valid_group_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
@@ -118,5 +118,5 @@ def test_update_account_without_group_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
         cashctrl_ledger.update_account(account=7777, currency='USD',
-            text='test create account', vat_code='MwSt. 2.6%', group=''
+            text='test create account', vat_code='MwSt. 2.6%', group=None
         )
