@@ -95,17 +95,110 @@ class CashCtrlLedger(LedgerEngine):
         """
         raise NotImplementedError
 
-    def account_chart():
+    def account_chart(self) -> pd.DataFrame:
         """
-        Not implemented yet
+        Retrieves the account chart from a remote CashCtrl instance, formatted to the pyledger schema.
         """
-        raise NotImplementedError
+        accounts = self._client.list_accounts()
+        result = pd.DataFrame({
+            'account': accounts['number'],
+            'currency': accounts['currencyCode'],
+            'text': accounts['name'],
+            'vat_code': accounts['taxName'],
+            'group': accounts['path'],
+        })
+        return StandaloneLedger.standardize_account_chart(result)
 
-    def add_account():
+    def add_account(self, account: str, currency: str, text: str, group: str, vat_code: str | None = None):
         """
-        Not implemented yet
+        Adds a new account to the remote CashCtrl instance.
+
+        Parameters:
+            account (str): The account number or identifier to be added.
+            currency (str): The currency associated with the account.
+            text (str): Additional text or description associated with the account.
+            group (str): The category group to which the account belongs.
+            vat_code (str, optional): The VAT code to be applied to the account, if any.
         """
-        raise NotImplementedError
+
+        currencies = pd.DataFrame(self._client.get("currency/list.json")['data'])
+        currency_map = currencies.set_index('text')['id'].to_dict()
+        if currency not in currency_map:
+            raise ValueError(f"Currency '{currency}' does not exist.")
+        currency_id = currency_map[currency]
+
+        tax_id = None
+        if vat_code is not None:
+            tax_data = self._client.list_tax_rates()
+            tax_map = tax_data.set_index('text')['id'].to_dict()
+            if vat_code not in tax_map:
+                raise ValueError(f"VAT code '{vat_code}' does not exist.")
+            tax_id = tax_map[vat_code]
+
+        categories = self._client.list_categories('account')
+        categories_map = categories.set_index('path')['id'].to_dict()
+        if group not in categories_map:
+            raise ValueError(f"Group '{group}' does not exist.")
+        category_id = categories_map[group]
+
+        payload = {
+            "number": account,
+            "currencyId": currency_id,
+            "name": text,
+            "taxId": tax_id,
+            "categoryId": category_id,
+        }
+
+        self._client.post("account/create.json", data=payload)
+
+    def update_account(self, account: str, currency: str, text: str, group: str, vat_code: str | None = None):
+        """
+        Updates an existing account in the remote CashCtrl instance.
+
+        Parameters:
+            account (str): The account number or identifier to be added.
+            currency (str): The currency associated with the account.
+            text (str): Additional text or description associated with the account.
+            group (str): The category group to which the account belongs.
+            vat_code (str, optional): The VAT code to be applied to the account, if any.
+        """
+
+        accounts = self._client.list_accounts()
+        account_map = accounts.set_index('number')['id'].to_dict()
+        if account not in account_map:
+            raise ValueError(f"Account '{account}' does not exist.")
+
+        currencies = pd.DataFrame(self._client.get("currency/list.json")['data'])
+        currency_map = currencies.set_index('text')['id'].to_dict()
+        if currency not in currency_map:
+            raise ValueError(f"Currency '{currency}' does not exist.")
+        currency_id = currency_map[currency]
+
+        tax_id = None
+        if vat_code is not None:
+            tax_data = self._client.list_tax_rates()
+            tax_map = tax_data.set_index('text')['id'].to_dict()
+            if vat_code not in tax_map:
+                raise ValueError(f"VAT code '{vat_code}' does not exist.")
+            tax_id = tax_map[vat_code]
+
+        categories = self._client.list_categories('account')
+        categories_map = categories.set_index('path')['id'].to_dict()
+        if group not in categories_map:
+            raise ValueError(f"Group '{group}' does not exist.")
+        category_id = categories_map[group]
+
+
+        payload = {
+            "id": account_map[account],
+            "number": account,
+            "currencyId": currency_id,
+            "name": text,
+            "taxId": tax_id,
+            "categoryId": category_id,
+        }
+
+        self._client.post("account/update.json", data=payload)
 
     def add_ledger_entry():
         """
@@ -193,11 +286,16 @@ class CashCtrlLedger(LedgerEngine):
         """
         raise NotImplementedError
 
-    def delete_account():
-        """
-        Not implemented yet
-        """
-        raise NotImplementedError
+    def delete_account(self, account: str, allow_missing: bool = False):
+        """Deletes an account from the remote CashCtrl instance."""
+        accounts = self._client.list_accounts()
+        to_delete = accounts.loc[accounts['number'] == account, 'id']
+
+        if len(to_delete) > 0:
+            delete_ids = ",".join(to_delete.astype(str))
+            self._client.post('account/delete.json', {'ids': delete_ids})
+        elif not allow_missing:
+            raise ValueError(f"There is no Account '{account}'.")
 
     def delete_ledger_entry():
         """
