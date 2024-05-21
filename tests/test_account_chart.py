@@ -8,6 +8,25 @@ import pandas as pd
 from cashctrl_ledger import CashCtrlLedger
 from pyledger import StandaloneLedger
 
+# Fixture that creates VAT code with expected code on the start
+# of the test and deletes that VAT code at the end of test
+@pytest.fixture(scope="session")
+def add_and_delete_vat_code():
+    # Creates VAT code
+    cashctrl_ledger = CashCtrlLedger()
+    cashctrl_ledger.add_vat_code(
+        code="TestCodeAccounts",
+        text='VAT 2%',
+        account=2200,
+        rate=0.02,
+        inclusive=True,
+    )
+
+    yield
+
+    # Deletes VAT code
+    cashctrl_ledger.delete_vat_code(code="TestCodeAccounts")
+
 def test_account_mutators():
     cashctrl_ledger = CashCtrlLedger()
 
@@ -127,7 +146,7 @@ def test_delete_non_existing_account_raise_error():
 def test_add_pre_existing_account_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(requests.exceptions.RequestException):
-        cashctrl_ledger.add_account(account=1000, currency='EUR',
+        cashctrl_ledger.add_account(account=1200, currency='EUR',
             text='test account', vat_code=None, group='/Anlagevermögen'
         )
 
@@ -188,17 +207,10 @@ def test_update_account_with_invalid_group_raise_error():
         )
 
 # Tests the mirroring functionality of accounts.
-def test_mirror_accounts():
+def test_mirror_accounts(add_and_delete_vat_code):
     target_df = (pd.read_csv('tests/initial_accounts.csv', skipinitialspace=True))
     standardized_df = StandaloneLedger.standardize_account_chart(target_df).reset_index()
     cashctrl_ledger = CashCtrlLedger()
-    cashctrl_ledger.add_vat_code(
-        code="TestCodeAccounts",
-        text='VAT 2%',
-        account=2200,
-        rate=0.02,
-        inclusive=True,
-    )
 
     # Save initial accounts
     initial_accounts = cashctrl_ledger.account_chart().reset_index()
@@ -240,5 +252,3 @@ def test_mirror_accounts():
     assert (m['_merge'] == 'both').all(), (
             'Mirroring error: Some target accounts were not mirrored'
         )
-
-    cashctrl_ledger.delete_vat_code(code="TestCodeAccounts")
