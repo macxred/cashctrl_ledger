@@ -231,13 +231,11 @@ def test_mirror_accounts(add_and_delete_vat_code):
             'Mirroring error: Some target accounts were not mirrored'
         )
 
-    # Updating account that has VAT code to avoid error
-    target_df.loc[target_df.index[0], 'text'] = "New_Test_Text"
-
     # Reshuffle target data randomly
     target_df = target_df.sample(frac=1).reset_index(drop=True)
 
     # Mirror target accounts onto server with updating
+    target_df.loc[target_df['account'] == 2, 'text'] = "New_Test_Text"
     cashctrl_ledger.mirror_account_chart(target_df, delete=True)
     mirrored_df = cashctrl_ledger.account_chart().reset_index()
     m = target_df.merge(mirrored_df, how='outer', indicator=True)
