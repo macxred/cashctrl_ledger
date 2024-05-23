@@ -109,6 +109,50 @@ class CashCtrlLedger(LedgerEngine):
         })
         return StandaloneLedger.standardize_account_chart(result)
 
+    def mirror_account_chart(self, target: pd.DataFrame, delete: bool = True):
+        """
+        Synchronizes remote CashCtrl accounts with a desired target state provided as a DataFrame.
+        Args:
+            target (pd.DataFrame): DataFrame with an account chart in the pyledger format.
+            delete (bool, optional): If True, deletes accounts on the remote that are not present in the target DataFrame.
+        """
+        target_df = StandaloneLedger.standardize_account_chart(target).reset_index()
+        current_state = self.account_chart().reset_index()
+
+        # Delete superfluous accounts on remote
+        if delete:
+            for account in set(current_state['account']).difference(set(target_df['account'])):
+                self.delete_account(account=account)
+
+        # Create new accounts on remote
+        accounts = set(target_df['account']).difference(set(current_state['account']))
+        to_add = target_df.loc[target_df['account'].isin(accounts)]
+
+        for row in to_add.to_dict('records'):
+            self.add_account(
+                account=row['account'],
+                currency=row['currency'],
+                text=row['text'],
+                vat_code=row['vat_code'],
+                group=row['group'],
+            )
+
+        # Update modified accounts on remote
+        both = set(target_df['account']).intersection(set(current_state['account']))
+        l = target_df.loc[target_df['account'].isin(both)]
+        r = current_state.loc[current_state['account'].isin(both)]
+        merged = pd.merge(l, r, how="outer", indicator=True)
+        to_update = merged[merged['_merge'] == 'left_only']
+
+        for row in to_update.to_dict('records'):
+            self.update_account(
+                account=row['account'],
+                currency=row['currency'],
+                text=row['text'],
+                vat_code=row['vat_code'],
+                group=row['group'],
+            )
+
     def add_account(self, account: str, currency: str, text: str, group: str, vat_code: str | None = None):
         """
         Adds a new account to the remote CashCtrl instance.

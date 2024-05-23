@@ -141,7 +141,7 @@ def test_mirror_vat_codes():
     target_df = target_df.sample(frac=1).reset_index(drop=True)
 
     # Mirror target vat codes onto server with updating
-    target_df.loc[target_df.index[0], 'rate'] = 0.9
+    target_df.loc[target_df['id'] == 'OutStdEx', 'rate'] = 0.9
     cashctrl_ledger.mirror_vat_codes(target_df, delete=True)
     mirrored_df = cashctrl_ledger.vat_codes().reset_index()
     m = target_df.merge(mirrored_df, how='outer', indicator=True)
