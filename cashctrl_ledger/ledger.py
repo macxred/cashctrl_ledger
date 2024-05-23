@@ -2,8 +2,10 @@
 Module to sync ledger system onto CashCtrl.
 """
 
+from datetime import datetime
 import pandas as pd
-from cashctrl_api import CashCtrlClient
+from typing import Union, List
+from cashctrl_api import CashCtrlClient, enforce_dtypes
 from pyledger import LedgerEngine, StandaloneLedger
 
 class CashCtrlLedger(LedgerEngine):
@@ -244,12 +246,6 @@ class CashCtrlLedger(LedgerEngine):
 
         self._client.post("account/update.json", data=payload)
 
-    def add_ledger_entry():
-        """
-        Not implemented yet
-        """
-        raise NotImplementedError
-
     def add_price():
         """
         Not implemented yet
@@ -324,113 +320,6 @@ class CashCtrlLedger(LedgerEngine):
         }
         self._client.post("tax/update.json", data=payload)
 
-    def add_ledger_entry(
-        self,
-        date: str,
-        account: str,
-        counter_account: str,
-        amount: float,
-        currency: str,
-        text: str,
-        vat_code: str,
-        document: str
-    ):
-        """
-        Adds a new ledger entry to the remote CashCtrl instance.
-
-        Parameters:
-            date (str): The date ledger entry was created.
-            account (str): The account on the credit side.
-            counter_account (str): The account on the debit side.
-            amount (float): The amount of the book entry.
-            currency (str): The currency associated with the account.
-            text (str, optional): The description of the book entry.
-            vat_code (str, optional): The VAT code to be applied to the account, if any.
-            document (str, optional): reference for the book entry.
-        """
-
-        accounts = self._client.list_accounts()
-        account_map = accounts.set_index('number')['id'].to_dict()
-        if account not in account_map or counter_account not in account_map:
-            raise ValueError(f"Account '{account}' does not exist.")
-        elif counter_account not in account_map:
-            raise ValueError(f"Account '{counter_account}' does not exist.")
-
-        currencies = pd.DataFrame(self._client.get("currency/list.json")['data'])
-        currency_map = currencies.set_index('text')['id'].to_dict()
-        if currency not in currency_map:
-            raise ValueError(f"Currency '{currency}' does not exist.")
-        currency_id = currency_map[currency]
-
-        tax_id = None
-        if vat_code is not None:
-            tax_data = self._client.list_tax_rates()
-            tax_map = tax_data.set_index('text')['id'].to_dict()
-            if vat_code not in tax_map:
-                raise ValueError(f"VAT code '{vat_code}' does not exist.")
-            tax_id = tax_map[vat_code]
-
-        # Create remote journal record
-        payload = {
-            "dateAdded": date,
-            "amount": amount,
-            "debitId": account_map[account],
-            "creditId": account_map[counter_account],
-            "currencyId": currency_id,
-            "title": text,
-            "taxId": tax_id,
-            "reference": document,
-        }
-
-        self._client.post("journal/create.json", data=payload)
-
-    def base_currency():
-        """
-        Not implemented yet
-        """
-        raise NotImplementedError
-
-    def delete_account(self, account: str, allow_missing: bool = False):
-        """Deletes an account from the remote CashCtrl instance."""
-        accounts = self._client.list_accounts()
-        to_delete = accounts.loc[accounts['number'] == account, 'id']
-
-        if len(to_delete) > 0:
-            delete_ids = ",".join(to_delete.astype(str))
-            self._client.post('account/delete.json', {'ids': delete_ids})
-        elif not allow_missing:
-            raise ValueError(f"There is no Account '{account}'.")
-
-    def delete_ledger_entry():
-        """
-        Not implemented yet
-        """
-        raise NotImplementedError
-
-    def delete_price():
-        """
-        Not implemented yet
-        """
-        raise NotImplementedError
-
-    def delete_vat_code(self, code: str, allow_missing: bool = False):
-        """
-        Deletes a VAT code from the remote CashCtrl account.
-
-        Parameters:
-            code (str): The VAT code name to be deleted.
-            allow_missing (bool): If True, no error is raised if the VAT
-                code is not found; if False, raises ValueError.
-        """
-        tax_rates = self._client.list_tax_rates()
-        to_delete = tax_rates.loc[tax_rates['name'] == code, 'id']
-
-        if len(to_delete) > 0:
-            delete_ids = ",".join(to_delete.astype(str))
-            self._client.post('tax/delete.json', {'ids': delete_ids})
-        elif not allow_missing:
-            raise ValueError(f"There is no VAT code '{code}'.")
-
     def ledger(self) -> pd.DataFrame:
         """
         Retrieves the account remote ledger from CashCtrl instance formatted to the pyledger schema.
@@ -439,6 +328,31 @@ class CashCtrlLedger(LedgerEngine):
             pd.DataFrame: A DataFrame with enforced data types.
         """
         ledger = self._client.list_journal_entries()
+        general_rows_df = ledger[ledger['type'] == 'COLLECTIVE'].copy()
+        ledger = ledger[ledger['type'] != 'COLLECTIVE']
+
+        sub_rows_cols = {
+            "accountId": 'int',
+            "description": 'string[python]',
+            "debit": 'float64',
+            "credit": 'float64',
+            "taxName": 'string[python]',
+        }
+
+        def fetch_journal(id: int) -> pd.DataFrame:
+            res = self._client.get("journal/read.json", params={'id': id})['data']
+            return pd.DataFrame({
+                'id': [res['id']],
+                'date': [res['dateAdded']],
+                'currency': [res['currencyCode']],
+                'rate': [res['currencyRate']],
+                'items': [enforce_dtypes(pd.DataFrame(res['items']), sub_rows_cols)],
+            })
+
+        dfs = pd.concat([fetch_journal(id) for id in general_rows_df['id']]).set_index('id')
+        breakpoint()
+        dfs.drop(columns=['items']).join(pd.concat([dfs['items'].iloc[0]]))
+
         tax_rates = self._client.list_tax_rates()
         rates_map = tax_rates.set_index('id')['name'].to_dict()
         accounts = self._client.list_accounts()
@@ -466,6 +380,123 @@ class CashCtrlLedger(LedgerEngine):
         })
 
         return StandaloneLedger.standardize_ledger(result)
+
+    def add_ledger_entry(self, date: datetime.date, target: pd.DataFrame):
+        """
+        Adds a new ledger entry to the remote CashCtrl instance.
+
+        Parameters:
+            date (str): The date ledger entry was created.
+            target (pd.DataFrame): DataFrame with the ledger schema
+        """
+        accounts = self._client.list_accounts()
+        account_map = accounts.set_index('number')['id'].to_dict()
+        currencies = pd.DataFrame(self._client.get("currency/list.json")['data'])
+        currency_map = currencies.set_index('text')['id'].to_dict()
+        tax_data = self._client.list_tax_rates()
+        tax_map = tax_data.set_index('text')['id'].to_dict()
+
+        # Single transaction
+        if len(target) == 1:
+            payload = {
+                "dateAdded": date,
+                "amount": target.loc[0, 'amount'],
+                "debitId": account_map[target.loc[0, 'account']],
+                "creditId": account_map[target.loc[0, 'counter_account']],
+                "currencyId": currency_map[target.loc[0, 'currency']],
+                "title": target.loc[0, 'text'],
+                "taxId": tax_map[target.loc[0, 'vat_code']],
+                "reference": target.loc[0, 'document'],
+            }
+        # Collective transaction
+        else:
+            pass
+
+        breakpoint()
+
+        self._client.post("journal/create.json", data=payload)
+
+    def update_ledger_entry(self, id: str, date: datetime.date, target: pd.DataFrame):
+        """
+        Adds a new ledger entry to the remote CashCtrl instance.
+
+        Parameters:
+            id (str): Id of the remote ledger entry that should be updated
+            date (str): The date ledger entry was created.
+            target (pd.DataFrame): DataFrame with the ledger schema
+        """
+        accounts = self._client.list_accounts()
+        account_map = accounts.set_index('number')['id'].to_dict()
+        currencies = pd.DataFrame(self._client.get("currency/list.json")['data'])
+        currency_map = currencies.set_index('text')['id'].to_dict()
+        tax_data = self._client.list_tax_rates()
+        tax_map = tax_data.set_index('text')['id'].to_dict()
+
+        # Single transaction
+        if len(target) == 1:
+            payload = {
+                "id": id,
+                "dateAdded": date,
+                "amount": target.loc[0, 'amount'],
+                "debitId": account_map[target.loc[0, 'account']],
+                "creditId": account_map[target.loc[0, 'counter_account']],
+                "currencyId": currency_map[target.loc[0, 'currency']],
+                "title": target.loc[0, 'text'],
+                "taxId": tax_map[target.loc[0, 'vat_code']],
+                "reference": target.loc[0, 'document'],
+            }
+        # Collective transaction
+        else:
+            pass
+
+        self._client.post("journal/update.json", data=payload)
+
+    def delete_ledger_entry(self, ids: Union[str, List[str]]):
+        if isinstance(ids, list):
+            ids = ",".join(ids)
+
+        self._client.post("journal/delete.json", {'ids': ids})
+
+    def base_currency():
+        """
+        Not implemented yet
+        """
+        raise NotImplementedError
+
+    def delete_account(self, account: str, allow_missing: bool = False):
+        """Deletes an account from the remote CashCtrl instance."""
+        accounts = self._client.list_accounts()
+        to_delete = accounts.loc[accounts['number'] == account, 'id']
+
+        if len(to_delete) > 0:
+            delete_ids = ",".join(to_delete.astype(str))
+            self._client.post('account/delete.json', {'ids': delete_ids})
+        elif not allow_missing:
+            raise ValueError(f"There is no Account '{account}'.")
+
+    def delete_price():
+        """
+        Not implemented yet
+        """
+        raise NotImplementedError
+
+    def delete_vat_code(self, code: str, allow_missing: bool = False):
+        """
+        Deletes a VAT code from the remote CashCtrl account.
+
+        Parameters:
+            code (str): The VAT code name to be deleted.
+            allow_missing (bool): If True, no error is raised if the VAT
+                code is not found; if False, raises ValueError.
+        """
+        tax_rates = self._client.list_tax_rates()
+        to_delete = tax_rates.loc[tax_rates['name'] == code, 'id']
+
+        if len(to_delete) > 0:
+            delete_ids = ",".join(to_delete.astype(str))
+            self._client.post('tax/delete.json', {'ids': delete_ids})
+        elif not allow_missing:
+            raise ValueError(f"There is no VAT code '{code}'.")
 
     def ledger_entry():
         """
