@@ -7,6 +7,8 @@ import pandas as pd
 from typing import Union, List
 from cashctrl_api import CashCtrlClient, enforce_dtypes
 from pyledger import LedgerEngine, StandaloneLedger
+from .unnest import unnest
+from .constants import JOURNAL_SUB_ROWS_COLUMNS
 
 class CashCtrlLedger(LedgerEngine):
     """
@@ -328,16 +330,12 @@ class CashCtrlLedger(LedgerEngine):
             pd.DataFrame: A DataFrame with enforced data types.
         """
         ledger = self._client.list_journal_entries()
-        general_rows_df = ledger[ledger['type'] == 'COLLECTIVE'].copy()
-        ledger = ledger[ledger['type'] != 'COLLECTIVE']
-
-        sub_rows_cols = {
-            "accountId": 'int',
-            "description": 'string[python]',
-            "debit": 'float64',
-            "credit": 'float64',
-            "taxName": 'string[python]',
-        }
+        collective_entries = ledger[ledger['type'] == 'COLLECTIVE'].copy()
+        single_entries = ledger[ledger['type'] != 'COLLECTIVE']
+        tax_rates = self._client.list_tax_rates()
+        rates_map = tax_rates.set_index('id')['name'].to_dict()
+        accounts = self._client.list_accounts()
+        account_map = accounts.set_index('id')['number'].to_dict()
 
         def fetch_journal(id: int) -> pd.DataFrame:
             res = self._client.get("journal/read.json", params={'id': id})['data']
@@ -346,39 +344,34 @@ class CashCtrlLedger(LedgerEngine):
                 'date': [res['dateAdded']],
                 'currency': [res['currencyCode']],
                 'rate': [res['currencyRate']],
-                'items': [enforce_dtypes(pd.DataFrame(res['items']), sub_rows_cols)],
+                'items': [enforce_dtypes(pd.DataFrame(res['items']), JOURNAL_SUB_ROWS_COLUMNS)],
             })
-
-        dfs = pd.concat([fetch_journal(id) for id in general_rows_df['id']]).set_index('id')
-        breakpoint()
-        dfs.drop(columns=['items']).join(pd.concat([dfs['items'].iloc[0]]))
-
-        tax_rates = self._client.list_tax_rates()
-        rates_map = tax_rates.set_index('id')['name'].to_dict()
-        accounts = self._client.list_accounts()
-        account_map = accounts.set_index('id')['number'].to_dict()
-        currencies = pd.DataFrame(self._client.get("currency/list.json")['data'])
-        currency_map = currencies.set_index('text')['id'].to_dict()
-
-        result = pd.DataFrame({
-            'date': ledger['dateAdded'],
-            'account': ledger.apply(
-                lambda row: account_map[row['creditId']]
-                if row['amount'] > 0
-                else account_map[row['debitId']], axis=1
-            ),
-            'counter_account': ledger.apply(
-                lambda row: account_map[row['debitId']]
-                if row['amount'] > 0
-                else account_map[row['creditId']], axis=1
-            ),
-            'amount': ledger['amount'],
-            'currency': ledger['currencyCode'].map(currency_map),
-            'text': ledger['title'],
-            'vat_code': ledger['taxId'].map(rates_map),
-            'document': ledger['reference'],
+        mapped_collective_entires = pd.DataFrame({})
+        if not collective_entries.empty:
+            dfs = pd.concat([fetch_journal(id) for id in collective_entries['id']])
+            collective_entries = unnest(dfs, 'items')
+            mapped_collective_entires = pd.DataFrame({
+            'id': collective_entries['id'],
+            'date': collective_entries['dateAdded'],
+            'currency': collective_entries['currency'],
+            'account': [account_map[account] for account in collective_entries['accountId']],
+            'text': collective_entries['description'],
+            'amount': collective_entries['credit'] - collective_entries['debit'],
+            'vat_code': collective_entries['taxName'],
         })
 
+        mapped_single_entires = pd.DataFrame({
+            'id': single_entries['id'],
+            'date': single_entries['dateAdded'],
+            'account': [account_map[account] for account in single_entries['creditId']],
+            'counter_account': [account_map[account] for account in single_entries['debitId']],
+            'amount': single_entries['amount'],
+            'currency': single_entries['currencyCode'],
+            'text': single_entries['title'],
+            'vat_code': single_entries['taxId'].map(rates_map),
+        })
+
+        result = pd.concat([mapped_single_entires, mapped_collective_entires])
         return StandaloneLedger.standardize_ledger(result)
 
     def add_ledger_entry(self, date: datetime.date, target: pd.DataFrame):
@@ -399,20 +392,32 @@ class CashCtrlLedger(LedgerEngine):
         # Single transaction
         if len(target) == 1:
             payload = {
-                "dateAdded": date,
-                "amount": target.loc[0, 'amount'],
-                "debitId": account_map[target.loc[0, 'account']],
-                "creditId": account_map[target.loc[0, 'counter_account']],
-                "currencyId": currency_map[target.loc[0, 'currency']],
-                "title": target.loc[0, 'text'],
-                "taxId": tax_map[target.loc[0, 'vat_code']],
-                "reference": target.loc[0, 'document'],
+                'dateAdded': date,
+                'amount': target.loc[0, 'amount'],
+                'creditId': account_map[target.loc[0, 'account']],
+                'debitId': account_map[target.loc[0, 'counter_account']],
+                'currencyId': currency_map[target.loc[0, 'currency']],
+                'title': target.loc[0, 'text'],
+                'taxId': tax_map[target.loc[0, 'vat_code']],
             }
+
         # Collective transaction
         else:
-            pass
-
-        breakpoint()
+            if target['currency'].nunique() != 1:
+                raise ValueError("CashCtrl only allows for a single currency in a collective booking.")
+            payload = {
+                'dateAdded': date,
+                'currencyId': currency_map[target.loc[0, 'currency']],
+                'items': [{
+                        'dateAdded': date,
+                        'accountId': account_map[row['account']],
+                        'debit': max(-row['amount'], 0),
+                        'credit': max(row['amount'], 0),
+                        'taxId': tax_map[row['vat_code']],
+                        'description': row['text']
+                    } for _, row in target.iterrows()
+                ]
+            }
 
         self._client.post("journal/create.json", data=payload)
 
@@ -435,19 +440,34 @@ class CashCtrlLedger(LedgerEngine):
         # Single transaction
         if len(target) == 1:
             payload = {
-                "id": id,
-                "dateAdded": date,
-                "amount": target.loc[0, 'amount'],
-                "debitId": account_map[target.loc[0, 'account']],
-                "creditId": account_map[target.loc[0, 'counter_account']],
-                "currencyId": currency_map[target.loc[0, 'currency']],
-                "title": target.loc[0, 'text'],
-                "taxId": tax_map[target.loc[0, 'vat_code']],
-                "reference": target.loc[0, 'document'],
+                'id': id,
+                'dateAdded': date,
+                'amount': target.iloc[0]['amount'],
+                'creditId': account_map[target.iloc[0]['account']],
+                'debitId': account_map[target.iloc[0]['counter_account']],
+                'currencyId': currency_map[target.iloc[0]['currency']],
+                'title': target.iloc[0]['text'],
+                'taxId': tax_map[target.iloc[0]['vat_code']],
             }
+
         # Collective transaction
         else:
-            pass
+            if target['currency'].nunique() != 1:
+                raise ValueError("CashCtrl only allows for a single currency in a collective booking.")
+            payload = {
+                'id': id,
+                'dateAdded': date,
+                'currencyId': currency_map[target.loc[0, 'currency']],
+                'items': [{
+                        'dateAdded': date,
+                        'accountId': account_map[row['account']],
+                        'debit': max(row['amount'], 0),
+                        'credit': max(-row['amount'], 0),
+                        'taxId': tax_map[row['vat_code']],
+                        'description': row['text']
+                    } for _, row in target.iterrows()
+                ]
+            }
 
         self._client.post("journal/update.json", data=payload)
 

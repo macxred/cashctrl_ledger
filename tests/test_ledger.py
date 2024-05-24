@@ -3,26 +3,54 @@ import pandas as pd
 from cashctrl_ledger import CashCtrlLedger
 from pyledger import StandaloneLedger
 
-def test_ledger_mutators():
+@pytest.fixture(scope="session")
+def add_vat_code():
+    # Creates VAT code
     cashctrl_ledger = CashCtrlLedger()
-    initial_ledger = cashctrl_ledger.ledger().reset_index().drop(columns=['id'])
+    cashctrl_ledger.add_vat_code(
+        code="TestCodeAccounts",
+        text='VAT 2%',
+        account=2200,
+        rate=0.02,
+        inclusive=True,
+    )
+
+def test_ledger_mutators_single_transaction(add_vat_code):
+    cashctrl_ledger = CashCtrlLedger()
+    initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
 
     # Test adding a ledger entry
-    new = pd.DataFrame({
+    target = StandaloneLedger.standardize_ledger(pd.DataFrame({
+        'date': '2024-05-24',
         'account': [2270],
         'counter_account': [2210],
-        'amount': [50],
+        'amount': [100],
         'currency': ['USD'],
-        'text': ['pytest added ledger'],
-        'vat_code': ['MwSt. 2.6%'],
-        'document': [''],
-    })
+        'text': ['pytest added ledger112'],
+        'vat_code': ['TestCodeAccounts'],
+    })).drop(columns=['id'])
 
-    cashctrl_ledger.add_ledger_entry(date='2024-01-01', target=new)
-    updated_ledger = cashctrl_ledger.ledger().reset_index().drop(columns=['id'])
+    # Test adding a ledger entry
+    cashctrl_ledger.add_ledger_entry(date='2024-05-24', target=target)
+    updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
     outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
-    created_ledger = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1)
+    created = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
+    pd.testing.assert_frame_equal(created.drop(columns=['id']), target)
 
-    updated_ledger.iloc[1]['date'] == initial_ledger.iloc[0]['date']
+    # Test update a ledger entry
+    initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    created.loc[created.index[0], 'amount'] = 300
+    cashctrl_ledger.update_ledger_entry(
+        id=created.loc[created.index[0], 'id'],
+        date='2024-05-24',
+        target=created,
+    )
+    updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
+    updated = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
+    pd.testing.assert_frame_equal(updated, created)
 
-    breakpoint()
+    # Test delete a ledger entry
+    cashctrl_ledger.delete_ledger_entry(ids=updated.loc[updated.index[0], 'id'])
+    ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    assert updated.loc[updated.index[0], 'id'] not in ledger['id']
