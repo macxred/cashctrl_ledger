@@ -1,3 +1,7 @@
+"""
+This module contains constants used throughout the application.
+"""
+
 JOURNAL_SUB_ROWS_COLUMNS = {
     "accountId": 'int',
     "description": 'string[python]',
