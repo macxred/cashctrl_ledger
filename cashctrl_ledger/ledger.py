@@ -332,8 +332,6 @@ class CashCtrlLedger(LedgerEngine):
         ledger = self._client.list_journal_entries()
         collective_entries = ledger[ledger['type'] == 'COLLECTIVE'].copy()
         single_entries = ledger[ledger['type'] != 'COLLECTIVE']
-        tax_rates = self._client.list_tax_rates()
-        rates_map = tax_rates.set_index('id')['name'].to_dict()
         accounts = self._client.list_accounts()
         account_map = accounts.set_index('id')['number'].to_dict()
 
@@ -341,7 +339,7 @@ class CashCtrlLedger(LedgerEngine):
             res = self._client.get("journal/read.json", params={'id': id})['data']
             return pd.DataFrame({
                 'id': [res['id']],
-                'date': [res['dateAdded']],
+                'date': [pd.to_datetime(res['dateAdded']).date()],
                 'currency': [res['currencyCode']],
                 'rate': [res['currencyRate']],
                 'items': [enforce_dtypes(pd.DataFrame(res['items']), JOURNAL_SUB_ROWS_COLUMNS)],
@@ -352,7 +350,7 @@ class CashCtrlLedger(LedgerEngine):
             collective_entries = unnest(dfs, 'items')
             mapped_collective_entires = pd.DataFrame({
             'id': collective_entries['id'],
-            'date': collective_entries['dateAdded'],
+            'date': collective_entries['date'],
             'currency': collective_entries['currency'],
             'account': [account_map[account] for account in collective_entries['accountId']],
             'text': collective_entries['description'],
@@ -362,13 +360,13 @@ class CashCtrlLedger(LedgerEngine):
 
         mapped_single_entires = pd.DataFrame({
             'id': single_entries['id'],
-            'date': single_entries['dateAdded'],
+            'date': single_entries['dateAdded'].dt.date,
             'account': [account_map[account] for account in single_entries['creditId']],
             'counter_account': [account_map[account] for account in single_entries['debitId']],
             'amount': single_entries['amount'],
             'currency': single_entries['currencyCode'],
             'text': single_entries['title'],
-            'vat_code': single_entries['taxId'].map(rates_map),
+            'vat_code': single_entries['taxName'],
         })
 
         result = pd.concat([mapped_single_entires, mapped_collective_entires])
@@ -461,8 +459,8 @@ class CashCtrlLedger(LedgerEngine):
                 'items': [{
                         'dateAdded': date,
                         'accountId': account_map[row['account']],
-                        'debit': max(row['amount'], 0),
-                        'credit': max(-row['amount'], 0),
+                        'credit': max(row['amount'], 0),
+                        'debit': max(-row['amount'], 0),
                         'taxId': tax_map[row['vat_code']],
                         'description': row['text']
                     } for _, row in target.iterrows()
