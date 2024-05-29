@@ -4,7 +4,7 @@ This module provides utilities for handling and manipulating pandas DataFrames.
 
 import pandas as pd
 
-def ledger_to_str(target: pd.DataFrame) -> str:
+def df_to_str(target: pd.DataFrame) -> str:
     """
     Converts a DataFrame to a string, sorting columns and rows
     for consistent comparison.
