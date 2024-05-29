@@ -1,5 +1,5 @@
 """
-This module contains tests for the dataframe_utils module, specifically for the df_to_str function.
+This module contains tests for the ledger_utils module, specifically for the ledger_to_str function.
 """
 
 import pandas as pd
