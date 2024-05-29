@@ -9,6 +9,8 @@ from cashctrl_api import CashCtrlClient, enforce_dtypes
 from pyledger import LedgerEngine, StandaloneLedger
 from .nesting import unnest
 from .constants import JOURNAL_ITEM_COLUMNS
+from .nesting import unnest, nest
+from .ledger_utils import df_to_consistent_str
 
 class CashCtrlLedger(LedgerEngine):
     """
@@ -321,6 +323,18 @@ class CashCtrlLedger(LedgerEngine):
             "documentName": text,
         }
         self._client.post("tax/update.json", data=payload)
+
+
+    def mirror_ledger(self, target: pd.DataFrame, delete: bool = True):
+        remote = self.ledger()
+        remote = nest(remote, columns=[col for col in remote.columns if not col in ['id', 'date']], key='transactions')
+        remote['sha'] = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(remote['date'], remote['transactions'])]
+
+        # TODO: need to detect duplicates as an edge case
+        delete = set(remote['sha']) - set(target['sha'])
+        add = set(target['sha']) - (set(remote['sha']))
+
+        # loop through and delete and all
 
     def ledger(self) -> pd.DataFrame:
         """
