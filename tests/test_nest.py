@@ -66,6 +66,25 @@ def test_nest_with_multiple_groups():
     expected_df = pd.DataFrame(expected_data)
     pd.testing.assert_frame_equal(result, expected_df)
 
+def test_nest_with_na_grouping_values():
+    df = pd.DataFrame({
+        'id': [10, 10, None, 16, None],
+        'text': ['hello', 'hello', 'world', 'world', 'world'],
+        'sub_id': [33, 33, 20, 16, 40],
+        'sub_text': ['test1', 'test2', 'test3', 'test4', 'test5']
+    })
+    result = nest(df, columns=['sub_id', 'sub_text'], key='items')
+    expected_df = pd.DataFrame({
+        'id': [10, 16, None],
+        'text': ['hello', 'world', 'world'],
+        'items': [
+            pd.DataFrame({'sub_id': [33, 33], 'sub_text': ['test1', 'test2']}),
+            pd.DataFrame({'sub_id': [16], 'sub_text': ['test4']}),
+            pd.DataFrame({'sub_id': [20, 40], 'sub_text': ['test3', 'test5']})
+        ]
+    })
+    pd.testing.assert_frame_equal(result, expected_df)
+
 def test_successive_nest_and_unnest_results_in_original_df():
     data = {
         'id': [10, 10, 16, 16],
