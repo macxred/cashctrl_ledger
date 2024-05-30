@@ -324,52 +324,57 @@ class CashCtrlLedger(LedgerEngine):
 
     def ledger(self) -> pd.DataFrame:
         """
-        Retrieves the account remote ledger from CashCtrl instance formatted to the pyledger schema.
+        Retrieves ledger entries from the remote CashCtrl account and converts
+        the entries to standard pyledger format.
 
         Returns:
-            pd.DataFrame: A DataFrame with enforced data types.
+            pd.DataFrame: A DataFrame with LedgerEngine.ledger() column schema.
         """
         ledger = self._client.list_journal_entries()
-        collective_entries = ledger[ledger['type'] == 'COLLECTIVE'].copy()
-        single_entries = ledger[ledger['type'] != 'COLLECTIVE']
         accounts = self._client.list_accounts()
         account_map = accounts.set_index('id')['number'].to_dict()
 
-        def fetch_journal(id: int) -> pd.DataFrame:
-            res = self._client.get("journal/read.json", params={'id': id})['data']
-            return pd.DataFrame({
-                'id': [res['id']],
-                'date': [pd.to_datetime(res['dateAdded']).date()],
-                'currency': [res['currencyCode']],
-                'rate': [res['currencyRate']],
-                'items': [enforce_dtypes(pd.DataFrame(res['items']), JOURNAL_SUB_ROWS_COLUMNS)],
+        # Individual ledger entries represent a single transaction and
+        # map to a single row in the resulting data frame
+        individual = ledger[ledger['type'] != 'COLLECTIVE']
+        result = pd.DataFrame({
+            'id': individual['id'],
+            'date': individual['dateAdded'].dt.date,
+            'account': [account_map[account] for account in individual['creditId']],
+            'counter_account': [account_map[account] for account in individual['debitId']],
+            'amount': individual['amount'],
+            'currency': individual['currencyCode'],
+            'text': individual['title'],
+            'vat_code': individual['taxName'],
+        })
+
+        # Collective ledger entries represent a group of transactions and
+        # map to multiple rows in the resulting data frame with shared id
+        collective_ids = ledger.loc[ledger['type'] == 'COLLECTIVE', 'id']
+        if len(collective_ids) > 0:
+            def fetch_journal(id: int) -> pd.DataFrame:
+                res = self._client.get("journal/read.json", params={'id': id})['data']
+                return pd.DataFrame({
+                    'id': [res['id']],
+                    'date': [pd.to_datetime(res['dateAdded']).date()],
+                    'currency': [res['currencyCode']],
+                    'rate': [res['currencyRate']],
+                    'items': [enforce_dtypes(pd.DataFrame(res['items']),
+                                             JOURNAL_SUB_ROWS_COLUMNS)],
+                })
+            dfs = pd.concat([fetch_journal(id) for id in collective_ids])
+            collective = unnest(dfs, 'items')
+            mapped_collective = pd.DataFrame({
+                'id': collective['id'],
+                'date': collective['date'],
+                'currency': collective['currency'],
+                'account': [account_map[account] for account in collective['accountId']],
+                'text': collective['description'],
+                'amount': collective['credit'] - collective['debit'],
+                'vat_code': collective['taxName'],
             })
-        mapped_collective_entires = pd.DataFrame({})
-        if not collective_entries.empty:
-            dfs = pd.concat([fetch_journal(id) for id in collective_entries['id']])
-            collective_entries = unnest(dfs, 'items')
-            mapped_collective_entires = pd.DataFrame({
-            'id': collective_entries['id'],
-            'date': collective_entries['date'],
-            'currency': collective_entries['currency'],
-            'account': [account_map[account] for account in collective_entries['accountId']],
-            'text': collective_entries['description'],
-            'amount': collective_entries['credit'] - collective_entries['debit'],
-            'vat_code': collective_entries['taxName'],
-        })
+            result = pd.concat([result, mapped_collective])
 
-        mapped_single_entires = pd.DataFrame({
-            'id': single_entries['id'],
-            'date': single_entries['dateAdded'].dt.date,
-            'account': [account_map[account] for account in single_entries['creditId']],
-            'counter_account': [account_map[account] for account in single_entries['debitId']],
-            'amount': single_entries['amount'],
-            'currency': single_entries['currencyCode'],
-            'text': single_entries['title'],
-            'vat_code': single_entries['taxName'],
-        })
-
-        result = pd.concat([mapped_single_entires, mapped_collective_entires])
         return StandaloneLedger.standardize_ledger(result)
 
     def add_ledger_entry(self, date: datetime.date, target: pd.DataFrame):
