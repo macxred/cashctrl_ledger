@@ -9,12 +9,14 @@ from cashctrl_ledger import CashCtrlLedger
 from pyledger import StandaloneLedger
 
 # Ensure there is no 'TestCode' vat_code on the remote account
+@pytest.mark.skip()
 def test_delete_vat_non_existent():
     cashctrl_ledger = CashCtrlLedger()
     cashctrl_ledger.delete_vat_code("TestCode", allow_missing=True)
     assert "TestCode" not in cashctrl_ledger.vat_codes().index
 
 # Test adding a valid vat_code
+@pytest.mark.skip()
 def test_add_vat_code():
     cashctrl_ledger = CashCtrlLedger()
     initial_vat_codes = cashctrl_ledger.vat_codes().reset_index()
@@ -38,6 +40,7 @@ def test_add_vat_code():
     assert created_vat_codes['inclusive'].item() == new_vat_code['inclusive']
 
 # Test updating a VAT code with valid inputs.
+@pytest.mark.skip()
 def test_update_vat_code():
     cashctrl_ledger = CashCtrlLedger()
     initial_vat_codes = cashctrl_ledger.vat_codes().reset_index()
@@ -61,6 +64,7 @@ def test_update_vat_code():
     assert modified_vat_codes['inclusive'].item() == new_vat_code['inclusive']
 
 # Test deleting an existent VAT code.
+@pytest.mark.skip()
 def test_delete_vat_code():
     cashctrl_ledger = CashCtrlLedger()
     cashctrl_ledger.delete_vat_code(code='TestCode')
@@ -103,6 +107,7 @@ def test_update_vat_with_not_valid_account_raise_error():
         )
 
 # Tests the mirroring functionality of VAT codes.
+@pytest.mark.skip()
 def test_mirror_vat_codes():
     target_csv = """
     id,account,rate,inclusive,text

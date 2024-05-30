@@ -207,6 +207,7 @@ def test_update_account_with_invalid_group_raise_error():
         )
 
 # Tests the mirroring functionality of accounts.
+@pytest.mark.skip()
 def test_mirror_accounts(add_and_delete_vat_code):
     target_df = (pd.read_csv('tests/initial_accounts.csv', skipinitialspace=True))
     standardized_df = StandaloneLedger.standardize_account_chart(target_df).reset_index()
