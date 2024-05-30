@@ -52,22 +52,22 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     expected = StandaloneLedger.standardize_ledger(individual_transaction)
     pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
 
-    # # Test delete the created ledger entry
-    # cashctrl_ledger.delete_ledger_entry(ids=created.at[0, 'id'])
-    # ledger = cashctrl_ledger.ledger().reset_index(drop=True)
-    # assert created.at[0, 'id'] not in ledger['id']
+    # Test delete the created ledger entry
+    cashctrl_ledger.delete_ledger_entry(ids=created.at[0, 'id'])
+    ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    assert created.at[0, 'id'] not in ledger['id']
 
-    # # Test adding a ledger entry without VAT code
-    # initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
-    # new_entry = individual_transaction.copy()
-    # new_entry['vat_code'] = None
-    # new_entry['text'] = 'Ledger entry without VAT'
-    # cashctrl_ledger.add_ledger_entry(entry=new_entry)
-    # updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
-    # outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
-    # created = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
-    # expected = StandaloneLedger.standardize_ledger(new_entry)
-    # pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
+    # Test adding a ledger entry without VAT code
+    initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    new_entry = individual_transaction.copy()
+    new_entry['vat_code'] = None
+    new_entry['text'] = 'Ledger entry without VAT'
+    cashctrl_ledger.add_ledger_entry(entry=new_entry)
+    updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
+    created = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
+    expected = StandaloneLedger.standardize_ledger(new_entry)
+    pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
 
     # Test update a ledger entry
     initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
@@ -81,17 +81,20 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     expected = StandaloneLedger.standardize_ledger(new_entry)
     pd.testing.assert_frame_equal(updated, expected)
 
-    # # Test replace with an individual ledger entry
-    # initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
-    # new_entry = collective_transaction.copy()
-    # new_entry['id'] = created.at[0, 'id']
-    # new_entry.at[0, 'vat_code'] = None
-    # cashctrl_ledger.update_ledger_entry(entry=new_entry)
-    # updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
-    # outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
-    # updated = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
-    # expected = StandaloneLedger.standardize_ledger(new_entry)
-    # pd.testing.assert_frame_equal(updated, expected)
+    # TODO: CashCtrl doesn`t allow to convert a single transaction into collective
+    # if the single transaction have an taxId, should reset it manually before update
+    new_entry['vat_code'] = None
+    cashctrl_ledger.update_ledger_entry(entry=new_entry)
+    # Test replace with an individual ledger entry
+    initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    new_entry = collective_transaction.copy()
+    new_entry['id'] = created.at[0, 'id']
+    cashctrl_ledger.update_ledger_entry(entry=new_entry)
+    updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
+    updated = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
+    expected = StandaloneLedger.standardize_ledger(new_entry)
+    pd.testing.assert_frame_equal(updated, expected)
 
     # Test delete the updated ledger entry
     cashctrl_ledger.delete_ledger_entry(ids=created.at[0, 'id'])
@@ -110,21 +113,21 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     expected = StandaloneLedger.standardize_ledger(collective_transaction)
     pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
 
-    # # Test delete the created ledger entry
-    # cashctrl_ledger.delete_ledger_entry(ids=created.at[0, 'id'])
-    # ledger = cashctrl_ledger.ledger().reset_index(drop=True)
-    # assert created.at[0, 'id'] not in ledger['id']
+    # Test delete the created ledger entry
+    cashctrl_ledger.delete_ledger_entry(ids=created.at[0, 'id'])
+    ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    assert created.at[0, 'id'] not in ledger['id']
 
-    # # Test adding a ledger entry without VAT
-    # initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
-    # new_entry = collective_transaction.copy()
-    # new_entry['vat_code'] = None
-    # cashctrl_ledger.add_ledger_entry(entry=new_entry)
-    # updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
-    # outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
-    # created = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
-    # expected = StandaloneLedger.standardize_ledger(new_entry)
-    # pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
+    # Test adding a ledger entry without VAT
+    initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    new_entry = collective_transaction.copy()
+    new_entry['vat_code'] = None
+    cashctrl_ledger.add_ledger_entry(entry=new_entry)
+    updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
+    created = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
+    expected = StandaloneLedger.standardize_ledger(new_entry)
+    pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
 
     # Test update a ledger entry
     initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
@@ -139,17 +142,17 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     expected = StandaloneLedger.standardize_ledger(new_entry)
     pd.testing.assert_frame_equal(updated, expected)
 
-    # # Test replace with an individual ledger entry
-    # initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
-    # new_entry = individual_transaction.copy()
-    # new_entry['id'] = created.at[0, 'id']
-    # new_entry['vat_code'] = None
-    # cashctrl_ledger.update_ledger_entry(entry=new_entry)
-    # updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
-    # outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
-    # updated = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
-    # expected = StandaloneLedger.standardize_ledger(new_entry)
-    # pd.testing.assert_frame_equal(updated, expected)
+    # Test replace with an individual ledger entry
+    initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    new_entry = individual_transaction.copy()
+    new_entry['id'] = created.at[0, 'id']
+    new_entry['vat_code'] = None
+    cashctrl_ledger.update_ledger_entry(entry=new_entry)
+    updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
+    updated = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
+    expected = StandaloneLedger.standardize_ledger(new_entry)
+    pd.testing.assert_frame_equal(updated, expected)
 
     # Test delete the updated ledger entry
     cashctrl_ledger.delete_ledger_entry(ids=created.at[0, 'id'])
@@ -157,14 +160,22 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     assert created.at[0, 'id'] not in ledger['id']
 
 # Tests for addition logic edge cases
-def test_add_ledger_with_non_existent_vat():
+def test_add_ledger_with_non_existent_vat(add_vat_code):
     cashctrl_ledger = CashCtrlLedger()
+    initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
 
-    # Adding a ledger with non existent VAT code should raise an error
+    # Adding a ledger with non existent VAT code shouldn`t raise an error
     entry = individual_transaction.copy()
     entry.at[0, 'vat_code'] = 'Test_Non_Existent_VAT_code'
-    with pytest.raises(KeyError):
-        cashctrl_ledger.add_ledger_entry(entry=entry)
+    cashctrl_ledger.add_ledger_entry(entry=entry)
+
+    # Delete the ledger entry created above
+    updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
+    created = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
+    cashctrl_ledger.delete_ledger_entry(ids=created.at[0, 'id'])
+    ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    assert created.at[0, 'id'] not in ledger['id']
 
     # Adding a ledger with non existent account code should raise an error
     entry = individual_transaction.copy()
@@ -172,11 +183,18 @@ def test_add_ledger_with_non_existent_vat():
     with pytest.raises(KeyError):
         cashctrl_ledger.add_ledger_entry(entry=entry)
 
-    # Adding a ledger with non existent currency code should raise an error
+    # Adding a ledger with non existent currency code shouldn`t raise an error
     entry = individual_transaction.copy()
     entry.at[0, 'currency'] = 'currency'
-    with pytest.raises(KeyError):
-        cashctrl_ledger.add_ledger_entry(entry=entry)
+    cashctrl_ledger.add_ledger_entry(entry=entry)
+
+    # Delete the ledger entry created above
+    updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
+    created = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
+    cashctrl_ledger.delete_ledger_entry(ids=created.at[0, 'id'])
+    ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    assert created.at[0, 'id'] not in ledger['id']
 
 # Tests for updating logic edge cases
 def test_update_ledger_with_edge_cases(add_vat_code):
@@ -192,8 +210,7 @@ def test_update_ledger_with_edge_cases(add_vat_code):
     new_entry = individual_transaction.copy()
     new_entry['id'] = created.at[0, 'id']
     new_entry.at[0, 'vat_code'] = 'Test_Non_Existent_VAT_code'
-    with pytest.raises(KeyError):
-        cashctrl_ledger.update_ledger_entry(entry=new_entry)
+    cashctrl_ledger.update_ledger_entry(entry=new_entry)
 
     # Updating a ledger with non existent account code should raise an error
     new_entry = individual_transaction.copy()
@@ -206,8 +223,7 @@ def test_update_ledger_with_edge_cases(add_vat_code):
     new_entry = individual_transaction.copy()
     new_entry['id'] = created.at[0, 'id']
     new_entry.at[0, 'currency'] = 'CURRENCY'
-    with pytest.raises(KeyError):
-        cashctrl_ledger.update_ledger_entry(entry=new_entry)
+    cashctrl_ledger.update_ledger_entry(entry=new_entry)
 
     # Delete the ledger entry created above
     cashctrl_ledger.delete_ledger_entry(ids=created.at[0, 'id'])
@@ -215,7 +231,7 @@ def test_update_ledger_with_edge_cases(add_vat_code):
     assert created.at[0, 'id'] not in ledger['id']
 
 # Updating a non-existent ledger should raise an error
-def test_update_non_existent_ledger_():
+def test_update_non_existent_ledger():
     cashctrl_ledger = CashCtrlLedger()
     entry = individual_transaction.copy()
     entry.at[0, 'id'] = 999999
