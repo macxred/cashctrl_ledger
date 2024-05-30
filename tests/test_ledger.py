@@ -106,54 +106,45 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code, collectiv
     ledger = cashctrl_ledger.ledger().reset_index(drop=True)
     assert updated.at[0, 'id'] not in ledger['id']
 
-# Adding a ledger with non existent VAT code should raise an error
+# Tests for addition logic edge cases
 def test_add_ledger_with_non_existent_vat(single_transaction):
     cashctrl_ledger = CashCtrlLedger()
+
+    # Adding a ledger with non existent VAT code should raise an error
     single_transaction.at[0, 'vat_code'] = 'Test_Non_Existent_VAT_code'
     with pytest.raises(KeyError):
         cashctrl_ledger.add_ledger_entry(entry=single_transaction)
 
-# Updating a ledger with non existent VAT code should raise an error
-def test_update_ledger_with_non_existent_vat(add_vat_code, single_transaction, add_transaction):
+    # Adding a ledger with non existent account code should raise an error
+    single_transaction.at[0, 'account'] = 33333
+    with pytest.raises(KeyError):
+        cashctrl_ledger.add_ledger_entry(entry=single_transaction)
+
+    # Adding a ledger with non existent currency code should raise an error
+    single_transaction.at[0, 'currency'] = 'currency'
+    with pytest.raises(KeyError):
+        cashctrl_ledger.add_ledger_entry(entry=single_transaction)
+
+# Tests for updating logic edge cases
+def test_update_ledger_with_edge_cases(add_vat_code, single_transaction, add_transaction):
     cashctrl_ledger = CashCtrlLedger()
     transaction = add_transaction(single_transaction)
+
+    # Updating a ledger with non existent VAT code should raise an error
     transaction.at[0, 'vat_code'] = 'Test_Non_Existent_VAT_code'
     with pytest.raises(KeyError):
         cashctrl_ledger.update_ledger_entry(entry=transaction)
-    cashctrl_ledger.delete_ledger_entry(ids=transaction.at[0, 'id'])
 
-# Adding a ledger with non existent account code should raise an error
-def test_add_ledger_with_non_existent_account(add_vat_code, single_transaction):
-    cashctrl_ledger = CashCtrlLedger()
-    transaction = single_transaction
-    transaction.at[0, 'account'] = 3333
-    with pytest.raises(KeyError):
-        cashctrl_ledger.add_ledger_entry(entry=transaction)
-
-# Updating a ledger with non existent account code should raise an error
-def test_update_ledger_with_non_existent_account(add_vat_code, single_transaction, add_transaction):
-    cashctrl_ledger = CashCtrlLedger()
-    transaction = add_transaction(single_transaction)
+    # Updating a ledger with non existent account code should raise an error
     transaction.at[0, 'account'] = 333333
     with pytest.raises(KeyError):
         cashctrl_ledger.update_ledger_entry(entry=transaction)
-    cashctrl_ledger.delete_ledger_entry(ids=transaction.at[0, 'id'])
 
-# Adding a ledger with non existent currency code should raise an error
-def test_add_ledger_with_non_existent_currency(add_vat_code, single_transaction):
-    cashctrl_ledger = CashCtrlLedger()
-    transaction = single_transaction
-    transaction.at[0, 'currency'] = 'currency'
-    with pytest.raises(KeyError):
-        cashctrl_ledger.add_ledger_entry(entry=transaction)
-
-# Updating a ledger with non existent currency code should raise an error
-def test_update_ledger_with_non_existent_currency(add_vat_code, single_transaction, add_transaction):
-    cashctrl_ledger = CashCtrlLedger()
-    transaction = add_transaction(single_transaction)
+    # Updating a ledger with non existent currency code should raise an error
     transaction.at[0, 'currency'] = 'CURRENCY'
     with pytest.raises(KeyError):
         cashctrl_ledger.update_ledger_entry(entry=transaction)
+
     cashctrl_ledger.delete_ledger_entry(ids=transaction.at[0, 'id'])
 
 # Updating a non-existent ledger should raise an error
