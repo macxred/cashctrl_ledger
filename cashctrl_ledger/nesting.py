@@ -54,7 +54,7 @@ def nest(df: pd.DataFrame, columns: List[str], key: str = 'data') -> pd.DataFram
         return empty_result
 
     group_columns = [col for col in df.columns if col not in columns]
-    grouped = df.groupby(group_columns)
+    grouped = df.groupby(group_columns, dropna=False)
     nested_dfs = grouped.apply(lambda x: [x[columns].reset_index(drop=True)], include_groups=False)
     result = pd.DataFrame(grouped[group_columns].first())
     result[key] = [df[0] for df in nested_dfs.reset_index(drop=True)]
