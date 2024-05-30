@@ -9,4 +9,4 @@ Modules:
 
 from .ledger import CashCtrlLedger
 from .nesting import nest, unnest
-from .ledger_utils import df_to_str
+from .ledger_utils import df_to_consistent_str
