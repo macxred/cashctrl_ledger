@@ -2,7 +2,7 @@
 This module contains constants used throughout the application.
 """
 
-JOURNAL_SUB_ROWS_COLUMNS = {
+JOURNAL_ITEM_COLUMNS = {
     "accountId": 'int',
     "description": 'string[python]',
     "debit": 'float64',
