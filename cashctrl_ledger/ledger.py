@@ -395,21 +395,23 @@ class CashCtrlLedger(LedgerEngine):
         if len(entry) == 1:
             payload = {
                 'dateAdded': entry.at[0, 'date'],
-                'amount': entry.loc[0, 'amount'],
-                'creditId': account_map[entry.loc[0, 'account']],
-                'debitId': account_map[entry.loc[0, 'counter_account']],
-                'currencyId': currency_map[entry.loc[0, 'currency']],
-                'title': entry.loc[0, 'text'],
-                'taxId': tax_map[entry.loc[0, 'vat_code']],
+                'amount': entry.at[0, 'amount'],
+                'creditId': account_map[entry.at[0, 'account']],
+                'debitId': account_map[entry.at[0, 'counter_account']],
+                'currencyId': currency_map[entry.at[0, 'currency']],
+                'title': entry.at[0, 'text'],
+                'taxId': tax_map[entry.at[0, 'vat_code']],
             }
 
         # Collective transaction
         elif len(entry) > 1:
             if entry['currency'].nunique() != 1:
                 raise ValueError('CashCtrl only allows for a single currency in a collective booking.')
+            if entry['date'].nunique() != 1:
+                raise ValueError('Date should be the same in a collective booking.')
             payload = {
                 'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
-                'currencyId': currency_map[entry.loc[0, 'currency']],
+                'currencyId': currency_map[entry.at[0, 'currency']],
                 'items': [{
                         'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
                         'accountId': account_map[row['account']],
@@ -444,22 +446,26 @@ class CashCtrlLedger(LedgerEngine):
             payload = {
                 'id': entry.at[0, 'id'],
                 'dateAdded': entry.at[0, 'date'],
-                'amount': entry.iloc[0]['amount'],
-                'creditId': account_map[entry.iloc[0]['account']],
-                'debitId': account_map[entry.iloc[0]['counter_account']],
-                'currencyId': currency_map[entry.iloc[0]['currency']],
-                'title': entry.iloc[0]['text'],
-                'taxId': tax_map[entry.iloc[0]['vat_code']],
+                'amount': entry.at[0, 'amount'],
+                'creditId': account_map[entry.at[0, 'account']],
+                'debitId': account_map[entry.at[0, 'counter_account']],
+                'currencyId': currency_map[entry.at[0, 'currency']],
+                'title': entry.at[0, 'text'],
+                'taxId': tax_map[entry.at[0, 'vat_code']],
             }
 
         # Collective transaction
         elif len(entry) > 1:
+            if entry['id'].nunique() != 1:
+                raise ValueError('Id should be the same in a collective booking.')
             if entry['currency'].nunique() != 1:
                 raise ValueError("CashCtrl only allows for a single currency in a collective booking.")
+            if entry['date'].nunique() != 1:
+                raise ValueError('Date should be the same in a collective booking.')
             payload = {
                 'id': entry.at[0, 'id'],
                 'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
-                'currencyId': currency_map[entry.loc[0, 'currency']],
+                'currencyId': currency_map[entry.at[0, 'currency']],
                 'items': [{
                         'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
                         'accountId': account_map[row['account']],
