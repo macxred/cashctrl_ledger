@@ -383,6 +383,7 @@ class CashCtrlLedger(LedgerEngine):
         Parameters:
             entry (pd.DataFrame): DataFrame with the ledger schema
         """
+        entry = StandaloneLedger.standardize_ledger(entry)
         accounts = self._client.list_accounts()
         account_map = accounts.set_index('number')['id'].to_dict()
         currencies = pd.DataFrame(self._client.get("currency/list.json")['data'])
@@ -433,6 +434,7 @@ class CashCtrlLedger(LedgerEngine):
         Parameters:
             entry (pd.DataFrame): DataFrame with the ledger schema
         """
+        entry = StandaloneLedger.standardize_ledger(entry)
         accounts = self._client.list_accounts()
         account_map = accounts.set_index('number')['id'].to_dict()
         currencies = pd.DataFrame(self._client.get("currency/list.json")['data'])
