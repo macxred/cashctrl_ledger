@@ -1,6 +1,9 @@
 on:
+  # Run nightly tests at 03:00 UTC
   schedule:
     - cron: "0 3 * * *"
+  # Manually triggered
+  workflow_dispatch:
 
 name: Restore CashCtrl test environment to initial state
 

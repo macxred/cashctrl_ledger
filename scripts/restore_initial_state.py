@@ -8,9 +8,10 @@ Automatic Execution:
     This ensures that the CashCtrl ledger is reset to its default state daily.
 
 Manual Execution:
-    Users can also run this script locally from the terminal.
-    This is useful for testing purposes or when an immediate
-    reset is required outside the scheduled GitHub Action.
+    - Users can also run this script locally from the terminal.
+      This is useful for testing purposes or when an immediate
+      reset is required outside the scheduled GitHub Action.
+    - Can be triggered in the GitHub actions interface using [Run workflow] button
 
 Usage:
     To run the script locally, use the following command in your terminal:
