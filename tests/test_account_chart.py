@@ -207,19 +207,24 @@ def test_update_account_with_invalid_group_raise_error():
         )
 
 # Tests the mirroring functionality of accounts.
-@pytest.mark.skip()
 def test_mirror_accounts(add_and_delete_vat_code):
-    target_df = (pd.read_csv('tests/initial_accounts.csv', skipinitialspace=True))
-    standardized_df = StandaloneLedger.standardize_account_chart(target_df).reset_index()
     cashctrl_ledger = CashCtrlLedger()
-
-    # Save initial accounts
     initial_accounts = cashctrl_ledger.account_chart().reset_index()
+
+    # Add new account to the initials
+    account = pd.DataFrame({
+        "account": [2],
+        "currency": ["CHF"],
+        "text": ["2test_account_api_added"],
+        "vat_code": ["TestCodeAccounts"],
+        "group": ["/Anlagevermögen"],
+    })
+    target_df = pd.concat([account, initial_accounts])
 
     # Mirror test accounts onto server with delete=False
     cashctrl_ledger.mirror_account_chart(target_df, delete=False)
     mirrored_df = cashctrl_ledger.account_chart().reset_index()
-    m = standardized_df.merge(mirrored_df, how='left', indicator=True)
+    m = target_df.merge(mirrored_df, how='left', indicator=True)
     assert (m['_merge'] == 'both').all(), (
             'Mirroring error: Some target accounts were not mirrored'
         )
@@ -227,7 +232,7 @@ def test_mirror_accounts(add_and_delete_vat_code):
     # Mirror target accounts onto server with delete=True
     cashctrl_ledger.mirror_account_chart(target_df, delete=True)
     mirrored_df = cashctrl_ledger.account_chart().reset_index()
-    m = standardized_df.merge(mirrored_df, how='outer', indicator=True)
+    m = target_df.merge(mirrored_df, how='outer', indicator=True)
     assert (m['_merge'] == 'both').all(), (
             'Mirroring error: Some target accounts were not mirrored'
         )
