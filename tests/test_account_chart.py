@@ -211,7 +211,6 @@ def test_mirror_accounts(add_and_delete_vat_code):
     cashctrl_ledger = CashCtrlLedger()
     initial_accounts = cashctrl_ledger.account_chart().reset_index()
 
-    # Add new account to the initials
     account = pd.DataFrame({
         "account": [2],
         "currency": ["CHF"],
