@@ -14,6 +14,6 @@ setup(
     ],
     packages=find_packages(exclude=('tests', 'examples', 'scripts')),
     scripts=[
-        'scripts/restore_initial_state',
+        'scripts/restore_initial_state.py',
     ]
 )
