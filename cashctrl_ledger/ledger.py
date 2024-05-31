@@ -2,9 +2,13 @@
 Module to sync ledger system onto CashCtrl.
 """
 
+from datetime import datetime
 import pandas as pd
-from cashctrl_api import CashCtrlClient
+from typing import Union, List
+from cashctrl_api import CashCtrlClient, enforce_dtypes
 from pyledger import LedgerEngine, StandaloneLedger
+from .nesting import unnest
+from .constants import JOURNAL_ITEM_COLUMNS
 
 class CashCtrlLedger(LedgerEngine):
     """
@@ -244,12 +248,6 @@ class CashCtrlLedger(LedgerEngine):
 
         self._client.post("account/update.json", data=payload)
 
-    def add_ledger_entry():
-        """
-        Not implemented yet
-        """
-        raise NotImplementedError
-
     def add_price():
         """
         Not implemented yet
@@ -324,6 +322,171 @@ class CashCtrlLedger(LedgerEngine):
         }
         self._client.post("tax/update.json", data=payload)
 
+    def ledger(self) -> pd.DataFrame:
+        """
+        Retrieves ledger entries from the remote CashCtrl account and converts
+        the entries to standard pyledger format.
+
+        Returns:
+            pd.DataFrame: A DataFrame with LedgerEngine.ledger() column schema.
+        """
+        ledger = self._client.list_journal_entries()
+        accounts = self._client.list_accounts()
+        account_map = accounts.set_index('id')['number'].to_dict()
+
+        # Individual ledger entries represent a single transaction and
+        # map to a single row in the resulting data frame.
+        individual = ledger[ledger['type'] != 'COLLECTIVE']
+        result = pd.DataFrame({
+            'id': individual['id'],
+            'date': individual['dateAdded'].dt.date,
+            'account': [account_map[account] for account in individual['creditId']],
+            'counter_account': [account_map[account] for account in individual['debitId']],
+            'amount': individual['amount'],
+            'currency': individual['currencyCode'],
+            'text': individual['title'],
+            'vat_code': individual['taxName'],
+        })
+
+        # Collective ledger entries represent a group of transactions and
+        # map to multiple rows in the resulting data frame with same id.
+        collective_ids = ledger.loc[ledger['type'] == 'COLLECTIVE', 'id']
+        if len(collective_ids) > 0:
+            def fetch_journal(id: int) -> pd.DataFrame:
+                res = self._client.get("journal/read.json", params={'id': id})['data']
+                return pd.DataFrame({
+                    'id': [res['id']],
+                    'date': [pd.to_datetime(res['dateAdded']).date()],
+                    'currency': [res['currencyCode']],
+                    'rate': [res['currencyRate']],
+                    'items': [enforce_dtypes(pd.DataFrame(res['items']), JOURNAL_ITEM_COLUMNS)],
+                })
+            dfs = pd.concat([fetch_journal(id) for id in collective_ids])
+            collective = unnest(dfs, 'items')
+            mapped_collective = pd.DataFrame({
+                'id': collective['id'],
+                'date': collective['date'],
+                'currency': collective['currency'],
+                'account': [account_map[account] for account in collective['accountId']],
+                'text': collective['description'],
+                'amount': collective['credit'] - collective['debit'],
+                'vat_code': collective['taxName'],
+            })
+            result = pd.concat([result, mapped_collective])
+
+        return StandaloneLedger.standardize_ledger(result)
+
+    def add_ledger_entry(self, entry: pd.DataFrame):
+        """
+        Adds a new ledger entry to the remote CashCtrl instance.
+
+        Parameters:
+            entry (pd.DataFrame): DataFrame with the ledger schema
+        """
+        entry = StandaloneLedger.standardize_ledger(entry)
+        accounts = self._client.list_accounts()
+        account_map = accounts.set_index('number')['id'].to_dict()
+        currencies = pd.DataFrame(self._client.get("currency/list.json")['data'])
+        currency_map = currencies.set_index('text')['id'].to_dict()
+        tax_data = self._client.list_tax_rates()
+        tax_map = tax_data.set_index('text')['id'].to_dict()
+
+        # Individual ledger entry
+        if len(entry) == 1:
+            payload = {
+                'dateAdded': entry.at[0, 'date'],
+                'amount': entry.at[0, 'amount'],
+                'creditId': account_map[entry.at[0, 'account']],
+                'debitId': account_map[entry.at[0, 'counter_account']],
+                'currencyId': None if pd.isna(entry.at[0, 'currency']) else currency_map[entry.at[0, 'currency']],
+                'title': entry.at[0, 'text'],
+                'taxId': None if pd.isna(entry.at[0, 'vat_code']) else tax_map[entry.at[0, 'vat_code']],
+            }
+
+        # Collective ledger entry
+        elif len(entry) > 1:
+            if entry['currency'].nunique() != 1:
+                raise ValueError('CashCtrl only allows for a single currency in a collective booking.')
+            if entry['date'].nunique() != 1:
+                raise ValueError('Date should be the same in a collective booking.')
+            payload = {
+                'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
+                'currencyId': None if pd.isna(entry.at[0, 'currency']) else currency_map[entry.at[0, 'currency']],
+                'items': [{
+                        'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
+                        'accountId': account_map[row['account']],
+                        'debit': max(-row['amount'], 0),
+                        'credit': max(row['amount'], 0),
+                        'taxId': None if pd.isna(row['vat_code']) else tax_map[row['vat_code']],
+                        'description': row['text']
+                    } for _, row in entry.iterrows()
+                ]
+            }
+        else:
+            raise ValueError('The ledger entry contains no transaction.')
+
+        self._client.post("journal/create.json", data=payload)
+
+    def update_ledger_entry(self, entry: pd.DataFrame):
+        """
+        Adds a new ledger entry to the remote CashCtrl instance.
+
+        Parameters:
+            entry (pd.DataFrame): DataFrame with the ledger schema
+        """
+        entry = StandaloneLedger.standardize_ledger(entry)
+        accounts = self._client.list_accounts()
+        account_map = accounts.set_index('number')['id'].to_dict()
+        currencies = pd.DataFrame(self._client.get("currency/list.json")['data'])
+        currency_map = currencies.set_index('text')['id'].to_dict()
+        tax_data = self._client.list_tax_rates()
+        tax_map = tax_data.set_index('text')['id'].to_dict()
+
+        # Individual ledger entry
+        if len(entry) == 1:
+            payload = {
+                'id': entry.at[0, 'id'],
+                'dateAdded': entry.at[0, 'date'],
+                'amount': entry.at[0, 'amount'],
+                'creditId': account_map[entry.at[0, 'account']],
+                'debitId': account_map[entry.at[0, 'counter_account']],
+                'currencyId': None if pd.isna(entry.at[0, 'currency']) else currency_map[entry.at[0, 'currency']],
+                'title': entry.at[0, 'text'],
+                'taxId': None if pd.isna(entry.at[0, 'vat_code']) else tax_map[entry.at[0, 'vat_code']],
+            }
+
+        # Collective ledger entry
+        elif len(entry) > 1:
+            if entry['id'].nunique() != 1:
+                raise ValueError('Id needs to be unique in all rows of a collective booking.')
+            if entry['currency'].nunique() != 1:
+                raise ValueError("CashCtrl only allows for a single currency in a collective booking.")
+            if entry['date'].nunique() != 1:
+                raise ValueError('Date needs to be unique in all rows of a collective booking.')
+            payload = {
+                'id': entry.at[0, 'id'],
+                'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
+                'currencyId': None if pd.isna(entry.at[0, 'currency']) else  currency_map[entry.at[0, 'currency']],
+                'items': [{
+                        'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
+                        'accountId': account_map[row['account']],
+                        'credit': max(row['amount'], 0),
+                        'debit': max(-row['amount'], 0),
+                        'taxId': None if pd.isna(row['vat_code']) else tax_map[row['vat_code']],
+                        'description': row['text']
+                    } for _, row in entry.iterrows()
+                ]
+            }
+        else:
+            raise ValueError('The ledger entry contains no transaction.')
+
+        self._client.post("journal/update.json", data=payload)
+
+    def delete_ledger_entry(self, ids: Union[str, List[str]]):
+        if isinstance(ids, list):
+            ids = ",".join(ids)
+        self._client.post("journal/delete.json", {'ids': ids})
+
     def base_currency():
         """
         Not implemented yet
@@ -340,12 +503,6 @@ class CashCtrlLedger(LedgerEngine):
             self._client.post('account/delete.json', {'ids': delete_ids})
         elif not allow_missing:
             raise ValueError(f"There is no Account '{account}'.")
-
-    def delete_ledger_entry():
-        """
-        Not implemented yet
-        """
-        raise NotImplementedError
 
     def delete_price():
         """
@@ -370,12 +527,6 @@ class CashCtrlLedger(LedgerEngine):
             self._client.post('tax/delete.json', {'ids': delete_ids})
         elif not allow_missing:
             raise ValueError(f"There is no VAT code '{code}'.")
-
-    def ledger():
-        """
-        Not implemented yet
-        """
-        raise NotImplementedError
 
     def ledger_entry():
         """
