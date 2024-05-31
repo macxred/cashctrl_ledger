@@ -5,7 +5,7 @@ on:
   # Manually triggered
   workflow_dispatch:
 
-name: Restore CashCtrl test environment to initial state
+name: Restore CashCtrl initial state
 
 concurrency:
   # Within the same concurrency group, run only one job at a time

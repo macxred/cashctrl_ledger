@@ -9,7 +9,7 @@ on:
   # Manually triggered
   workflow_dispatch:
 
-name: Run Unit- and Integration Tests
+name: Run Unit/Integration Tests
 
 concurrency:
   # Within the same concurrency group, run only one job at a time
