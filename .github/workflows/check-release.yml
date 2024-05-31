@@ -7,7 +7,7 @@ on:
   schedule:
     - cron: "0 4 * * *"
 
-name: docker
+name: Run Unit- and Integration Tests
 
 concurrency:
   # Within the same concurrency group, run only one job at a time

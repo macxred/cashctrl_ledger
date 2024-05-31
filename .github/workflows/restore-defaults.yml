@@ -1,11 +1,8 @@
 on:
   schedule:
     - cron: "0 3 * * *"
-  push:
-    branches:
-      - main
 
-name: Run reset_default.py
+name: Restore CashCtrl test environment to initial state
 
 concurrency:
   # Within the same concurrency group, run only one job at a time
@@ -39,5 +36,5 @@ jobs:
       - name: Install package
         run: python setup.py develop
 
-      - name: Run reset_default.py script
-        run: python scripts/reset_default.py
+      - name: Run restore_initial_state.py script
+        run: python scripts/restore_initial_state.py
