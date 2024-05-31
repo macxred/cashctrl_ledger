@@ -187,6 +187,10 @@ class CashCtrlLedger(LedgerEngine):
         categories = self._client.list_categories('account')
         categories_map = categories.set_index('path')['id'].to_dict()
         if group not in categories_map:
+            # TODO: CashCtrl - 500 Internal Server Error
+            # self._client.update_categories(resource='account', target=[group])
+            # categories = self._client.list_categories('account')
+            # categories_map = categories.set_index('path')['id'].to_dict()
             raise ValueError(f"Group '{group}' does not exist.")
         category_id = categories_map[group]
 
