@@ -82,9 +82,11 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     pd.testing.assert_frame_equal(updated, expected)
 
     # TODO: CashCtrl doesn`t allow to convert a single transaction into collective
-    # if the single transaction have an taxId, should reset it manually before update
+    # transaction if the single transaction has a taxId assigned. Tracked as cashctrl_ledger#27.
+    # As a workaround, we reset the taxId manually before update with a collective transaction
     new_entry['vat_code'] = None
     cashctrl_ledger.update_ledger_entry(entry=new_entry)
+
     # Test replace with an individual ledger entry
     initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
     new_entry = collective_transaction.copy()
@@ -160,22 +162,14 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     assert created.at[0, 'id'] not in ledger['id']
 
 # Tests for addition logic edge cases
-def test_add_ledger_with_non_existent_vat(add_vat_code):
+def test_add_ledger_with_non_existent_vat():
     cashctrl_ledger = CashCtrlLedger()
-    initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
 
-    # Adding a ledger with non existent VAT code shouldn`t raise an error
+    # Adding a ledger with non existent VAT code should raise an error
     entry = individual_transaction.copy()
     entry.at[0, 'vat_code'] = 'Test_Non_Existent_VAT_code'
-    cashctrl_ledger.add_ledger_entry(entry=entry)
-
-    # Delete the ledger entry created above
-    updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
-    outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
-    created = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
-    cashctrl_ledger.delete_ledger_entry(ids=created.at[0, 'id'])
-    ledger = cashctrl_ledger.ledger().reset_index(drop=True)
-    assert created.at[0, 'id'] not in ledger['id']
+    with pytest.raises(KeyError):
+        cashctrl_ledger.add_ledger_entry(entry=entry)
 
     # Adding a ledger with non existent account code should raise an error
     entry = individual_transaction.copy()
@@ -183,18 +177,11 @@ def test_add_ledger_with_non_existent_vat(add_vat_code):
     with pytest.raises(KeyError):
         cashctrl_ledger.add_ledger_entry(entry=entry)
 
-    # Adding a ledger with non existent currency code shouldn`t raise an error
+    # Adding a ledger with non existent currency code should raise an error
     entry = individual_transaction.copy()
-    entry.at[0, 'currency'] = 'currency'
-    cashctrl_ledger.add_ledger_entry(entry=entry)
-
-    # Delete the ledger entry created above
-    updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
-    outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
-    created = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
-    cashctrl_ledger.delete_ledger_entry(ids=created.at[0, 'id'])
-    ledger = cashctrl_ledger.ledger().reset_index(drop=True)
-    assert created.at[0, 'id'] not in ledger['id']
+    entry.at[0, 'currency'] = 'Non_Existent_Currency'
+    with pytest.raises(KeyError):
+        cashctrl_ledger.add_ledger_entry(entry=entry)
 
 # Tests for updating logic edge cases
 def test_update_ledger_with_edge_cases(add_vat_code):
@@ -210,7 +197,8 @@ def test_update_ledger_with_edge_cases(add_vat_code):
     new_entry = individual_transaction.copy()
     new_entry['id'] = created.at[0, 'id']
     new_entry.at[0, 'vat_code'] = 'Test_Non_Existent_VAT_code'
-    cashctrl_ledger.update_ledger_entry(entry=new_entry)
+    with pytest.raises(KeyError):
+        cashctrl_ledger.update_ledger_entry(entry=new_entry)
 
     # Updating a ledger with non existent account code should raise an error
     new_entry = individual_transaction.copy()
@@ -223,7 +211,8 @@ def test_update_ledger_with_edge_cases(add_vat_code):
     new_entry = individual_transaction.copy()
     new_entry['id'] = created.at[0, 'id']
     new_entry.at[0, 'currency'] = 'CURRENCY'
-    cashctrl_ledger.update_ledger_entry(entry=new_entry)
+    with pytest.raises(KeyError):
+        cashctrl_ledger.update_ledger_entry(entry=new_entry)
 
     # Delete the ledger entry created above
     cashctrl_ledger.delete_ledger_entry(ids=created.at[0, 'id'])

@@ -398,9 +398,9 @@ class CashCtrlLedger(LedgerEngine):
                 'amount': entry.at[0, 'amount'],
                 'creditId': account_map[entry.at[0, 'account']],
                 'debitId': account_map[entry.at[0, 'counter_account']],
-                'currencyId': currency_map.get(entry.at[0, 'currency'], None),
+                'currencyId': None if pd.isna(entry.at[0, 'currency']) else currency_map[entry.at[0, 'currency']],
                 'title': entry.at[0, 'text'],
-                'taxId': tax_map.get(entry.at[0, 'vat_code'], None),
+                'taxId': None if pd.isna(entry.at[0, 'vat_code']) else tax_map[entry.at[0, 'vat_code']],
             }
 
         # Collective ledger entry
@@ -411,13 +411,13 @@ class CashCtrlLedger(LedgerEngine):
                 raise ValueError('Date should be the same in a collective booking.')
             payload = {
                 'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
-                'currencyId': currency_map.get(entry.at[0, 'currency'], None),
+                'currencyId': None if pd.isna(entry.at[0, 'currency']) else currency_map[entry.at[0, 'currency']],
                 'items': [{
                         'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
                         'accountId': account_map[row['account']],
                         'debit': max(-row['amount'], 0),
                         'credit': max(row['amount'], 0),
-                        'taxId': tax_map.get(row['vat_code'], None),
+                        'taxId': None if pd.isna(row['vat_code']) else tax_map[row['vat_code']],
                         'description': row['text']
                     } for _, row in entry.iterrows()
                 ]
@@ -450,9 +450,9 @@ class CashCtrlLedger(LedgerEngine):
                 'amount': entry.at[0, 'amount'],
                 'creditId': account_map[entry.at[0, 'account']],
                 'debitId': account_map[entry.at[0, 'counter_account']],
-                'currencyId': currency_map.get(entry.at[0, 'currency'], None),
+                'currencyId': None if pd.isna(entry.at[0, 'currency']) else currency_map[entry.at[0, 'currency']],
                 'title': entry.at[0, 'text'],
-                'taxId': tax_map.get(entry.at[0, 'vat_code'], None),
+                'taxId': None if pd.isna(entry.at[0, 'vat_code']) else tax_map[entry.at[0, 'vat_code']],
             }
 
         # Collective ledger entry
@@ -466,13 +466,13 @@ class CashCtrlLedger(LedgerEngine):
             payload = {
                 'id': entry.at[0, 'id'],
                 'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
-                'currencyId': currency_map.get(entry.at[0, 'currency'], None),
+                'currencyId': None if pd.isna(entry.at[0, 'currency']) else  currency_map[entry.at[0, 'currency']],
                 'items': [{
                         'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
                         'accountId': account_map[row['account']],
                         'credit': max(row['amount'], 0),
                         'debit': max(-row['amount'], 0),
-                        'taxId': tax_map.get(row['vat_code'], None),
+                        'taxId': None if pd.isna(row['vat_code']) else tax_map[row['vat_code']],
                         'description': row['text']
                     } for _, row in entry.iterrows()
                 ]
