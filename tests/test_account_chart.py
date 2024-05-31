@@ -27,7 +27,7 @@ def add_and_delete_vat_code():
     # Deletes VAT code
     cashctrl_ledger.delete_vat_code(code="TestCodeAccounts")
 
-def test_account_mutators():
+def test_account_mutators(add_and_delete_vat_code):
     cashctrl_ledger = CashCtrlLedger()
 
     # Ensure there is no account '1145' or '1146' on the remote system
@@ -43,7 +43,7 @@ def test_account_mutators():
         'account': 1145,
         'currency': 'CHF',
         'text': 'test create account',
-        'vat_code': 'MwSt. 2.6%',
+        'vat_code': 'TestCodeAccounts',
         'group': '/Anlagevermögen'
     }
     cashctrl_ledger.add_account(**new_account)
@@ -56,7 +56,7 @@ def test_account_mutators():
     assert created_accounts['text'].item() == new_account['text']
     assert created_accounts['account'].item() == new_account['account']
     assert created_accounts['currency'].item() == new_account['currency']
-    assert created_accounts['vat_code'].item() == '<values><de>MwSt. 2.6%</de><en>VAT 2.6%</en><fr>TVA 2.6%</fr><it>IVA 2.6%</it></values>'
+    assert created_accounts['vat_code'].item() == 'TestCodeAccounts'
     assert created_accounts['group'].item() == new_account['group']
 
     # Test adding an account without VAT
@@ -87,7 +87,7 @@ def test_account_mutators():
         'account': 1146,
         'currency': 'CHF',
         'text': 'test update account',
-        'vat_code': 'MwSt. 2.6%',
+        'vat_code': 'TestCodeAccounts',
         'group': '/Anlagevermögen'
     }
     cashctrl_ledger.update_account(**new_account)
@@ -100,7 +100,7 @@ def test_account_mutators():
     assert modified_accounts['text'].item() == new_account['text']
     assert modified_accounts['account'].item() == new_account['account']
     assert modified_accounts['currency'].item() == new_account['currency']
-    assert modified_accounts['vat_code'].item() == '<values><de>MwSt. 2.6%</de><en>VAT 2.6%</en><fr>TVA 2.6%</fr><it>IVA 2.6%</it></values>'
+    assert modified_accounts['vat_code'].item() == 'TestCodeAccounts'
     assert modified_accounts['group'].item() == new_account['group']
 
     # Test updating an account without VAT code.
@@ -207,19 +207,23 @@ def test_update_account_with_invalid_group_raise_error():
         )
 
 # Tests the mirroring functionality of accounts.
-@pytest.mark.skip()
 def test_mirror_accounts(add_and_delete_vat_code):
-    target_df = (pd.read_csv('tests/initial_accounts.csv', skipinitialspace=True))
-    standardized_df = StandaloneLedger.standardize_account_chart(target_df).reset_index()
     cashctrl_ledger = CashCtrlLedger()
-
-    # Save initial accounts
     initial_accounts = cashctrl_ledger.account_chart().reset_index()
+
+    account = pd.DataFrame({
+        "account": [2],
+        "currency": ["CHF"],
+        "text": ["2test_account_api_added"],
+        "vat_code": ["TestCodeAccounts"],
+        "group": ["/Anlagevermögen"],
+    })
+    target_df = pd.concat([account, initial_accounts])
 
     # Mirror test accounts onto server with delete=False
     cashctrl_ledger.mirror_account_chart(target_df, delete=False)
     mirrored_df = cashctrl_ledger.account_chart().reset_index()
-    m = standardized_df.merge(mirrored_df, how='left', indicator=True)
+    m = target_df.merge(mirrored_df, how='left', indicator=True)
     assert (m['_merge'] == 'both').all(), (
             'Mirroring error: Some target accounts were not mirrored'
         )
@@ -227,7 +231,7 @@ def test_mirror_accounts(add_and_delete_vat_code):
     # Mirror target accounts onto server with delete=True
     cashctrl_ledger.mirror_account_chart(target_df, delete=True)
     mirrored_df = cashctrl_ledger.account_chart().reset_index()
-    m = standardized_df.merge(mirrored_df, how='outer', indicator=True)
+    m = target_df.merge(mirrored_df, how='outer', indicator=True)
     assert (m['_merge'] == 'both').all(), (
             'Mirroring error: Some target accounts were not mirrored'
         )

@@ -1,0 +1,43 @@
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  push:
+    branches:
+      - main
+
+name: Run reset_default.py
+
+concurrency:
+  # Within the same concurrency group, run only one job at a time
+  # New jobs cancel existing pending jobs
+  group: CashCtrl-user-semeyin
+  cancel-in-progress: false
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    container:
+      image: python:latest
+    env:
+      GITHUB_PAT: ${{ secrets.INSTALL_GITHUB }}
+      CC_API_ORGANISATION: ${{ secrets.CC_API_ORGANISATION }}
+      CC_API_KEY: ${{ secrets.CC_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup virtualenv
+        run: |
+          python -V  # Print out python version for debugging
+          pip install virtualenv pytest
+          virtualenv venv
+          . venv/bin/activate
+
+      - name: Install dependencies
+        run: pip install coverage pytest pandas .
+
+      - name: Install package
+        run: python setup.py develop
+
+      - name: Run reset_default.py script
+        run: python scripts/reset_default.py
