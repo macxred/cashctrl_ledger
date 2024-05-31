@@ -1,0 +1,36 @@
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # Run every 5 minutes
+
+name: Run reset_default.py
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    container:
+      image: python:latest
+    env:
+      GITHUB_PAT: ${{ secrets.INSTALL_GITHUB }}
+    # If the PR is coming from a fork (pull_request_target), ensure it is opened
+    # by "dependabot[bot]". Otherwise, clone it normally.
+      CC_API_ORGANISATION: ${{ secrets.CC_API_ORGANISATION }}
+      CC_API_KEY: ${{ secrets.CC_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup virtualenv
+        run: |
+          python -V  # Print out python version for debugging
+          pip install virtualenv pytest
+          virtualenv venv
+          . venv/bin/activate
+
+      - name: Install dependencies
+        run: pip install coverage pytest pandas .
+
+      - name: Install package
+        run: python setup.py develop
+
+      - name: Run reset_default.py script
+        run: python scripts/reset_default.py

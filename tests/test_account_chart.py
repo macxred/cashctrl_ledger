@@ -27,7 +27,7 @@ def add_and_delete_vat_code():
     # Deletes VAT code
     cashctrl_ledger.delete_vat_code(code="TestCodeAccounts")
 
-def test_account_mutators():
+def test_account_mutators(add_and_delete_vat_code):
     cashctrl_ledger = CashCtrlLedger()
 
     # Ensure there is no account '1145' or '1146' on the remote system
@@ -43,7 +43,7 @@ def test_account_mutators():
         'account': 1145,
         'currency': 'CHF',
         'text': 'test create account',
-        'vat_code': 'MwSt. 2.6%',
+        'vat_code': 'TestCodeAccounts',
         'group': '/Anlagevermögen'
     }
     cashctrl_ledger.add_account(**new_account)
@@ -56,7 +56,7 @@ def test_account_mutators():
     assert created_accounts['text'].item() == new_account['text']
     assert created_accounts['account'].item() == new_account['account']
     assert created_accounts['currency'].item() == new_account['currency']
-    assert created_accounts['vat_code'].item() == '<values><de>MwSt. 2.6%</de><en>VAT 2.6%</en><fr>TVA 2.6%</fr><it>IVA 2.6%</it></values>'
+    assert created_accounts['vat_code'].item() == 'TestCodeAccounts'
     assert created_accounts['group'].item() == new_account['group']
 
     # Test adding an account without VAT
@@ -87,7 +87,7 @@ def test_account_mutators():
         'account': 1146,
         'currency': 'CHF',
         'text': 'test update account',
-        'vat_code': 'MwSt. 2.6%',
+        'vat_code': 'TestCodeAccounts',
         'group': '/Anlagevermögen'
     }
     cashctrl_ledger.update_account(**new_account)
@@ -100,7 +100,7 @@ def test_account_mutators():
     assert modified_accounts['text'].item() == new_account['text']
     assert modified_accounts['account'].item() == new_account['account']
     assert modified_accounts['currency'].item() == new_account['currency']
-    assert modified_accounts['vat_code'].item() == '<values><de>MwSt. 2.6%</de><en>VAT 2.6%</en><fr>TVA 2.6%</fr><it>IVA 2.6%</it></values>'
+    assert modified_accounts['vat_code'].item() == 'TestCodeAccounts'
     assert modified_accounts['group'].item() == new_account['group']
 
     # Test updating an account without VAT code.

@@ -24,8 +24,5 @@ def main():
     # Restore default VAT with delete=True
     cashctrl_ledger.mirror_vat_codes(target_state=initial_vat)
 
-    cashctrl_ledger.vat_codes()
-    breakpoint()
-
 if __name__ == "__main__":
     main()
