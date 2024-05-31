@@ -1,8 +1,17 @@
 on:
   schedule:
-    - cron: '*/1 * * * *'  # Run every 3 minutes
+    - cron: '*/1 * * * *'  # Run every minute
+  push:
+    branches:
+      - main
 
 name: Run reset_default.py
+
+concurrency:
+  # Within the same concurrency group, run only one job at a time
+  # New jobs cancel existing pending jobs
+  group: CashCtrl-user-semeyin
+  cancel-in-progress: false
 
 jobs:
   docker:
