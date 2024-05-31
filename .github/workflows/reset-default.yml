@@ -1,6 +1,6 @@
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Run every 5 minutes
+    - cron: '*/1 * * * *'  # Run every 3 minutes
 
 name: Run reset_default.py
 
@@ -11,8 +11,6 @@ jobs:
       image: python:latest
     env:
       GITHUB_PAT: ${{ secrets.INSTALL_GITHUB }}
-    # If the PR is coming from a fork (pull_request_target), ensure it is opened
-    # by "dependabot[bot]". Otherwise, clone it normally.
       CC_API_ORGANISATION: ${{ secrets.CC_API_ORGANISATION }}
       CC_API_KEY: ${{ secrets.CC_API_KEY }}
     steps:
