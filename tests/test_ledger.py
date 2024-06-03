@@ -32,7 +32,7 @@ individual_transaction = pd.DataFrame({
 })
 
 collective_transaction = pd.DataFrame({
-    'date': ['2024-05-24', '2024-05-24'],
+    'date': ['2024-05-24', None],
     'account': [2210, 2270],
     'amount': [-100, 100],
     'currency': ['USD', 'USD'],
@@ -49,7 +49,7 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
     outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
     created = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(individual_transaction)
+    expected = StandaloneLedger.standardize_ledger(individual_transaction).ffill()
     pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
 
     # Test delete the created ledger entry
@@ -66,7 +66,7 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
     outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
     created = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(new_entry)
+    expected = StandaloneLedger.standardize_ledger(new_entry).ffill()
     pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
 
     # Test update a ledger entry
@@ -78,7 +78,7 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
     outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
     updated = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(new_entry)
+    expected = StandaloneLedger.standardize_ledger(new_entry).ffill()
     pd.testing.assert_frame_equal(updated, expected)
 
     # TODO: CashCtrl doesn`t allow to convert a single transaction into collective
@@ -95,7 +95,7 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
     outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
     updated = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(new_entry)
+    expected = StandaloneLedger.standardize_ledger(new_entry).ffill()
     pd.testing.assert_frame_equal(updated, expected)
 
     # Test delete the updated ledger entry
@@ -112,7 +112,7 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
     outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
     created = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(collective_transaction)
+    expected = StandaloneLedger.standardize_ledger(collective_transaction).ffill()
     pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
 
     # Test delete the created ledger entry
@@ -128,7 +128,7 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
     outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
     created = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(new_entry)
+    expected = StandaloneLedger.standardize_ledger(new_entry).ffill()
     pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
 
     # Test update a ledger entry
@@ -141,7 +141,7 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
     outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
     updated = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(new_entry)
+    expected = StandaloneLedger.standardize_ledger(new_entry).ffill()
     pd.testing.assert_frame_equal(updated, expected)
 
     # Test replace with an individual ledger entry
@@ -153,7 +153,7 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     updated_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
     outer_join = pd.merge(initial_ledger, updated_ledger, how='outer', indicator=True)
     updated = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1).reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(new_entry)
+    expected = StandaloneLedger.standardize_ledger(new_entry).ffill()
     pd.testing.assert_frame_equal(updated, expected)
 
     # Test delete the updated ledger entry
@@ -232,3 +232,65 @@ def test_delete_non_existent_ledger():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(RequestException):
         cashctrl_ledger.delete_ledger_entry(ids='non-existent')
+
+def test_mirror_ledger(add_vat_code):
+    cashctrl_ledger = CashCtrlLedger()
+    target = StandaloneLedger.standardize_ledger(pd.concat([individual_transaction, collective_transaction]))
+    target['date'] = target['date'].ffill()
+    initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+
+    # Mirror with one single and one collective transaction
+    cashctrl_ledger.mirror_ledger(target=target)
+    mirrored = cashctrl_ledger.ledger().reset_index(drop=True)
+    m = target.merge(mirrored.drop(columns=['id']), how='left', indicator=True)
+    assert (m['_merge'] == 'both').all(), (
+            'Mirroring error: Some target accounts were not mirrored'
+        )
+
+    # Mirror with duplicate transactions and delete=False
+    target = StandaloneLedger.standardize_ledger(pd.concat([
+        individual_transaction,
+        individual_transaction,
+        collective_transaction,
+        collective_transaction
+    ]))
+    target['date'] = target['date'].ffill()
+    cashctrl_ledger.mirror_ledger(target=target)
+    mirrored = cashctrl_ledger.ledger().reset_index(drop=True)
+    m = target.merge(mirrored.drop(columns=['id']), how='left', indicator=True)
+    assert len(target) == len(mirrored)
+    assert (m['_merge'] == 'both').all(), (
+            'Mirroring error: Some target ledger were not mirrored'
+        )
+
+    # Mirror with delete=False
+    before_mirroring = cashctrl_ledger.ledger().reset_index(drop=True)
+    target = StandaloneLedger.standardize_ledger(pd.concat([individual_transaction, collective_transaction]))
+    target['date'] = target['date'].ffill()
+    cashctrl_ledger.mirror_ledger(target=target, delete=False)
+    mirrored = cashctrl_ledger.ledger().reset_index(drop=True)
+    m = before_mirroring.merge(mirrored.drop(columns=['id']), how='left', indicator=True)
+    assert len(before_mirroring) == len(mirrored)
+    assert (m['_merge'] == 'both').all(), (
+            'Mirroring error: Some target ledger were not mirrored'
+        )
+
+    # Mirror with delete=True
+    target = StandaloneLedger.standardize_ledger(pd.concat([individual_transaction, collective_transaction]))
+    target['date'] = target['date'].ffill()
+    cashctrl_ledger.mirror_ledger(target=target)
+    mirrored = cashctrl_ledger.ledger().reset_index(drop=True)
+    m = target.merge(mirrored.drop(columns=['id']), how='left', indicator=True)
+    assert len(target) == len(mirrored)
+    assert (m['_merge'] == 'both').all(), (
+            'Mirroring error: Some target ledger were not mirrored'
+        )
+
+    # Restore initial state
+    cashctrl_ledger.mirror_ledger(target=initial_ledger)
+    mirrored = cashctrl_ledger.ledger().reset_index(drop=True)
+    m = initial_ledger.merge(mirrored.drop(columns=['id']), how='left', indicator=True)
+    assert len(initial_ledger) == len(mirrored)
+    assert (m['_merge'] == 'both').all(), (
+            'Mirroring error: Some target ledger were not mirrored'
+        )

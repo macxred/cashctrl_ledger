@@ -324,17 +324,41 @@ class CashCtrlLedger(LedgerEngine):
         }
         self._client.post("tax/update.json", data=payload)
 
-
     def mirror_ledger(self, target: pd.DataFrame, delete: bool = True):
-        remote = self.ledger()
-        remote = nest(remote, columns=[col for col in remote.columns if not col in ['id', 'date']], key='transactions')
-        remote['sha'] = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(remote['date'], remote['transactions'])]
+        remote = StandaloneLedger.standardize_ledger(self.ledger())
+        remote['date'] = remote['date'].ffill()
+        remote = nest(remote, columns=[col for col in remote.columns if col not in ['id', 'date']], key='txn')
+        remote['txn_str'] = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(remote['date'], remote['txn'])]
+        target = StandaloneLedger.standardize_ledger(target)
+        target['date'] = target['date'].ffill()
+        target = nest(target, columns=[col for col in target.columns if not col in ['id', 'date']], key='txn')
+        target['txn_str'] = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(target['date'], target['txn'])]
 
-        # TODO: need to detect duplicates as an edge case
-        delete = set(remote['sha']) - set(target['sha'])
-        add = set(target['sha']) - (set(remote['sha']))
+        # Find and drop same count of duplicates on both sides
+        count_remote = remote['txn_str'].value_counts()
+        count_target = target['txn_str'].value_counts()
+        all_txn_strs = count_remote.index.union(count_target.index)
+        count_remote = count_remote.reindex(all_txn_strs, fill_value=0)
+        count_target = count_target.reindex(all_txn_strs, fill_value=0)
+        to_drop = count_remote.combine(count_target, min)
+        def filter_df(df, to_drop):
+            result_df = df.copy()
+            for txn_str, count in to_drop.items():
+                if count > 0:
+                    idx_to_drop = result_df[result_df['txn_str'] == txn_str].index[:count]
+                    result_df = result_df.drop(idx_to_drop)
+            return result_df
+        delete_df = filter_df(remote, to_drop)
+        create_df = filter_df(target, to_drop)
 
-        # loop through and delete and all
+        delete_ids = ','.join(delete_df['id'].astype(str))
+        if delete and len(delete_ids):
+            self.delete_ledger_entry(ids = delete_ids)
+
+        for _, row in create_df.iterrows():
+            create_txn = row['txn']
+            create_txn['date'] = row['date']
+            self.add_ledger_entry(create_txn)
 
     def ledger(self) -> pd.DataFrame:
         """
