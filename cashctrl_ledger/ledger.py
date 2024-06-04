@@ -187,11 +187,11 @@ class CashCtrlLedger(LedgerEngine):
         categories = self._client.list_categories('account')
         categories_map = categories.set_index('path')['id'].to_dict()
         if group not in categories_map:
-            # TODO: CashCtrl - 500 Internal Server Error
-            # self._client.update_categories(resource='account', target=[group])
-            # categories = self._client.list_categories('account')
-            # categories_map = categories.set_index('path')['id'].to_dict()
-            raise ValueError(f"Group '{group}' does not exist.")
+            # Find accounts here and find the first number
+            # Or drop error as before
+            self._client.update_categories(resource='account', target=[group])
+            categories = self._client.list_categories('account')
+            categories_map = categories.set_index('path')['id'].to_dict()
         category_id = categories_map[group]
 
         payload = {
@@ -203,6 +203,9 @@ class CashCtrlLedger(LedgerEngine):
         }
 
         self._client.post("account/create.json", data=payload)
+
+        # after post we can use created number to create category
+        # and then update account with right category
 
     def update_account(self, account: str, currency: str, text: str, group: str, vat_code: str | None = None):
         """
