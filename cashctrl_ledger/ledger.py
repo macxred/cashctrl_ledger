@@ -324,8 +324,7 @@ class CashCtrlLedger(LedgerEngine):
         self._client.post("tax/update.json", data=payload)
 
     def mirror_ledger(self, target: pd.DataFrame, delete: bool = True):
-
-        # Nest target and remote transactions, add unique string identifier
+        # Nest to create one row per transaction, add unique string identifier
         def process_ledger(df: pd.DataFrame) -> pd.DataFrame:
             df = nest(df, columns=[col for col in df.columns if not col in ['id', 'date']], key='txn')
             df['txn_str'] = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(df['date'], df['txn'])]
@@ -333,13 +332,12 @@ class CashCtrlLedger(LedgerEngine):
         remote = process_ledger(self.ledger())
         target = process_ledger(self.sanitize_ledger(self.standardize_ledger(target)))
 
-        # Count occurrences of each unique transaction in target and remote
+        # Count occurrences of each unique transaction in target and remote,
+        # find number of additions and deletions for each unique transaction
         count = pd.DataFrame({
             'remote': remote['txn_str'].value_counts(),
             'target': target['txn_str'].value_counts()})
         count = count.fillna(0).reset_index(names='txn_str')
-
-        # Find number of occurrences to add or delete
         count['n_add'] = (count['target'] - count['remote']).clip(lower=0).astype(int)
         count['n_delete'] = (count['remote'] - count['target']).clip(lower=0).astype(int)
 

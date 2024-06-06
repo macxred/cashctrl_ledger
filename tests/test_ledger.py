@@ -63,7 +63,7 @@ alt_individual_transaction = pd.DataFrame({
 
 def txn_to_str(df: pd.DataFrame) -> List[str]:
     df = nest(df, columns=[col for col in df.columns if not col in ['id', 'date']], key='txn')
-    df = df.drop(columns=['id']).reset_index(drop=True)
+    df = df.drop(columns=['id'])
     result = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(df['date'], df['txn'])]
     return result.sort()
 
@@ -283,34 +283,31 @@ def test_mirror_ledger(add_vat_code):
         new_collective_transaction,
     ])
     cashctrl_ledger.mirror_ledger(target=target)
-    mirrored = cashctrl_ledger.ledger()
+    mirrored = cashctrl_ledger.ledger().reset_index(drop=True)
     assert txn_to_str(target) == txn_to_str(mirrored)
 
     # Mirror with alternative transactions and delete=False
-    remote = cashctrl_ledger.ledger().reset_index(drop=True)
     target = pd.concat([alt_individual_transaction, alt_collective_transaction])
-    remote = pd.concat([remote, target])
+    expected = pd.concat([mirrored, target])
     cashctrl_ledger.mirror_ledger(target=target, delete=False)
-    mirrored = cashctrl_ledger.ledger()
-    assert txn_to_str(remote) == txn_to_str(mirrored)
+    mirrored = cashctrl_ledger.ledger().reset_index(drop=True)
+    assert txn_to_str(mirrored) == txn_to_str(expected)
 
     # Mirror with delete=False
-    remote = cashctrl_ledger.ledger().reset_index(drop=True)
     target = pd.concat([individual_transaction, collective_transaction])
     cashctrl_ledger.mirror_ledger(target=target, delete=False)
-    mirrored = cashctrl_ledger.ledger()
+    mirrored = cashctrl_ledger.ledger().reset_index(drop=True)
     assert txn_to_str(target) == txn_to_str(mirrored)
 
     # Mirror with delete=True
     target = pd.concat([individual_transaction, collective_transaction])
     cashctrl_ledger.mirror_ledger(target=target)
-    mirrored = cashctrl_ledger.ledger()
+    mirrored = cashctrl_ledger.ledger().reset_index(drop=True)
     assert txn_to_str(target) == txn_to_str(mirrored)
 
     # Mirror an empty target state
     cashctrl_ledger.mirror_ledger(target=pd.DataFrame({}), delete=True)
-    mirrored = cashctrl_ledger.ledger().reset_index(drop=True)
-    assert mirrored.empty
+    assert cashctrl_ledger.ledger().empty
 
     # Restore initial state
     cashctrl_ledger.mirror_ledger(target=initial, delete=True)
