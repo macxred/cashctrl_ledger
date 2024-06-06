@@ -133,6 +133,36 @@ class CashCtrlLedger(LedgerEngine):
         accounts = set(target_df['account']).difference(set(current_state['account']))
         to_add = target_df.loc[target_df['account'].isin(accounts)]
 
+        def find_most_similar_path(df, path):
+            path_segments = path.strip('/').split('/')
+            most_similar_row = None
+            highest_match_count = 0
+
+            for _, row in df.iterrows():
+                group_segments = row['group'].strip('/').split('/')
+                match_count = 0
+                for p_segment, g_segment in zip(path_segments, group_segments):
+                    if p_segment == g_segment:
+                        match_count += 1
+                    else:
+                        break
+
+                if match_count > highest_match_count:
+                    highest_match_count = match_count
+                    most_similar_row = row
+
+            return most_similar_row['account']
+
+        categories = self._client.list_categories('account')
+        categories_map = categories.set_index('path')['id'].to_dict()
+        categories_to_create = [
+            { 'name': row['group'], 'number': find_most_similar_path(current_state, row['group']) }
+            for row in to_add.to_dict('records')
+            if row['group'] not in categories_map
+        ]
+        breakpoint()
+        self._client.update_categories(resource='account', target=categories_to_create)
+
         for row in to_add.to_dict('records'):
             self.add_account(
                 account=row['account'],
@@ -186,13 +216,7 @@ class CashCtrlLedger(LedgerEngine):
 
         categories = self._client.list_categories('account')
         categories_map = categories.set_index('path')['id'].to_dict()
-        if group not in categories_map:
-            # Find accounts here and find the first number
-            # Or drop error as before
-            self._client.update_categories(resource='account', target=[group])
-            categories = self._client.list_categories('account')
-            categories_map = categories.set_index('path')['id'].to_dict()
-        category_id = categories_map[group]
+        category_id = categories_map[group] if group in categories_map else None
 
         payload = {
             "number": account,
@@ -201,11 +225,20 @@ class CashCtrlLedger(LedgerEngine):
             "taxId": tax_id,
             "categoryId": category_id,
         }
-
         self._client.post("account/create.json", data=payload)
 
-        # after post we can use created number to create category
-        # and then update account with right category
+        if group not in categories_map:
+            self._client.update_categories(resource='account', target={'name': group, 'number': account})
+
+            # update category using update method
+            self.update_account(account=account, currency=currency, text=text, group=group, vat_code=vat_code)
+
+            # update category using already calculated info
+            categories = self._client.list_categories('account')
+            categories_map = categories.set_index('path')['id'].to_dict()
+            category_id = categories_map[group]
+            payload['categoryId']= category_id
+            self._client.post("account/update.json", data=payload)
 
     def update_account(self, account: str, currency: str, text: str, group: str, vat_code: str | None = None):
         """
