@@ -4,7 +4,7 @@ Module to sync ledger system onto CashCtrl.
 
 from datetime import datetime
 import pandas as pd
-from typing import Union, List
+from typing import Dict, Union, List
 from cashctrl_api import CashCtrlClient, enforce_dtypes
 from pyledger import LedgerEngine, StandaloneLedger
 from .constants import JOURNAL_ITEM_COLUMNS
@@ -133,35 +133,15 @@ class CashCtrlLedger(LedgerEngine):
         accounts = set(target_df['account']).difference(set(current_state['account']))
         to_add = target_df.loc[target_df['account'].isin(accounts)]
 
-        def find_most_similar_path(df, path):
-            path_segments = path.strip('/').split('/')
-            most_similar_row = None
-            highest_match_count = 0
-
-            for _, row in df.iterrows():
-                group_segments = row['group'].strip('/').split('/')
-                match_count = 0
-                for p_segment, g_segment in zip(path_segments, group_segments):
-                    if p_segment == g_segment:
-                        match_count += 1
-                    else:
-                        break
-
-                if match_count > highest_match_count:
-                    highest_match_count = match_count
-                    most_similar_row = row
-
-            return most_similar_row['account']
-
-        categories = self._client.list_categories('account')
-        categories_map = categories.set_index('path')['id'].to_dict()
-        categories_to_create = [
-            { 'name': row['group'], 'number': find_most_similar_path(current_state, row['group']) }
-            for row in to_add.to_dict('records')
-            if row['group'] not in categories_map
-        ]
-        breakpoint()
-        self._client.update_categories(resource='account', target=categories_to_create)
+        # Update account categories
+        def get_nodes_list(path: str) -> List[str]:
+            parts = path.strip('/').split('/')
+            return ['/' + '/'.join(parts[:i]) for i in range(1, len(parts) + 1)]
+        def account_groups(df: pd.DataFrame) -> Dict[str, str]:
+            df['nodes'] = [pd.DataFrame({'items': get_nodes_list(path)}) for path in df['group']]
+            df = unnest(df, key='nodes')
+            return df.groupby('items')['account'].agg(min).to_dict()
+        self._client.update_categories(resource='account', target=account_groups(target))
 
         for row in to_add.to_dict('records'):
             self.add_account(
@@ -216,7 +196,11 @@ class CashCtrlLedger(LedgerEngine):
 
         categories = self._client.list_categories('account')
         categories_map = categories.set_index('path')['id'].to_dict()
-        category_id = categories_map[group] if group in categories_map else None
+        if group not in categories_map:
+            self._client.update_categories(resource='account', target={'name': group, 'number': account})
+            categories = self._client.list_categories('account')
+            categories_map = categories.set_index('path')['id'].to_dict()
+        category_id = categories_map[group]
 
         payload = {
             "number": account,
@@ -226,19 +210,6 @@ class CashCtrlLedger(LedgerEngine):
             "categoryId": category_id,
         }
         self._client.post("account/create.json", data=payload)
-
-        if group not in categories_map:
-            self._client.update_categories(resource='account', target={'name': group, 'number': account})
-
-            # update category using update method
-            self.update_account(account=account, currency=currency, text=text, group=group, vat_code=vat_code)
-
-            # update category using already calculated info
-            categories = self._client.list_categories('account')
-            categories_map = categories.set_index('path')['id'].to_dict()
-            category_id = categories_map[group]
-            payload['categoryId']= category_id
-            self._client.post("account/update.json", data=payload)
 
     def update_account(self, account: str, currency: str, text: str, group: str, vat_code: str | None = None):
         """
