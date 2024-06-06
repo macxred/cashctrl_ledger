@@ -429,13 +429,13 @@ class CashCtrlLedger(LedgerEngine):
         # Individual ledger entry
         if len(entry) == 1:
             payload = {
-                'dateAdded': entry.at[0, 'date'],
-                'amount': entry.at[0, 'amount'],
-                'creditId': account_map[entry.at[0, 'account']],
-                'debitId': account_map[entry.at[0, 'counter_account']],
-                'currencyId': None if pd.isna(entry.at[0, 'currency']) else currency_map[entry.at[0, 'currency']],
-                'title': entry.at[0, 'text'],
-                'taxId': None if pd.isna(entry.at[0, 'vat_code']) else tax_map[entry.at[0, 'vat_code']],
+                'dateAdded': entry['date'].iloc[0],
+                'amount': entry['amount'].iloc[0],
+                'creditId': account_map[entry['account'].iloc[0]],
+                'debitId': account_map[entry['counter_account'].iloc[0]],
+                'currencyId': None if pd.isna(entry['currency'].iloc[0]) else currency_map[entry['currency'].iloc[0]],
+                'title': entry['text'].iloc[0],
+                'taxId': None if pd.isna(entry['vat_code'].iloc[0]) else tax_map[entry['vat_code'].iloc[0]],
             }
 
         # Collective ledger entry
@@ -445,10 +445,10 @@ class CashCtrlLedger(LedgerEngine):
             if entry['date'].nunique() != 1:
                 raise ValueError('Date should be the same in a collective booking.')
             payload = {
-                'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
-                'currencyId': None if pd.isna(entry.at[0, 'currency']) else currency_map[entry.at[0, 'currency']],
+                'dateAdded': entry['date'].iloc[0].strftime("%Y-%m-%d"),
+                'currencyId': None if pd.isna(entry['currency'].iloc[0]) else currency_map[entry['currency'].iloc[0]],
                 'items': [{
-                        'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
+                        'dateAdded': entry['date'].iloc[0].strftime("%Y-%m-%d"),
                         'accountId': account_map[row['account']],
                         'debit': max(-row['amount'], 0),
                         'credit': max(row['amount'], 0),
@@ -480,14 +480,14 @@ class CashCtrlLedger(LedgerEngine):
         # Individual ledger entry
         if len(entry) == 1:
             payload = {
-                'id': entry.at[0, 'id'],
-                'dateAdded': entry.at[0, 'date'],
-                'amount': entry.at[0, 'amount'],
-                'creditId': account_map[entry.at[0, 'account']],
-                'debitId': account_map[entry.at[0, 'counter_account']],
-                'currencyId': None if pd.isna(entry.at[0, 'currency']) else currency_map[entry.at[0, 'currency']],
-                'title': entry.at[0, 'text'],
-                'taxId': None if pd.isna(entry.at[0, 'vat_code']) else tax_map[entry.at[0, 'vat_code']],
+                'id': entry['id'].iloc[0],
+                'dateAdded': entry['date'].iloc[0],
+                'amount': entry['amount'].iloc[0],
+                'creditId': account_map[entry['account'].iloc[0]],
+                'debitId': account_map[entry['counter_account'].iloc[0]],
+                'currencyId': None if pd.isna(entry['currency'].iloc[0]) else currency_map[entry['currency'].iloc[0]],
+                'title': entry['text'].iloc[0],
+                'taxId': None if pd.isna(entry['vat_code'].iloc[0]) else tax_map[entry['vat_code'].iloc[0]],
             }
 
         # Collective ledger entry
@@ -499,11 +499,11 @@ class CashCtrlLedger(LedgerEngine):
             if entry['date'].nunique() != 1:
                 raise ValueError('Date needs to be unique in all rows of a collective booking.')
             payload = {
-                'id': entry.at[0, 'id'],
-                'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
-                'currencyId': None if pd.isna(entry.at[0, 'currency']) else  currency_map[entry.at[0, 'currency']],
+                'id': entry['id'].iloc[0],
+                'dateAdded': entry['date'].iloc[0].strftime("%Y-%m-%d"),
+                'currencyId': None if pd.isna(entry['currency'].iloc[0]) else  currency_map[entry['currency'].iloc[0]],
                 'items': [{
-                        'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
+                        'dateAdded': entry['date'].iloc[0].strftime("%Y-%m-%d"),
                         'accountId': account_map[row['account']],
                         'credit': max(row['amount'], 0),
                         'debit': max(-row['amount'], 0),
