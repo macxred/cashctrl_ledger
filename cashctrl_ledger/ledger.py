@@ -324,6 +324,8 @@ class CashCtrlLedger(LedgerEngine):
         self._client.post("tax/update.json", data=payload)
 
     def mirror_ledger(self, target: pd.DataFrame, delete: bool = True):
+
+        # Nest target and remote transactions, add unique string identifier
         def process_ledger(df: pd.DataFrame) -> pd.DataFrame:
             df = nest(df, columns=[col for col in df.columns if not col in ['id', 'date']], key='txn')
             df['txn_str'] = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(df['date'], df['txn'])]
@@ -331,31 +333,29 @@ class CashCtrlLedger(LedgerEngine):
         remote = process_ledger(self.ledger())
         target = process_ledger(self.sanitize_ledger(self.standardize_ledger(target)))
 
-        # Find transaction quantity occurrence in target and remote
+        # Count occurrences of each unique transaction in target and remote
         count = pd.DataFrame({
             'remote': remote['txn_str'].value_counts(),
-            'target': target['txn_str'].value_counts()
-        }).fillna(0).reset_index().rename(columns={'index': 'txn_str'})
-        count['add'] = (count['target'] - count['remote']).clip(lower=0).astype(int)
-        count['delete'] = (count['remote'] - count['target']).clip(lower=0).astype(int)
+            'target': target['txn_str'].value_counts()})
+        count = count.fillna(0).reset_index(names='txn_str')
 
-        # Find transactions to create and delete
-        to_delete = pd.DataFrame()
-        to_add = pd.DataFrame()
-        for _, row in count.iterrows():
-            delete_indices = remote[remote['txn_str'] == row['txn_str']].index[:row['delete']]
-            to_delete = pd.concat([to_delete, remote.loc[delete_indices]])
-            add_indices = target[target['txn_str'] == row['txn_str']].index[:row['add']]
-            to_add = pd.concat([to_add, target.loc[add_indices]])
+        # Find number of occurrences to add or delete
+        count['n_add'] = (count['target'] - count['remote']).clip(lower=0).astype(int)
+        count['n_delete'] = (count['remote'] - count['target']).clip(lower=0).astype(int)
 
-        if delete and not to_delete.empty:
-            delete_ids = ','.join(to_delete['id'].astype(str))
-            self.delete_ledger_entry(ids = delete_ids)
+        # Delete unneeded transactions on remote
+        if delete and any(count['n_delete'] > 0):
+            ids = [id
+                for txn_str, n in zip(count['txn_str'], count['n_delete']) if n > 0
+                for id in remote.loc[remote['txn_str'] == txn_str, 'id'].tail(n=n).values]
+            self.delete_ledger_entry(ids = ','.join(ids))
 
-        for _, row in to_add.iterrows():
-            create_txn = row['txn']
-            create_txn['date'] = row['date']
-            self.add_ledger_entry(create_txn)
+        # Add missing transactions to remote
+        for txn_str, n in zip(count['txn_str'], count['n_add']):
+            if n > 0:
+                txn = unnest(target.loc[target['txn_str'] == txn_str, :].head(1), 'txn')
+                for _ in range(n):
+                    self.add_ledger_entry(txn)
 
     def ledger(self) -> pd.DataFrame:
         """
