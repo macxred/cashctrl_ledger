@@ -7,8 +7,9 @@ import pandas as pd
 from typing import Union, List
 from cashctrl_api import CashCtrlClient, enforce_dtypes
 from pyledger import LedgerEngine, StandaloneLedger
-from .nesting import unnest
 from .constants import JOURNAL_ITEM_COLUMNS
+from .nesting import unnest, nest
+from .ledger_utils import df_to_consistent_str
 
 class CashCtrlLedger(LedgerEngine):
     """
@@ -322,6 +323,38 @@ class CashCtrlLedger(LedgerEngine):
         }
         self._client.post("tax/update.json", data=payload)
 
+    def mirror_ledger(self, target: pd.DataFrame, delete: bool = True):
+        # Nest to create one row per transaction, add unique string identifier
+        def process_ledger(df: pd.DataFrame) -> pd.DataFrame:
+            df = nest(df, columns=[col for col in df.columns if not col in ['id', 'date']], key='txn')
+            df['txn_str'] = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(df['date'], df['txn'])]
+            return df
+        remote = process_ledger(self.ledger())
+        target = process_ledger(self.sanitize_ledger(self.standardize_ledger(target)))
+
+        # Count occurrences of each unique transaction in target and remote,
+        # find number of additions and deletions for each unique transaction
+        count = pd.DataFrame({
+            'remote': remote['txn_str'].value_counts(),
+            'target': target['txn_str'].value_counts()})
+        count = count.fillna(0).reset_index(names='txn_str')
+        count['n_add'] = (count['target'] - count['remote']).clip(lower=0).astype(int)
+        count['n_delete'] = (count['remote'] - count['target']).clip(lower=0).astype(int)
+
+        # Delete unneeded transactions on remote
+        if delete and any(count['n_delete'] > 0):
+            ids = [id
+                for txn_str, n in zip(count['txn_str'], count['n_delete']) if n > 0
+                for id in remote.loc[remote['txn_str'] == txn_str, 'id'].tail(n=n).values]
+            self.delete_ledger_entry(ids = ','.join(ids))
+
+        # Add missing transactions to remote
+        for txn_str, n in zip(count['txn_str'], count['n_add']):
+            if n > 0:
+                txn = unnest(target.loc[target['txn_str'] == txn_str, :].head(1), 'txn')
+                for _ in range(n):
+                    self.add_ledger_entry(txn)
+
     def ledger(self) -> pd.DataFrame:
         """
         Retrieves ledger entries from the remote CashCtrl account and converts
@@ -394,13 +427,13 @@ class CashCtrlLedger(LedgerEngine):
         # Individual ledger entry
         if len(entry) == 1:
             payload = {
-                'dateAdded': entry.at[0, 'date'],
-                'amount': entry.at[0, 'amount'],
-                'creditId': account_map[entry.at[0, 'account']],
-                'debitId': account_map[entry.at[0, 'counter_account']],
-                'currencyId': None if pd.isna(entry.at[0, 'currency']) else currency_map[entry.at[0, 'currency']],
-                'title': entry.at[0, 'text'],
-                'taxId': None if pd.isna(entry.at[0, 'vat_code']) else tax_map[entry.at[0, 'vat_code']],
+                'dateAdded': entry['date'].iat[0],
+                'amount': entry['amount'].iat[0],
+                'creditId': account_map[entry['account'].iat[0]],
+                'debitId': account_map[entry['counter_account'].iat[0]],
+                'currencyId': None if pd.isna(entry['currency'].iat[0]) else currency_map[entry['currency'].iat[0]],
+                'title': entry['text'].iat[0],
+                'taxId': None if pd.isna(entry['vat_code'].iat[0]) else tax_map[entry['vat_code'].iat[0]],
             }
 
         # Collective ledger entry
@@ -410,10 +443,10 @@ class CashCtrlLedger(LedgerEngine):
             if entry['date'].nunique() != 1:
                 raise ValueError('Date should be the same in a collective booking.')
             payload = {
-                'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
-                'currencyId': None if pd.isna(entry.at[0, 'currency']) else currency_map[entry.at[0, 'currency']],
+                'dateAdded': entry['date'].iat[0].strftime("%Y-%m-%d"),
+                'currencyId': None if pd.isna(entry['currency'].iat[0]) else currency_map[entry['currency'].iat[0]],
                 'items': [{
-                        'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
+                        'dateAdded': entry['date'].iat[0].strftime("%Y-%m-%d"),
                         'accountId': account_map[row['account']],
                         'debit': max(-row['amount'], 0),
                         'credit': max(row['amount'], 0),
@@ -445,14 +478,14 @@ class CashCtrlLedger(LedgerEngine):
         # Individual ledger entry
         if len(entry) == 1:
             payload = {
-                'id': entry.at[0, 'id'],
-                'dateAdded': entry.at[0, 'date'],
-                'amount': entry.at[0, 'amount'],
-                'creditId': account_map[entry.at[0, 'account']],
-                'debitId': account_map[entry.at[0, 'counter_account']],
-                'currencyId': None if pd.isna(entry.at[0, 'currency']) else currency_map[entry.at[0, 'currency']],
-                'title': entry.at[0, 'text'],
-                'taxId': None if pd.isna(entry.at[0, 'vat_code']) else tax_map[entry.at[0, 'vat_code']],
+                'id': entry['id'].iat[0],
+                'dateAdded': entry['date'].iat[0],
+                'amount': entry['amount'].iat[0],
+                'creditId': account_map[entry['account'].iat[0]],
+                'debitId': account_map[entry['counter_account'].iat[0]],
+                'currencyId': None if pd.isna(entry['currency'].iat[0]) else currency_map[entry['currency'].iat[0]],
+                'title': entry['text'].iat[0],
+                'taxId': None if pd.isna(entry['vat_code'].iat[0]) else tax_map[entry['vat_code'].iat[0]],
             }
 
         # Collective ledger entry
@@ -464,11 +497,11 @@ class CashCtrlLedger(LedgerEngine):
             if entry['date'].nunique() != 1:
                 raise ValueError('Date needs to be unique in all rows of a collective booking.')
             payload = {
-                'id': entry.at[0, 'id'],
-                'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
-                'currencyId': None if pd.isna(entry.at[0, 'currency']) else  currency_map[entry.at[0, 'currency']],
+                'id': entry['id'].iat[0],
+                'dateAdded': entry['date'].iat[0].strftime("%Y-%m-%d"),
+                'currencyId': None if pd.isna(entry['currency'].iat[0]) else  currency_map[entry['currency'].iat[0]],
                 'items': [{
-                        'dateAdded': entry.at[0, 'date'].strftime("%Y-%m-%d"),
+                        'dateAdded': entry['date'].iat[0].strftime("%Y-%m-%d"),
                         'accountId': account_map[row['account']],
                         'credit': max(row['amount'], 0),
                         'debit': max(-row['amount'], 0),
