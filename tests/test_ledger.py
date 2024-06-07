@@ -62,8 +62,8 @@ alt_individual_transaction = pd.DataFrame({
 })
 
 def txn_to_str(df: pd.DataFrame) -> List[str]:
-    df = df.drop(columns=['id']).reset_index(drop=True)
     df = nest(df, columns=[col for col in df.columns if not col in ['id', 'date']], key='txn')
+    df = df.drop(columns=['id']).reset_index(drop=True)
     result = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(df['date'], df['txn'])]
     return result.sort()
 
@@ -262,63 +262,57 @@ def test_delete_non_existent_ledger():
 
 def test_mirror_ledger(add_vat_code):
     cashctrl_ledger = CashCtrlLedger()
-    target = StandaloneLedger.standardize_ledger(pd.concat([
-        individual_transaction,
-        collective_transaction,
-    ]))
+    initial = cashctrl_ledger.ledger().reset_index(drop=True)
 
     # Mirror with one single and one collective transaction
+    target = pd.concat([individual_transaction, collective_transaction])
     cashctrl_ledger.mirror_ledger(target=target)
     mirrored = cashctrl_ledger.ledger()
     assert txn_to_str(target) == txn_to_str(mirrored)
 
     # Mirror with duplicate transactions and delete=False
     new_individual_transaction = individual_transaction.copy()
-    new_individual_transaction.at[0, 'id'] = 5;
     new_collective_transaction = collective_transaction.copy()
-    new_collective_transaction.at[0, 'id'] = 6;
-    new_collective_transaction.at[1, 'id'] = 6;
-    target = StandaloneLedger.standardize_ledger(pd.concat([
+    new_individual_transaction['id'].iloc[0] = 5;
+    new_collective_transaction['id'].iloc[0] = 6;
+    new_collective_transaction['id'].iloc[1] = 6;
+    target = pd.concat([
         individual_transaction,
         new_individual_transaction,
         collective_transaction,
         new_collective_transaction,
-    ]))
+    ])
     cashctrl_ledger.mirror_ledger(target=target)
     mirrored = cashctrl_ledger.ledger()
     assert txn_to_str(target) == txn_to_str(mirrored)
 
     # Mirror with alternative transactions and delete=False
-    initial = cashctrl_ledger.ledger().reset_index(drop=True)
-    target = StandaloneLedger.standardize_ledger(pd.concat([
-        alt_individual_transaction,
-        alt_collective_transaction,
-    ]))
-    initial = pd.concat([initial, target])
+    remote = cashctrl_ledger.ledger().reset_index(drop=True)
+    target = pd.concat([alt_individual_transaction, alt_collective_transaction])
+    remote = pd.concat([remote, target])
     cashctrl_ledger.mirror_ledger(target=target, delete=False)
     mirrored = cashctrl_ledger.ledger()
-    assert txn_to_str(initial) == txn_to_str(mirrored)
+    assert txn_to_str(remote) == txn_to_str(mirrored)
 
     # Mirror with delete=False
-    initial = cashctrl_ledger.ledger().reset_index(drop=True)
-    target = StandaloneLedger.standardize_ledger(pd.concat([
-        individual_transaction,
-        collective_transaction,
-    ]))
+    remote = cashctrl_ledger.ledger().reset_index(drop=True)
+    target = pd.concat([individual_transaction, collective_transaction])
     cashctrl_ledger.mirror_ledger(target=target, delete=False)
     mirrored = cashctrl_ledger.ledger()
     assert txn_to_str(target) == txn_to_str(mirrored)
 
     # Mirror with delete=True
-    target = StandaloneLedger.standardize_ledger(pd.concat([
-        individual_transaction,
-        collective_transaction,
-    ]))
+    target = pd.concat([individual_transaction, collective_transaction])
     cashctrl_ledger.mirror_ledger(target=target)
     mirrored = cashctrl_ledger.ledger()
     assert txn_to_str(target) == txn_to_str(mirrored)
 
-    # Restore initial state
+    # Mirror an empty target state
     cashctrl_ledger.mirror_ledger(target=pd.DataFrame({}), delete=True)
     mirrored = cashctrl_ledger.ledger().reset_index(drop=True)
     assert mirrored.empty
+
+    # Restore initial state
+    cashctrl_ledger.mirror_ledger(target=initial, delete=True)
+    mirrored = cashctrl_ledger.ledger().reset_index(drop=True)
+    assert txn_to_str(initial) == txn_to_str(mirrored)
