@@ -9,12 +9,12 @@ on:
   # Manually triggered
   workflow_dispatch:
 
-name: Run Unit/Integration Tests
+name: Unit/Integration Tests
 
 concurrency:
   # Within the same concurrency group, run only one job at a time
   # New jobs cancel existing pending jobs
-  group: CashCtrl-user-semeyin
+  group: CashCtrl-test-account
   cancel-in-progress: false
 
 jobs:
