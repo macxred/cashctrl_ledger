@@ -141,7 +141,7 @@ class CashCtrlLedger(LedgerEngine):
             df['nodes'] = [pd.DataFrame({'items': get_nodes_list(path)}) for path in df['group']]
             df = unnest(df, key='nodes')
             return df.groupby('items')['account'].agg(min).to_dict()
-        self._client.update_categories(resource='account', target=account_groups(target))
+        self._client.update_categories(resource='account', target=account_groups(target), delete=delete)
 
         for row in to_add.to_dict('records'):
             self.add_account(
@@ -197,9 +197,7 @@ class CashCtrlLedger(LedgerEngine):
         categories = self._client.list_categories('account')
         categories_map = categories.set_index('path')['id'].to_dict()
         if group not in categories_map:
-            self._client.update_categories(resource='account', target={'name': group, 'number': account})
-            categories = self._client.list_categories('account')
-            categories_map = categories.set_index('path')['id'].to_dict()
+            raise ValueError(f"Group '{group}' does not exist.")
         category_id = categories_map[group]
 
         payload = {

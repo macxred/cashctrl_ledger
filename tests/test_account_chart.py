@@ -169,9 +169,10 @@ def add_and_delete_vat_code():
 # # Test adding an account with invalid group should raise an error.
 # def test_add_account_with_invalid_group_raise_error():
 #     cashctrl_ledger = CashCtrlLedger()
-#     cashctrl_ledger.add_account(account=999999, currency='USD',
-#         text='test account', vat_code='MwSt. 2.6%', group='Anlagevermögen/ABC'
-#     )
+#     with pytest.raises(ValueError):
+#         cashctrl_ledger.add_account(account=999999, currency='USD',
+#             text='test account', vat_code='MwSt. 2.6%', group='Anlagevermögen/ABC'
+#         )
 
 
 # # Test updating a non existing account should raise an error.
@@ -207,7 +208,7 @@ def add_and_delete_vat_code():
 #         )
 
 # Tests the mirroring functionality of accounts.
-def test_mirror_accounts():
+def test_mirror_accounts(add_and_delete_vat_code):
     cashctrl_ledger = CashCtrlLedger()
     initial_accounts = cashctrl_ledger.account_chart().reset_index()
 
@@ -222,36 +223,36 @@ def test_mirror_accounts():
 
     # Mirror test accounts onto server with delete=False
     cashctrl_ledger.mirror_account_chart(target_df, delete=False)
-    # mirrored_df = cashctrl_ledger.account_chart().reset_index()
-    # m = target_df.merge(mirrored_df, how='left', indicator=True)
-    # assert (m['_merge'] == 'both').all(), (
-    #         'Mirroring error: Some target accounts were not mirrored'
-    #     )
+    mirrored_df = cashctrl_ledger.account_chart().reset_index()
+    m = target_df.merge(mirrored_df, how='left', indicator=True)
+    assert (m['_merge'] == 'both').all(), (
+            'Mirroring error: Some target accounts were not mirrored'
+        )
 
-    # # Mirror target accounts onto server with delete=True
-    # cashctrl_ledger.mirror_account_chart(target_df, delete=True)
-    # mirrored_df = cashctrl_ledger.account_chart().reset_index()
-    # m = target_df.merge(mirrored_df, how='outer', indicator=True)
-    # assert (m['_merge'] == 'both').all(), (
-    #         'Mirroring error: Some target accounts were not mirrored'
-    #     )
+    # Mirror target accounts onto server with delete=True
+    cashctrl_ledger.mirror_account_chart(target_df, delete=True)
+    mirrored_df = cashctrl_ledger.account_chart().reset_index()
+    m = target_df.merge(mirrored_df, how='outer', indicator=True)
+    assert (m['_merge'] == 'both').all(), (
+            'Mirroring error: Some target accounts were not mirrored'
+        )
 
-    # # Reshuffle target data randomly
-    # target_df = target_df.sample(frac=1).reset_index(drop=True)
+    # Reshuffle target data randomly
+    target_df = target_df.sample(frac=1).reset_index(drop=True)
 
-    # # Mirror target accounts onto server with updating
-    # target_df.loc[target_df['account'] == 2, 'text'] = "New_Test_Text"
-    # cashctrl_ledger.mirror_account_chart(target_df, delete=True)
-    # mirrored_df = cashctrl_ledger.account_chart().reset_index()
-    # m = target_df.merge(mirrored_df, how='outer', indicator=True)
-    # assert (m['_merge'] == 'both').all(), (
-    #         'Mirroring error: Some target accounts were not mirrored'
-    #     )
+    # Mirror target accounts onto server with updating
+    target_df.loc[target_df['account'] == 2, 'text'] = "New_Test_Text"
+    cashctrl_ledger.mirror_account_chart(target_df, delete=True)
+    mirrored_df = cashctrl_ledger.account_chart().reset_index()
+    m = target_df.merge(mirrored_df, how='outer', indicator=True)
+    assert (m['_merge'] == 'both').all(), (
+            'Mirroring error: Some target accounts were not mirrored'
+        )
 
-    # # Mirror initial accounts onto server with delete=True to restore original state
-    # cashctrl_ledger.mirror_account_chart(initial_accounts, delete=True)
-    # mirrored_df = cashctrl_ledger.account_chart().reset_index()
-    # m = initial_accounts.merge(mirrored_df, how='outer', indicator=True)
-    # assert (m['_merge'] == 'both').all(), (
-    #         'Mirroring error: Some target accounts were not mirrored'
-    #     )
+    # Mirror initial accounts onto server with delete=True to restore original state
+    cashctrl_ledger.mirror_account_chart(initial_accounts, delete=True)
+    mirrored_df = cashctrl_ledger.account_chart().reset_index()
+    m = initial_accounts.merge(mirrored_df, how='outer', indicator=True)
+    assert (m['_merge'] == 'both').all(), (
+            'Mirroring error: Some target accounts were not mirrored'
+        )
