@@ -2,7 +2,6 @@
 Module to sync ledger system onto CashCtrl.
 """
 
-from datetime import datetime
 import pandas as pd
 from typing import Union, List
 from cashctrl_api import CachedCashCtrlClient, enforce_dtypes
@@ -185,8 +184,8 @@ class CashCtrlLedger(LedgerEngine):
             "number": account,
             "currencyId": self._client.currency_to_id(currency),
             "name": text,
-            "taxId": self._client.tax_to_id('account', vat_code),
-            "categoryId": self._client.category_to_id('account', group),
+            "taxId": self._client.tax_code_to_id(vat_code, allow_missing=True),
+            "categoryId": self._client.account_category_to_id(group),
         }
         self._client.post("account/create.json", data=payload)
         self._client.invalidate_accounts_cache()
@@ -203,25 +202,22 @@ class CashCtrlLedger(LedgerEngine):
             vat_code (str, optional): The VAT code to be applied to the account, if any.
         """
         payload = {
-            "id": self._client.get_id_from_account(account),
+            "id": self._client.account_to_id(account),
             "number": account,
             "currencyId": self._client.currency_to_id(currency),
             "name": text,
-            "taxId": self._client.tax_to_id('account', vat_code),
-            "categoryId": self._client.category_to_id('account', group),
+            "taxId": self._client.tax_code_to_id(vat_code, allow_missing=True),
+            "categoryId": self._client.account_category_to_id(group),
         }
         self._client.post("account/update.json", data=payload)
+        self._client.invalidate_accounts_cache()
 
     def delete_account(self, account: str, allow_missing: bool = False):
         """Deletes an account from the remote CashCtrl instance."""
-        # should throw error or return empty?
-        to_delete = self._client.get_id_from_account()
-
-        if len(to_delete) > 0:
-            delete_ids = ",".join(to_delete.astype(str))
-            self._client.post('account/delete.json', {'ids': delete_ids})
-        elif not allow_missing:
-            raise ValueError(f"There is no Account '{account}'.")
+        delete_id = self._client.account_to_id(account, allow_missing=allow_missing)
+        if delete_id:
+            self._client.post('account/delete.json', {'ids': delete_id})
+            self._client.invalidate_accounts_cache()
 
     def add_price():
         """
@@ -244,18 +240,15 @@ class CashCtrlLedger(LedgerEngine):
                             (True, default) or 'GROSS' (False).
             text (str): Additional text or description associated with the VAT code.
         """
-        accounts = self._client.list_accounts()
-        account_map = accounts.set_index('number')['id'].to_dict()
-        if account not in account_map:
-            raise ValueError(f"Account '{account}' does not exist.")
         payload = {
             "name": code,
             "percentage": rate*100,
-            "accountId": account_map[account],
+            "accountId": self._client.account_to_id(account),
             "calcType": "NET" if inclusive else "GROSS",
             "documentName": text,
         }
         self._client.post("tax/create.json", data=payload)
+        self._client.invalidate_tax_rates_cache()
 
     def update_vat_code(
         self, code: str, rate: float, account: str,
@@ -272,30 +265,17 @@ class CashCtrlLedger(LedgerEngine):
                             (True, default) or 'GROSS' (False).
             text (str): Additional text or description associated with the VAT code.
         """
-        # Find remote account id
-        accounts = self._client.list_accounts()
-        account_map = accounts.set_index('number')['id'].to_dict()
-        if account not in account_map:
-            raise ValueError(f"Account '{account}' does not exist.")
-
-        # Find remote tax id
-        remote_vats = self._client.list_tax_rates()
-        remote_vat = remote_vats.loc[remote_vats['name'] == code]
-        if len(remote_vat) < 1:
-            raise ValueError(f"There is no VAT code '{code}'.")
-        elif len(remote_vat) > 1:
-            raise ValueError(f"VAT code '{code}' is duplicated.")
-
         # Update remote tax record
         payload = {
-            "id": remote_vat['id'].item(),
+            "id": self._client.tax_code_to_id(code),
             "percentage": rate*100,
-            "accountId": account_map[account],
+            "accountId": self._client.account_to_id(account),
             "calcType": "NET" if inclusive else "GROSS",
             "name": code,
             "documentName": text,
         }
         self._client.post("tax/update.json", data=payload)
+        self._client.invalidate_tax_rates_cache()
 
     def mirror_ledger(self, target: pd.DataFrame, delete: bool = True):
         # Nest to create one row per transaction, add unique string identifier
@@ -338,8 +318,6 @@ class CashCtrlLedger(LedgerEngine):
             pd.DataFrame: A DataFrame with LedgerEngine.ledger() column schema.
         """
         ledger = self._client.list_journal_entries()
-        accounts = self._client.list_accounts()
-        account_map = accounts.set_index('id')['number'].to_dict()
 
         # Individual ledger entries represent a single transaction and
         # map to a single row in the resulting data frame.
@@ -347,8 +325,8 @@ class CashCtrlLedger(LedgerEngine):
         result = pd.DataFrame({
             'id': individual['id'],
             'date': individual['dateAdded'].dt.date,
-            'account': [account_map[account] for account in individual['creditId']],
-            'counter_account': [account_map[account] for account in individual['debitId']],
+            'account': [self._client.account_from_id(id) for id in individual['creditId']],
+            'counter_account': [self._client.account_from_id(id) for id in individual['debitId']],
             'amount': individual['amount'],
             'currency': individual['currencyCode'],
             'text': individual['title'],
@@ -374,7 +352,7 @@ class CashCtrlLedger(LedgerEngine):
                 'id': collective['id'],
                 'date': collective['date'],
                 'currency': collective['currency'],
-                'account': [account_map[account] for account in collective['accountId']],
+                'account': [self._client.account_from_id(id) for id in collective['accountId']],
                 'text': collective['description'],
                 'amount': collective['credit'] - collective['debit'],
                 'vat_code': collective['taxName'],
@@ -391,23 +369,17 @@ class CashCtrlLedger(LedgerEngine):
             entry (pd.DataFrame): DataFrame with the ledger schema
         """
         entry = StandaloneLedger.standardize_ledger(entry)
-        accounts = self._client.list_accounts()
-        account_map = accounts.set_index('number')['id'].to_dict()
-        currencies = pd.DataFrame(self._client.get("currency/list.json")['data'])
-        currency_map = currencies.set_index('text')['id'].to_dict()
-        tax_data = self._client.list_tax_rates()
-        tax_map = tax_data.set_index('text')['id'].to_dict()
 
         # Individual ledger entry
         if len(entry) == 1:
             payload = {
                 'dateAdded': entry['date'].iat[0],
                 'amount': entry['amount'].iat[0],
-                'creditId': account_map[entry['account'].iat[0]],
-                'debitId': account_map[entry['counter_account'].iat[0]],
-                'currencyId': None if pd.isna(entry['currency'].iat[0]) else currency_map[entry['currency'].iat[0]],
+                'creditId': self._client.account_to_id(entry['account'].iat[0]),
+                'debitId': self._client.account_to_id(entry['counter_account'].iat[0]),
+                'currencyId': None if pd.isna(entry['currency'].iat[0]) else self._client.currency_to_id(entry['currency'].iat[0]),
                 'title': entry['text'].iat[0],
-                'taxId': None if pd.isna(entry['vat_code'].iat[0]) else tax_map[entry['vat_code'].iat[0]],
+                'taxId': None if pd.isna(entry['vat_code'].iat[0]) else self._client.tax_code_to_id(entry['vat_code'].iat[0]),
             }
 
         # Collective ledger entry
@@ -418,13 +390,13 @@ class CashCtrlLedger(LedgerEngine):
                 raise ValueError('Date should be the same in a collective booking.')
             payload = {
                 'dateAdded': entry['date'].iat[0].strftime("%Y-%m-%d"),
-                'currencyId': None if pd.isna(entry['currency'].iat[0]) else currency_map[entry['currency'].iat[0]],
+                'currencyId': None if pd.isna(entry['currency'].iat[0]) else self._client.currency_to_id(entry['currency'].iat[0]),
                 'items': [{
                         'dateAdded': entry['date'].iat[0].strftime("%Y-%m-%d"),
-                        'accountId': account_map[row['account']],
+                        'accountId': self._client.account_to_id(row['account']),
                         'debit': max(-row['amount'], 0),
                         'credit': max(row['amount'], 0),
-                        'taxId': None if pd.isna(row['vat_code']) else tax_map[row['vat_code']],
+                        'taxId': None if pd.isna(row['vat_code']) else self._client.tax_code_to_id(row['vat_code']),
                         'description': row['text']
                     } for _, row in entry.iterrows()
                 ]
@@ -433,6 +405,7 @@ class CashCtrlLedger(LedgerEngine):
             raise ValueError('The ledger entry contains no transaction.')
 
         self._client.post("journal/create.json", data=payload)
+        self._client.invalidate_journal_entries_cache()
 
     def update_ledger_entry(self, entry: pd.DataFrame):
         """
@@ -442,12 +415,6 @@ class CashCtrlLedger(LedgerEngine):
             entry (pd.DataFrame): DataFrame with the ledger schema
         """
         entry = StandaloneLedger.standardize_ledger(entry)
-        accounts = self._client.list_accounts()
-        account_map = accounts.set_index('number')['id'].to_dict()
-        currencies = pd.DataFrame(self._client.get("currency/list.json")['data'])
-        currency_map = currencies.set_index('text')['id'].to_dict()
-        tax_data = self._client.list_tax_rates()
-        tax_map = tax_data.set_index('text')['id'].to_dict()
 
         # Individual ledger entry
         if len(entry) == 1:
@@ -455,11 +422,11 @@ class CashCtrlLedger(LedgerEngine):
                 'id': entry['id'].iat[0],
                 'dateAdded': entry['date'].iat[0],
                 'amount': entry['amount'].iat[0],
-                'creditId': account_map[entry['account'].iat[0]],
-                'debitId': account_map[entry['counter_account'].iat[0]],
-                'currencyId': None if pd.isna(entry['currency'].iat[0]) else currency_map[entry['currency'].iat[0]],
+                'creditId': self._client.account_to_id(entry['account'].iat[0]),
+                'debitId': self._client.account_to_id(entry['counter_account'].iat[0]),
+                'currencyId': None if pd.isna(entry['currency'].iat[0]) else self._client.currency_to_id(entry['currency'].iat[0]),
                 'title': entry['text'].iat[0],
-                'taxId': None if pd.isna(entry['vat_code'].iat[0]) else tax_map[entry['vat_code'].iat[0]],
+                'taxId': None if pd.isna(entry['vat_code'].iat[0]) else self._client.tax_code_to_id(entry['vat_code'].iat[0]),
             }
 
         # Collective ledger entry
@@ -473,13 +440,13 @@ class CashCtrlLedger(LedgerEngine):
             payload = {
                 'id': entry['id'].iat[0],
                 'dateAdded': entry['date'].iat[0].strftime("%Y-%m-%d"),
-                'currencyId': None if pd.isna(entry['currency'].iat[0]) else  currency_map[entry['currency'].iat[0]],
+                'currencyId': None if pd.isna(entry['currency'].iat[0]) else self._client.currency_to_id(entry['currency'].iat[0]),
                 'items': [{
                         'dateAdded': entry['date'].iat[0].strftime("%Y-%m-%d"),
-                        'accountId': account_map[row['account']],
+                        'accountId': self._client.account_to_id(row['account']),
                         'credit': max(row['amount'], 0),
                         'debit': max(-row['amount'], 0),
-                        'taxId': None if pd.isna(row['vat_code']) else tax_map[row['vat_code']],
+                        'taxId': None if pd.isna(row['vat_code']) else self._client.tax_code_to_id(row['vat_code']),
                         'description': row['text']
                     } for _, row in entry.iterrows()
                 ]
@@ -488,11 +455,13 @@ class CashCtrlLedger(LedgerEngine):
             raise ValueError('The ledger entry contains no transaction.')
 
         self._client.post("journal/update.json", data=payload)
+        self._client.invalidate_journal_entries_cache()
 
     def delete_ledger_entry(self, ids: Union[str, List[str]]):
         if isinstance(ids, list):
             ids = ",".join(ids)
         self._client.post("journal/delete.json", {'ids': ids})
+        self._client.invalidate_journal_entries_cache()
 
     def base_currency():
         """
@@ -515,14 +484,10 @@ class CashCtrlLedger(LedgerEngine):
             allow_missing (bool): If True, no error is raised if the VAT
                 code is not found; if False, raises ValueError.
         """
-        tax_rates = self._client.list_tax_rates()
-        to_delete = tax_rates.loc[tax_rates['name'] == code, 'id']
-
-        if len(to_delete) > 0:
-            delete_ids = ",".join(to_delete.astype(str))
-            self._client.post('tax/delete.json', {'ids': delete_ids})
-        elif not allow_missing:
-            raise ValueError(f"There is no VAT code '{code}'.")
+        delete_id = self._client.tax_code_to_id(code, allow_missing=allow_missing)
+        if delete_id:
+            self._client.post('tax/delete.json', {'ids': delete_id})
+            self._client.invalidate_tax_rates_cache()
 
     def ledger_entry():
         """

@@ -195,19 +195,19 @@ def test_add_ledger_with_non_existent_vat():
     # Adding a ledger with non existent VAT code should raise an error
     entry = individual_transaction.copy()
     entry['vat_code'].iat[0] = 'Test_Non_Existent_VAT_code'
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match='No id found for tax code'):
         cashctrl_ledger.add_ledger_entry(entry=entry)
 
     # Adding a ledger with non existent account code should raise an error
     entry = individual_transaction.copy()
     entry['account'].iat[0] = 33333
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match='No id found for account'):
         cashctrl_ledger.add_ledger_entry(entry=entry)
 
     # Adding a ledger with non existent currency code should raise an error
     entry = individual_transaction.copy()
     entry['currency'].iat[0] = 'Non_Existent_Currency'
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match='No id found for currency'):
         cashctrl_ledger.add_ledger_entry(entry=entry)
 
 # Tests for updating logic edge cases
@@ -224,21 +224,21 @@ def test_update_ledger_with_edge_cases(add_vat_code):
     new_entry = individual_transaction.copy()
     new_entry['id'] = created['id'].iat[0]
     new_entry['vat_code'].iat[0] = 'Test_Non_Existent_VAT_code'
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match='No id found for tax code'):
         cashctrl_ledger.update_ledger_entry(entry=new_entry)
 
     # Updating a ledger with non existent account code should raise an error
     new_entry = individual_transaction.copy()
     new_entry['id'] = created['id'].iat[0]
     new_entry['account'].iat[0] = 333333
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match='No id found for account'):
         cashctrl_ledger.update_ledger_entry(entry=new_entry)
 
     # Updating a ledger with non existent currency code should raise an error
     new_entry = individual_transaction.copy()
     new_entry['id'] = created['id'].iat[0]
     new_entry['currency'].iat[0] = 'CURRENCY'
-    with pytest.raises(KeyError):
+    with pytest.raises(ValueError, match='No id found for currency'):
         cashctrl_ledger.update_ledger_entry(entry=new_entry)
 
     # Delete the ledger entry created above
