@@ -140,7 +140,7 @@ class CashCtrlLedger(LedgerEngine):
         def account_groups(df: pd.DataFrame) -> Dict[str, str]:
             df['nodes'] = [pd.DataFrame({'items': get_nodes_list(path)}) for path in df['group']]
             df = unnest(df, key='nodes')
-            return df.groupby('items')['account'].agg(min).to_dict()
+            return df.groupby('items')['account'].agg('min').to_dict()
         self._client.update_categories(resource='account', target=account_groups(target), delete=delete)
 
         for row in to_add.to_dict('records'):
