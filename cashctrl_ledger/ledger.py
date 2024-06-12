@@ -136,7 +136,7 @@ class CashCtrlLedger(LedgerEngine):
         # Update account categories
         def get_nodes_list(path: str) -> List[str]:
             parts = path.strip('/').split('/')
-            return ['/' + '/'.join(parts[:i]) for i in range(1, len(parts) + 1)]
+            return ['/' + '/'.join(parts[:i]) for i in range(1, len(parts) + 1)][1:]
         def account_groups(df: pd.DataFrame) -> Dict[str, str]:
             df['nodes'] = [pd.DataFrame({'items': get_nodes_list(path)}) for path in df['group']]
             df = unnest(df, key='nodes')
