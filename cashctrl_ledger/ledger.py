@@ -4,7 +4,7 @@ Module to sync ledger system onto CashCtrl.
 
 from datetime import datetime
 import pandas as pd
-from typing import Union, List
+from typing import Dict, Union, List
 from cashctrl_api import CashCtrlClient, enforce_dtypes
 from pyledger import LedgerEngine, StandaloneLedger
 from .constants import JOURNAL_ITEM_COLUMNS
@@ -133,6 +133,18 @@ class CashCtrlLedger(LedgerEngine):
         accounts = set(target_df['account']).difference(set(current_state['account']))
         to_add = target_df.loc[target_df['account'].isin(accounts)]
 
+        # Update account categories
+        def get_nodes_list(path: str) -> List[str]:
+            parts = path.strip('/').split('/')
+            paths = ['/' + '/'.join(parts[:i]) for i in range(1, len(parts) + 1)]
+            # Ignore root nodes, as account category root nodes are immutable in CashCtrl
+            return paths[1:]
+        def account_groups(df: pd.DataFrame) -> Dict[str, str]:
+            df['nodes'] = [pd.DataFrame({'items': get_nodes_list(path)}) for path in df['group']]
+            df = unnest(df, key='nodes')
+            return df.groupby('items')['account'].agg('min').to_dict()
+        self._client.update_categories(resource='account', target=account_groups(target), delete=delete)
+
         for row in to_add.to_dict('records'):
             self.add_account(
                 account=row['account'],
@@ -197,7 +209,6 @@ class CashCtrlLedger(LedgerEngine):
             "taxId": tax_id,
             "categoryId": category_id,
         }
-
         self._client.post("account/create.json", data=payload)
 
     def update_account(self, account: str, currency: str, text: str, group: str, vat_code: str | None = None):
