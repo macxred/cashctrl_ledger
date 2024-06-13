@@ -3,7 +3,7 @@ Module to sync ledger system onto CashCtrl.
 """
 
 import pandas as pd
-from typing import Union, List
+from typing import Dict, Union, List
 from cashctrl_api import CachedCashCtrlClient, enforce_dtypes
 from pyledger import LedgerEngine, StandaloneLedger
 from .constants import JOURNAL_ITEM_COLUMNS
@@ -405,7 +405,7 @@ class CashCtrlLedger(LedgerEngine):
             raise ValueError('The ledger entry contains no transaction.')
 
         self._client.post("journal/create.json", data=payload)
-        self._client.invalidate_journal_entries_cache()
+        self._client.invalidate_journal_cache()
 
     def update_ledger_entry(self, entry: pd.DataFrame):
         """
@@ -455,13 +455,13 @@ class CashCtrlLedger(LedgerEngine):
             raise ValueError('The ledger entry contains no transaction.')
 
         self._client.post("journal/update.json", data=payload)
-        self._client.invalidate_journal_entries_cache()
+        self._client.invalidate_journal_cache()
 
     def delete_ledger_entry(self, ids: Union[str, List[str]]):
         if isinstance(ids, list):
             ids = ",".join(ids)
         self._client.post("journal/delete.json", {'ids': ids})
-        self._client.invalidate_journal_entries_cache()
+        self._client.invalidate_journal_cache()
 
     def base_currency():
         """
