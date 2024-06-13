@@ -173,7 +173,6 @@ def test_add_account_with_invalid_group_raise_error():
             text='test account', vat_code='MwSt. 2.6%', group='/Assets/Anlagevermögen/ABC'
         )
 
-
 # Test updating a non existing account should raise an error.
 def test_update_non_existing_account_raise_error():
     cashctrl_ledger = CashCtrlLedger()
@@ -216,7 +215,7 @@ def test_mirror_accounts(add_and_delete_vat_code):
         "currency": ["CHF"],
         "text": ["2test_account_api_added"],
         "vat_code": ["TestCodeAccounts"],
-        "group": ["/Assets/Anlagevermögen"],
+        "group": ["/Assets/Anlagevermögen/xyz"],
     })
     target_df = pd.concat([account, initial_accounts])
 
