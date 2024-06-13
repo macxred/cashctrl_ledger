@@ -6,7 +6,6 @@ import pytest
 import requests
 import pandas as pd
 from cashctrl_ledger import CashCtrlLedger
-from pyledger import StandaloneLedger
 
 # Fixture that creates VAT code with expected code on the start
 # of the test and deletes that VAT code at the end of test
@@ -143,11 +142,11 @@ def test_delete_non_existing_account_raise_error():
         cashctrl_ledger.delete_account(1141)
 
 # Test adding an already existing account should raise an error.
-def test_add_pre_existing_account_raise_error():
+def test_add_pre_existing_account_raise_error(add_and_delete_vat_code):
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(requests.exceptions.RequestException):
         cashctrl_ledger.add_account(account=1200, currency='EUR',
-            text='test account', vat_code=None, group='/Assets/Anlagevermögen'
+            text='test account', vat_code='TestCodeAccounts', group='/Assets/Anlagevermögen'
         )
 
 # Test adding an account with invalid currency should raise an error.
@@ -173,7 +172,6 @@ def test_add_account_with_invalid_group_raise_error():
         cashctrl_ledger.add_account(account=999999, currency='USD',
             text='test account', vat_code='MwSt. 2.6%', group='/Assets/Anlagevermögen/ABC'
         )
-
 
 # Test updating a non existing account should raise an error.
 def test_update_non_existing_account_raise_error():
