@@ -31,6 +31,7 @@ individual_transaction = pd.DataFrame({
     'currency': ['USD'],
     'text': ['pytest added ledger112'],
     'vat_code': ['Test_VAT_code'],
+    'document': ['document.pdf'],
 })
 collective_transaction = pd.DataFrame({
     'id': ['2', '2'],
@@ -39,7 +40,8 @@ collective_transaction = pd.DataFrame({
     'amount': [-100, 100],
     'currency': ['USD', 'USD'],
     'text': ['pytest added ledger111', 'pytest added ledger222'],
-    'vat_code': ['Test_VAT_code', 'Test_VAT_code']
+    'vat_code': ['Test_VAT_code', 'Test_VAT_code'],
+    'document': ['document-col.pdf', 'document-col.pdf'],
 })
 alt_collective_transaction = pd.DataFrame({
     'id': ['3', '3'],
@@ -48,7 +50,8 @@ alt_collective_transaction = pd.DataFrame({
     'amount': [-200, 200],
     'currency': ['USD', 'USD'],
     'text': ['pytest added alt ledger 1', 'pytest added alt ledger 2'],
-    'vat_code': ['Test_VAT_code', 'Test_VAT_code']
+    'vat_code': ['Test_VAT_code', 'Test_VAT_code'],
+    'document': ['document-col-alt.pdf', 'document-col-alt.pdf'],
 })
 alt_individual_transaction = pd.DataFrame({
     'id': ['4'],
@@ -59,6 +62,7 @@ alt_individual_transaction = pd.DataFrame({
     'currency': ['USD'],
     'text': ['pytest added alt single ledger'],
     'vat_code': ['Test_VAT_code'],
+    'document': ['document-alt.pdf'],
 })
 
 def txn_to_str(df: pd.DataFrame) -> List[str]:
@@ -114,7 +118,7 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     new_entry['vat_code'] = None
     cashctrl_ledger.update_ledger_entry(entry=new_entry)
 
-    # Test replace with an individual ledger entry
+    # Test replace with an collective ledger entry
     initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
     new_entry = collective_transaction.copy()
     new_entry['id'] = created['id'].iat[0]
