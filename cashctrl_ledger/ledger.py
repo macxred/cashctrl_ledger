@@ -3,7 +3,8 @@ Module to sync ledger system onto CashCtrl.
 """
 
 import pandas as pd
-from typing import Dict, Union, List
+import numpy as np
+from typing import Dict, Tuple, Union, List
 from cashctrl_api import CachedCashCtrlClient, enforce_dtypes
 from pyledger import LedgerEngine, StandaloneLedger
 from .constants import JOURNAL_ITEM_COLUMNS
@@ -355,6 +356,9 @@ class CashCtrlLedger(LedgerEngine):
             'currency': individual['currencyCode'],
             'text': individual['title'],
             'vat_code': individual['taxName'],
+            # TODO: Once precision() is implemented, use `round_to_precision()`
+            # instead of hard-coded rounding
+            'base_currency_amount': round(individual['amount'] * individual['currencyRate'], 2),
             'document': individual['reference'],
         })
 
@@ -362,6 +366,8 @@ class CashCtrlLedger(LedgerEngine):
         # map to multiple rows in the resulting data frame with same id.
         collective_ids = ledger.loc[ledger['type'] == 'COLLECTIVE', 'id']
         if len(collective_ids) > 0:
+
+            # Fetch individual legs (line 'items') of collective transaction
             def fetch_journal(id: int) -> pd.DataFrame:
                 res = self._client.get("journal/read.json", params={'id': id})['data']
                 return pd.DataFrame({
@@ -371,22 +377,109 @@ class CashCtrlLedger(LedgerEngine):
                     'currency': [res['currencyCode']],
                     'rate': [res['currencyRate']],
                     'items': [enforce_dtypes(pd.DataFrame(res['items']), JOURNAL_ITEM_COLUMNS)],
+                    'fx_rate': [res['currencyRate']],
                 })
             dfs = pd.concat([fetch_journal(id) for id in collective_ids])
             collective = unnest(dfs, 'items')
+
+            # Find currency
+            cols = {'id': 'accountId', 'currencyCode': 'account_currency', 'number': 'account'}
+            account_map = self._client.list_accounts()[cols.keys()].rename(columns=cols)
+            collective = pd.merge(collective, account_map, 'left', on='accountId', validate='m:1')
+            base_currency = self.base_currency()
+            account_in_base_currency = collective['account_currency'] == base_currency
+            amount = collective['credit'].fillna(0) - collective['debit'].fillna(0)
+            base_currency_amount = amount * collective['fx_rate']
+            foreign_amount = np.where(account_in_base_currency, base_currency_amount, amount)
             mapped_collective = pd.DataFrame({
                 'id': collective['id'],
                 'date': collective['date'],
-                'currency': collective['currency'],
-                'account': [self._client.account_from_id(id) for id in collective['accountId']],
+                'currency': np.where(account_in_base_currency, base_currency, collective['currency']),
+                'account': collective['account'],
                 'text': collective['description'],
-                'amount': collective['credit'] - collective['debit'],
+                # TODO: Once precision() is implemented, use `round_to_precision()`
+                # instead of hard-coded rounding
+                'amount': pd.Series(foreign_amount).round(2),
+                'base_currency_amount': base_currency_amount.round(2),
                 'vat_code': collective['taxName'],
                 'document': collective['document'],
             })
             result = pd.concat([result, mapped_collective])
 
         return StandaloneLedger.standardize_ledger(result)
+
+    def _collective_transaction_currency_and_rate(self, entry: pd.DataFrame) -> Tuple[str, float]:
+        """
+        Extract a single currency and exchange rate from a collective transaction in pyledger
+        format:
+
+        - If all entries are in the base currency, return the base currency and an exchange rate of 1.0.
+        - If more than one non-base currencies are present, raise a ValueError.
+        - Otherwise, return the unique non-base currency and an exchange rate that converts all
+        given non-base-currency amounts within the rounding precision to the base currency amounts.
+        Raise a ValueError if no such exchange rate exists.
+
+        In CashCtrl, collective transactions can be denominated in the accounting system's base
+        currency and at most one additional foreign currency. This additional currency, if any,
+        and a unique exchange rate to the base currency are recorded with the transaction.
+        If all individual entries are denominated in the base currency, the base currency is
+        set as transaction currency.
+
+        Individual entries can be linked to accounts denominated in the transaction's currency
+        or the base currency. If in the base currency, the entry's amount is multiplied by the
+        transaction's exchange rate when recorded in the account.
+
+        This differs from pyledger, where each leg of a transaction specifies both foreign and
+        base currency amounts. The present method facilitates mapping from CashCtrl to pyledger
+        format.
+
+        Parameters:
+        - entry (pd.DataFrame): The DataFrame representing individual entries of a collective
+            transaction with columns 'currency', 'amount', and 'base_currency_amount'.
+
+        Returns:
+        - Tuple[str, float]: The single currency and the corresponding exchange rate.
+
+        Raises:
+        - ValueError: If more than one non-base currency is present or if no
+            coherent exchange rate is found.
+        """
+        # Check if all entries are denominated in base currency
+        base_currency = self.base_currency()
+        if all(entry['currency'].isna() | (entry['currency'] == base_currency)):
+            return base_currency, 1.0
+
+        # Extract the sole non-base currency
+        fx_entries = entry.loc[entry['currency'].notna() & (entry['currency'] != base_currency)]
+        if fx_entries['currency'].nunique() != 1:
+            raise ValueError("CashCtrl allows only the base currency plus a "
+                             "single foreign currency in a collective booking.")
+        currency = fx_entries['currency'].iat[0]
+
+        # Define precision parameters for exchange rate calculation
+        # TODO: Derive `precision` from self.precision(base_currency) once this method is implemented.
+        precision = 0.01
+        fx_rate_precision = 1e-8  # Precision for exchange rates in CashCtrl
+
+        # Calculate the range of acceptable exchange rates
+        base_amount = fx_entries['base_currency_amount']
+        tolerance = (fx_entries['amount'] * fx_rate_precision).clip(lower=precision / 2)
+        lower_bound = base_amount - tolerance * np.where(base_amount < 0, -1, 1)
+        upper_bound = base_amount + tolerance * np.where(base_amount < 0, -1, 1)
+        min_fx_rate = (lower_bound / fx_entries['amount']).max() + fx_rate_precision
+        max_fx_rate = (upper_bound / fx_entries['amount']).min() - fx_rate_precision
+        if min_fx_rate > max_fx_rate:
+            raise ValueError("Incoherent FX rates in collective booking.")
+
+        # Select the exchange rate within the acceptable range closest to the preferred rate
+        # derived from the largest absolute amount
+        max_abs_amount = fx_entries['amount'].abs().max()
+        is_max_abs = fx_entries['amount'].abs() == max_abs_amount
+        fx_rates = fx_entries['base_currency_amount'] / fx_entries['amount']
+        preferred_rate = fx_rates.loc[is_max_abs].median()
+        fx_rate = min(max(preferred_rate, min_fx_rate), max_fx_rate)
+
+        return currency, fx_rate
 
     def _map_ledger_entry(self, entry: pd.DataFrame) -> dict:
         """
@@ -410,33 +503,51 @@ class CashCtrlLedger(LedgerEngine):
                 'currencyId': None if pd.isna(entry['currency'].iat[0]) else self._client.currency_to_id(entry['currency'].iat[0]),
                 'title': entry['text'].iat[0],
                 'taxId': None if pd.isna(entry['vat_code'].iat[0]) else self._client.tax_code_to_id(entry['vat_code'].iat[0]),
+                'currencyRate': entry['base_currency_amount'].iat[0] / entry['amount'].iat[0],
                 'reference': None if pd.isna(entry['document'].iat[0]) else entry['document'].iat[0],
             }
 
         # Collective ledger entry
         elif len(entry) > 1:
-            if entry['currency'].nunique() != 1:
-                raise ValueError('CashCtrl only allows for a single currency in a collective booking.')
-            if entry['date'].nunique() != 1:
-                raise ValueError('Date should be the same in a collective booking.')
+            # Individual transaction entries (line items)
+            items = []
+            base_currency = self.base_currency()
+            currency, fx_rate = self._collective_transaction_currency_and_rate(entry)
+            for _, row in entry.iterrows():
+                if row['currency'] == currency:
+                    amount = row['amount']
+                elif row['currency'] == base_currency:
+                    amount = row['amount'] / fx_rate
+                else:
+                    raise ValueError("Currencies oder than base or transaction currency "
+                                     "are not allowed in CashCtrl collective transactions.")
+                items.append({
+                    'accountId': self._client.account_to_id(row['account']),
+                    'debit': -amount if amount < 0 else None,
+                    'credit': amount if amount > 0 else None,
+                    'taxId': None if pd.isna(row['vat_code']) else self._client.tax_code_to_id(row['vat_code']),
+                    'description': row['text'],
+                })
+
+            # Transaction-level attributes
+            date = entry['date'].dropna().unique()
+            document = entry['document'].dropna().unique()
+            if len(date) == 0:
+                raise ValueError("Date is not specified in collective booking.")
+            elif len(date) > 1:
+                raise ValueError("Date needs to be unique in a collective booking.")
+            if len(document) > 1:
+                raise ValueError("CashCtrl allows only one reference in a collective booking.")
             payload = {
-                'dateAdded': entry['date'].iat[0].strftime("%Y-%m-%d"),
-                'currencyId': None if pd.isna(entry['currency'].iat[0]) else self._client.currency_to_id(entry['currency'].iat[0]),
-                'reference': None if pd.isna(entry['document'].iat[0]) else entry['document'].iat[0],
-                'items': [{
-                        'dateAdded': entry['date'].iat[0].strftime("%Y-%m-%d"),
-                        'accountId': self._client.account_to_id(row['account']),
-                        'debit': max(-row['amount'], 0),
-                        'credit': max(row['amount'], 0),
-                        'taxId': None if pd.isna(row['vat_code']) else self._client.tax_code_to_id(row['vat_code']),
-                        'description': row['text'],
-                    } for _, row in entry.iterrows()
-                ]
+                'dateAdded': date[0].strftime("%Y-%m-%d"),
+                'currencyId': self._client.currency_to_id(currency),
+                'reference': document[0] if len(document) == 1 else None,
+                'currencyRate': fx_rate,
+                'items': items,
             }
         else:
             raise ValueError('The ledger entry contains no transaction.')
         return payload
-
 
     def add_ledger_entry(self, entry: pd.DataFrame) -> int:
         """
@@ -473,11 +584,15 @@ class CashCtrlLedger(LedgerEngine):
         self._client.post("journal/delete.json", {'ids': ids})
         self._client.invalidate_journal_cache()
 
-    def base_currency():
-        """
-        Not implemented yet
-        """
-        raise NotImplementedError
+    def base_currency(self):
+        currencies = self._client.list_currencies()
+        is_base_currency = currencies['isDefault'].astype('bool')
+        if is_base_currency.sum() == 1:
+            return currencies.loc[is_base_currency, 'code'].item()
+        elif is_base_currency.sum() == 0:
+            raise ValueError("No base currency set.")
+        else:
+            raise ValueError("Multiple base currencies defined.")
 
     def delete_price():
         """

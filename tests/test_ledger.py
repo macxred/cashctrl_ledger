@@ -28,14 +28,14 @@ VAT_CSV = """
 """
 
 LEDGER_CSV = """
-    id,    date, account, counter_account, currency, amount,      vat_code, text,                             document
-    1, 2024-05-24, 10023,           19993,      CHF,    100, Test_VAT_code, pytest single transaction 1,      /file1.txt
-    2, 2024-05-24, 10022,                ,      USD,   -100, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
-    2, 2024-05-24, 10022,                ,      USD,      1, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
-    2, 2024-05-24, 10022,                ,      USD,     99, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
-    3, 2024-04-24, 10021,                ,      EUR,   -200, Test_VAT_code, pytest collective txn 2 - line 1, /document-col-alt.pdf
-    3, 2024-04-24, 10021,                ,      EUR,    200, Test_VAT_code, pytest collective txn 2 - line 2, /document-col-alt.pdf
-    4, 2024-05-24, 10022,           19992,      USD,    300, Test_VAT_code, pytest single transaction 2,      /document-alt.pdf
+    id,    date, account, counter_account, currency, amount, base_currency_amount,      vat_code, text,                             document
+    1, 2024-05-24, 10023,           19993,      CHF,    100,               100.00, Test_VAT_code, pytest single transaction 1,      /file1.txt
+    2, 2024-05-24, 10022,                ,      USD,   -100,               -88.88, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
+    2, 2024-05-24, 10022,                ,      USD,      1,                 0.89, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
+    2, 2024-05-24, 10022,                ,      USD,     99,                87.99, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
+    3, 2024-04-24, 10021,                ,      EUR,   -200,              -175.55, Test_VAT_code, pytest collective txn 2 - line 1, /document-col-alt.pdf
+    3, 2024-04-24, 10021,                ,      EUR,    200,               175.55, Test_VAT_code, pytest collective txn 2 - line 2, /document-col-alt.pdf
+    4, 2024-05-24, 10022,           19992,      USD,    300,               450.45, Test_VAT_code, pytest single transaction 2,      /document-alt.pdf
 """
 
 LEDGER_ENTRIES = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
