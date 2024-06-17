@@ -310,6 +310,27 @@ class CashCtrlLedger(LedgerEngine):
                 for _ in range(n):
                     self.add_ledger_entry(txn)
 
+    def _get_ledger_attachments(self) -> Dict[str, List[str]]:
+        """
+        Finds real attachments for the ledger entries and places them in the 'attachments columns'
+
+        Returns:
+            pd.DataFrame: A DataFrame with LedgerEngine.ledger() column schema.
+        """
+        ledger = self._client.list_journal_entries()
+        ledger_attached = ledger[ledger['attachmentCount'] > 0]
+        attachment_paths = {}
+
+        for _, row in ledger_attached.iterrows():
+            res = self._client.get("journal/read.json", params={'id': row['id']})['data']
+            paths = []
+            for attachment in res['attachments']:
+                paths.append(self._client.file_id_to_path(attachment['fileId']))
+            if len(paths):
+                attachment_paths[row['id']] = paths
+
+        return attachment_paths
+
     def ledger(self) -> pd.DataFrame:
         """
         Retrieves ledger entries from the remote CashCtrl account and converts
