@@ -331,6 +331,7 @@ class CashCtrlLedger(LedgerEngine):
             'currency': individual['currencyCode'],
             'text': individual['title'],
             'vat_code': individual['taxName'],
+            'document': individual['reference'],
         })
 
         # Collective ledger entries represent a group of transactions and
@@ -341,6 +342,7 @@ class CashCtrlLedger(LedgerEngine):
                 res = self._client.get("journal/read.json", params={'id': id})['data']
                 return pd.DataFrame({
                     'id': [res['id']],
+                    'document': res['reference'],
                     'date': [pd.to_datetime(res['dateAdded']).date()],
                     'currency': [res['currencyCode']],
                     'rate': [res['currencyRate']],
@@ -356,6 +358,7 @@ class CashCtrlLedger(LedgerEngine):
                 'text': collective['description'],
                 'amount': collective['credit'] - collective['debit'],
                 'vat_code': collective['taxName'],
+                'document': collective['document'],
             })
             result = pd.concat([result, mapped_collective])
 
@@ -380,6 +383,7 @@ class CashCtrlLedger(LedgerEngine):
                 'currencyId': None if pd.isna(entry['currency'].iat[0]) else self._client.currency_to_id(entry['currency'].iat[0]),
                 'title': entry['text'].iat[0],
                 'taxId': None if pd.isna(entry['vat_code'].iat[0]) else self._client.tax_code_to_id(entry['vat_code'].iat[0]),
+                'reference': None if pd.isna(entry['document'].iat[0]) else entry['document'].iat[0],
             }
 
         # Collective ledger entry
@@ -391,13 +395,14 @@ class CashCtrlLedger(LedgerEngine):
             payload = {
                 'dateAdded': entry['date'].iat[0].strftime("%Y-%m-%d"),
                 'currencyId': None if pd.isna(entry['currency'].iat[0]) else self._client.currency_to_id(entry['currency'].iat[0]),
+                'reference': None if pd.isna(entry['document'].iat[0]) else entry['document'].iat[0],
                 'items': [{
                         'dateAdded': entry['date'].iat[0].strftime("%Y-%m-%d"),
                         'accountId': self._client.account_to_id(row['account']),
                         'debit': max(-row['amount'], 0),
                         'credit': max(row['amount'], 0),
                         'taxId': None if pd.isna(row['vat_code']) else self._client.tax_code_to_id(row['vat_code']),
-                        'description': row['text']
+                        'description': row['text'],
                     } for _, row in entry.iterrows()
                 ]
             }
@@ -427,6 +432,7 @@ class CashCtrlLedger(LedgerEngine):
                 'currencyId': None if pd.isna(entry['currency'].iat[0]) else self._client.currency_to_id(entry['currency'].iat[0]),
                 'title': entry['text'].iat[0],
                 'taxId': None if pd.isna(entry['vat_code'].iat[0]) else self._client.tax_code_to_id(entry['vat_code'].iat[0]),
+                'reference': None if pd.isna(entry['document'].iat[0]) else entry['document'].iat[0],
             }
 
         # Collective ledger entry
@@ -441,13 +447,14 @@ class CashCtrlLedger(LedgerEngine):
                 'id': entry['id'].iat[0],
                 'dateAdded': entry['date'].iat[0].strftime("%Y-%m-%d"),
                 'currencyId': None if pd.isna(entry['currency'].iat[0]) else self._client.currency_to_id(entry['currency'].iat[0]),
+                'reference': None if pd.isna(entry['document'].iat[0]) else entry['document'].iat[0],
                 'items': [{
                         'dateAdded': entry['date'].iat[0].strftime("%Y-%m-%d"),
                         'accountId': self._client.account_to_id(row['account']),
                         'credit': max(row['amount'], 0),
                         'debit': max(-row['amount'], 0),
                         'taxId': None if pd.isna(row['vat_code']) else self._client.tax_code_to_id(row['vat_code']),
-                        'description': row['text']
+                        'description': row['text'],
                     } for _, row in entry.iterrows()
                 ]
             }
