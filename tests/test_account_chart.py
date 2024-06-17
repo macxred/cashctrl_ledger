@@ -211,11 +211,11 @@ def test_mirror_accounts(add_and_delete_vat_code):
     initial_accounts = cashctrl_ledger.account_chart().reset_index()
 
     account = pd.DataFrame({
-        "account": [2],
-        "currency": ["CHF"],
-        "text": ["2test_account_api_added"],
-        "vat_code": ["TestCodeAccounts"],
-        "group": ["/Assets/Anlagevermögen/xyz"],
+        "account": [1, 2],
+        "currency": ["CHF", "EUR"],
+        "text": ["Test Account 1", "Test Account 2"],
+        "vat_code": ["TestCodeAccounts", None],
+        "group": ["/Assets", "/Assets/Anlagevermögen/xyz"],
     })
     target_df = pd.concat([account, initial_accounts])
 
