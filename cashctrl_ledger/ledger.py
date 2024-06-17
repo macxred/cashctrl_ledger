@@ -184,7 +184,7 @@ class CashCtrlLedger(LedgerEngine):
             "number": account,
             "currencyId": self._client.currency_to_id(currency),
             "name": text,
-            "taxId": None if vat_code is None else self._client.tax_code_to_id(vat_code),
+            "taxId": None if pd.isna(vat_code) else self._client.tax_code_to_id(vat_code),
             "categoryId": self._client.account_category_to_id(group),
         }
         self._client.post("account/create.json", data=payload)
@@ -206,7 +206,7 @@ class CashCtrlLedger(LedgerEngine):
             "number": account,
             "currencyId": self._client.currency_to_id(currency),
             "name": text,
-            "taxId": None if vat_code is None else self._client.tax_code_to_id(vat_code),
+            "taxId": None if pd.isna(vat_code) else self._client.tax_code_to_id(vat_code),
             "categoryId": self._client.account_category_to_id(group),
         }
         self._client.post("account/update.json", data=payload)
