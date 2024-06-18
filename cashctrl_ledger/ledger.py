@@ -135,14 +135,15 @@ class CashCtrlLedger(LedgerEngine):
         # Update account categories
         def get_nodes_list(path: str) -> List[str]:
             parts = path.strip('/').split('/')
-            paths = ['/' + '/'.join(parts[:i]) for i in range(1, len(parts) + 1)]
-            # Ignore root nodes, as account category root nodes are immutable in CashCtrl
-            return paths[1:]
+            return ['/' + '/'.join(parts[:i]) for i in range(1, len(parts) + 1)]
         def account_groups(df: pd.DataFrame) -> Dict[str, str]:
             df['nodes'] = [pd.DataFrame({'items': get_nodes_list(path)}) for path in df['group']]
             df = unnest(df, key='nodes')
             return df.groupby('items')['account'].agg('min').to_dict()
-        self._client.update_categories(resource='account', target=account_groups(target), delete=delete)
+        self._client.update_categories(resource='account',
+                                       target=account_groups(target),
+                                       delete=delete,
+                                       ignore_account_root_nodes=True)
 
         for row in to_add.to_dict('records'):
             self.add_account(

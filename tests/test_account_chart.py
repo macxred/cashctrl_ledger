@@ -254,3 +254,43 @@ def test_mirror_accounts(add_and_delete_vat_code):
     assert (m['_merge'] == 'both').all(), (
             'Mirroring error: Some target accounts were not mirrored'
         )
+
+# Tests the mirroring functionality of accounts with root category.
+def test_mirror_accounts_with_root_category(add_and_delete_vat_code):
+    cashctrl_ledger = CashCtrlLedger()
+    initial_accounts = cashctrl_ledger.account_chart().reset_index()
+    expected = initial_accounts[~initial_accounts['group'].str.startswith('/Balance')]
+    initial_categories = cashctrl_ledger._client.list_categories('account', include_system=True)
+    categories_dict = initial_categories.set_index('path')['number'].to_dict()
+
+    assert not (initial_accounts[initial_accounts['group'].str.startswith('/Balance')]).empty, (
+        'There are no remote accounts placed in /Balance node'
+    )
+
+    # Mirror accounts with discarded accounts that have /Balance group
+    # onto server with delete=True should delete all leaf categories
+    # and leave root category
+    cashctrl_ledger.mirror_account_chart(expected.copy(), delete=True)
+    mirrored_df = cashctrl_ledger.account_chart().reset_index()
+    updated_categories = cashctrl_ledger._client.list_categories('account', include_system=True)
+    updated_categories_dict = updated_categories.set_index('path')['number'].to_dict()
+    difference = set(categories_dict.keys()) - set(updated_categories_dict.keys())
+    initial_sub_nodes = [key for key in difference if key.startswith('/Balance') and key != '/Balance']
+
+    assert (mirrored_df[mirrored_df['group'].str.startswith('/Balance')]).empty, (
+        'Accounts placed in /Balance node were not deleted'
+    )
+    assert len(initial_sub_nodes) > 0, 'Sub-nodes were not deleted'
+    assert updated_categories_dict['/Balance'] == categories_dict['/Balance'], (
+        'Root node /Balance was deleted'
+    )
+
+    # Restore initial state
+    cashctrl_ledger.mirror_account_chart(initial_accounts.copy(), delete=True)
+    mirrored_df = cashctrl_ledger.account_chart().reset_index()
+    updated_categories = cashctrl_ledger._client.list_categories('account', include_system=True)
+    updated_categories_dict = initial_categories.set_index('path')['number'].to_dict()
+    pd.testing.assert_frame_equal(initial_accounts, mirrored_df)
+    assert updated_categories_dict == categories_dict, (
+        'Some categories were not restored'
+    )
