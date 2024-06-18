@@ -310,6 +310,24 @@ class CashCtrlLedger(LedgerEngine):
                 for _ in range(n):
                     self.add_ledger_entry(txn)
 
+    def _get_ledger_attachments(self) -> Dict[str, List[str]]:
+        """
+        Retrieves paths of files attached to CashCtrl ledger entries
+
+        Returns:
+            Dict[str, List[str]]: A Dict that contains ledger ids with attached
+            files as keys and a list of file paths as values.
+        """
+        ledger = self._client.list_journal_entries()
+        result = {}
+        for id in ledger.loc[ledger['attachmentCount'] > 0, 'id']:
+            res = self._client.get("journal/read.json", params={'id': id})['data']
+            paths = [self._client.file_id_to_path(attachment['fileId'])
+                     for attachment in res['attachments']]
+            if len(paths):
+                result[id] = paths
+        return result
+
     def ledger(self) -> pd.DataFrame:
         """
         Retrieves ledger entries from the remote CashCtrl account and converts
@@ -365,12 +383,15 @@ class CashCtrlLedger(LedgerEngine):
 
         return StandaloneLedger.standardize_ledger(result)
 
-    def add_ledger_entry(self, entry: pd.DataFrame):
+    def add_ledger_entry(self, entry: pd.DataFrame) -> int:
         """
         Adds a new ledger entry to the remote CashCtrl instance.
 
         Parameters:
             entry (pd.DataFrame): DataFrame with the ledger schema
+
+        Returns:
+            int: The Id of created ledger entry.
         """
         entry = StandaloneLedger.standardize_ledger(entry)
 
@@ -410,8 +431,9 @@ class CashCtrlLedger(LedgerEngine):
         else:
             raise ValueError('The ledger entry contains no transaction.')
 
-        self._client.post("journal/create.json", data=payload)
+        res = self._client.post("journal/create.json", data=payload)
         self._client.invalidate_journal_cache()
+        return res['insertId']
 
     def update_ledger_entry(self, entry: pd.DataFrame):
         """
