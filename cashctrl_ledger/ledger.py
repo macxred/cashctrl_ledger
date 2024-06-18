@@ -315,7 +315,8 @@ class CashCtrlLedger(LedgerEngine):
         Finds real attachments for the ledger entries and places them in the 'attachments columns'
 
         Returns:
-            pd.DataFrame: A DataFrame with LedgerEngine.ledger() column schema.
+            Dict[str, List[str]]: A Dict that contain pairs of key as ledger Id and value
+            as list of strings of attached files.
         """
         ledger = self._client.list_journal_entries()
         ledger_attached = ledger[ledger['attachmentCount'] > 0]
