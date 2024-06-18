@@ -5,6 +5,36 @@ from cashctrl_ledger import CashCtrlLedger, df_to_consistent_str, nest
 from pyledger import StandaloneLedger
 from requests.exceptions import RequestException
 
+@pytest.fixture(scope="module")
+def tmp_path_for_module(tmp_path_factory):
+    return tmp_path_factory.mktemp("temp")
+
+@pytest.fixture(scope="module")
+def mock_directory(tmp_path_for_module):
+    """Create a temporary directory, populate with files and folders."""
+    tmp_path = tmp_path_for_module
+    (tmp_path / 'file1.txt').write_text("This is a text file.")
+    subdir = tmp_path / 'subdir'
+    subdir.mkdir(exist_ok=True)
+    (subdir / 'file2.txt').write_text("A Text file in a subdirectory.")
+    return tmp_path
+
+@pytest.fixture(scope="module")
+def files(mock_directory):
+    """Create a CachedCashCtrlClient, populate with files and folders."""
+    cc_client = CashCtrlLedger()
+    initial_files = cc_client._client.list_files()
+    cc_client._client.mirror_directory(mock_directory, delete_files=False)
+    updated_files = cc_client._client.list_files()
+    created_ids = set(updated_files['id']).difference(initial_files['id'])
+
+    # return created files
+    yield updated_files[updated_files['id'].isin(created_ids)]
+
+    # Delete files added in the test
+    params = { 'ids': ','.join(str(i) for i in created_ids), 'force': True }
+    cc_client._client.post("file/delete.json", params=params)
+
 @pytest.fixture(scope="session")
 def add_vat_code():
     # Creates VAT code
@@ -31,7 +61,7 @@ individual_transaction = pd.DataFrame({
     'currency': ['USD'],
     'text': ['pytest added ledger112'],
     'vat_code': ['Test_VAT_code'],
-    'document': ['document.pdf'],
+    'document': ['/file1.txt'],
 })
 collective_transaction = pd.DataFrame({
     'id': ['2', '2'],
@@ -41,7 +71,7 @@ collective_transaction = pd.DataFrame({
     'currency': ['USD', 'USD'],
     'text': ['pytest added ledger111', 'pytest added ledger222'],
     'vat_code': ['Test_VAT_code', 'Test_VAT_code'],
-    'document': ['document-col.pdf', 'document-col.pdf'],
+    'document': ['/subdir/file2.txt', '/subdir/file2.txt'],
 })
 alt_collective_transaction = pd.DataFrame({
     'id': ['3', '3'],
@@ -71,20 +101,30 @@ def txn_to_str(df: pd.DataFrame) -> List[str]:
     result = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(df['date'], df['txn'])]
     return result.sort()
 
-def test_get_ledger_attachments():
+def test_get_ledger_attachments(files):
     cashctrl_ledger = CashCtrlLedger()
-    # create two files in root directory and return fileId from fixture
-    # create in root and in some subdirectory
 
-    # mirror one single and one collective entry
+    # Mirror ledger entries
+    target = pd.concat([individual_transaction, collective_transaction])
+    initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
+    cashctrl_ledger.mirror_ledger(target=target)
+    mirrored = cashctrl_ledger.ledger().reset_index(drop=True)
+    outer_join = pd.merge(initial_ledger, mirrored, how='outer', indicator=True)
+    created_ledger = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1)
+    document_dict = created_ledger.set_index('id')['document'].to_dict()
 
-    # manually attach files
-    # cashctrl_ledger._client.post("journal/update_attachments.json", data={'id': 'ledger_id', 'fileIds': 'file_created_id'})
-
-    # check is attachments column values matches expectation
-    dict = cashctrl_ledger._get_ledger_attachments()
+    # Manually attach files
+    for id, document in document_dict.items():
+        file_id = cashctrl_ledger._client.file_path_to_id(document)
+        cashctrl_ledger._client.post("journal/update_attachments.json", data={'id': id, 'fileIds': file_id})
 
     breakpoint()
+    # check is attachments column values matches expectation
+    attachments = cashctrl_ledger._get_ledger_attachments()
+
+    breakpoint()
+    cashctrl_ledger.mirror_ledger(target=initial_ledger, delete=True)
+
 
 # def test_ledger_accessor_mutators_single_transaction(add_vat_code):
 #     cashctrl_ledger = CashCtrlLedger()
