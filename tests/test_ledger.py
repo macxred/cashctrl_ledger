@@ -35,6 +35,25 @@ def files(mock_directory):
     params = { 'ids': ','.join(str(i) for i in created_ids), 'force': True }
     cc_client._client.post("file/delete.json", params=params)
 
+@pytest.fixture(scope="module")
+def ledger_ids():
+    """Populate remote ledger with three new entries and return their ids in a list."""
+    entry = pd.DataFrame({
+        'date': ['2024-05-24'],
+        'account': [2270],
+        'counter_account': [2210],
+        'amount': [100],
+        'currency': ['CHF'],
+        'text': ['test entry'],
+    })
+    engine = CashCtrlLedger()
+    ledger_ids = [engine.add_ledger_entry(entry) for _ in range(3)]
+
+    yield ledger_ids
+
+    # Restore original ledger state
+    engine.delete_ledger_entry(list(map(str, ledger_ids)))
+
 @pytest.fixture(scope="session")
 def add_vat_code():
     # Creates VAT code
@@ -348,33 +367,25 @@ def test_mirror_ledger(add_vat_code):
     mirrored = cashctrl_ledger.ledger().reset_index(drop=True)
     assert txn_to_str(initial) == txn_to_str(mirrored)
 
-def test_get_ledger_attachments(files):
-    cashctrl_ledger = CashCtrlLedger()
+def test_get_ledger_attachments(files, ledger_ids):
+    engine = CashCtrlLedger()
+    initial = engine._get_ledger_attachments()
 
-    # Populate ledger
-    target = pd.concat([individual_transaction, collective_transaction])
-    initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
-    cashctrl_ledger.mirror_ledger(target=target)
-    mirrored = cashctrl_ledger.ledger().reset_index(drop=True)
-    outer_join = pd.merge(initial_ledger, mirrored, how='outer', indicator=True)
-    created_ledger = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1)
-    document_dict = created_ledger.set_index('id')['document'].to_dict()
+    engine._client.post("journal/update_attachments.json", data={'id': ledger_ids[0], 'fileIds': files['id'].iat[0]})
+    engine._client.invalidate_journal_cache()
+    expected = initial | {ledger_ids[0]: ['/file1.txt']}
+    assert engine._get_ledger_attachments() == expected
 
-    # Attach files
-    for id, document in document_dict.items():
-        file_id = cashctrl_ledger._client.file_path_to_id(document)
-        cashctrl_ledger._client.post("journal/update_attachments.json", data={'id': id, 'fileIds': file_id})
-    cashctrl_ledger._client.invalidate_journal_cache()
+    engine._client.post("journal/update_attachments.json", data={'id': ledger_ids[1], 'fileIds': files['id'].iat[1]})
+    engine._client.invalidate_journal_cache()
+    expected = initial | {ledger_ids[0]: ['/file1.txt'], ledger_ids[1]: ['/subdir/file2.txt']}
+    assert engine._get_ledger_attachments() == expected
 
-    attachments = cashctrl_ledger._get_ledger_attachments()
-    attachments = {str(key): ','.join(value) for key, value in attachments.items()}
-    updated_ledger = cashctrl_ledger.ledger()
-    ledger_attachments = updated_ledger.set_index('id')['document'].to_dict()
-    assert ledger_attachments == attachments, (
-        'Files were not attached or attached incorrectly'
-    )
-
-    # Restore initial state
-    cashctrl_ledger.mirror_ledger(target=initial_ledger, delete=True)
-    restored_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
-    pd.testing.assert_frame_equal(initial_ledger, restored_ledger)
+    file_ids = f'{files['id'].iat[0]},{files['id'].iat[1]}'
+    engine._client.post("journal/update_attachments.json", data={'id': ledger_ids[1], 'fileIds': file_ids})
+    engine._client.invalidate_journal_cache()
+    expected = initial | {ledger_ids[0]: ['/file1.txt'], ledger_ids[1]:  ['/file1.txt', '/subdir/file2.txt']}
+    expected[ledger_ids[1]].sort()
+    attachments = engine._get_ledger_attachments()
+    attachments[ledger_ids[1]].sort()
+    assert attachments == expected

@@ -383,12 +383,15 @@ class CashCtrlLedger(LedgerEngine):
 
         return StandaloneLedger.standardize_ledger(result)
 
-    def add_ledger_entry(self, entry: pd.DataFrame):
+    def add_ledger_entry(self, entry: pd.DataFrame) -> int:
         """
         Adds a new ledger entry to the remote CashCtrl instance.
 
         Parameters:
             entry (pd.DataFrame): DataFrame with the ledger schema
+
+        Returns:
+            int: The Id of created ledger entry.
         """
         entry = StandaloneLedger.standardize_ledger(entry)
 
@@ -428,8 +431,9 @@ class CashCtrlLedger(LedgerEngine):
         else:
             raise ValueError('The ledger entry contains no transaction.')
 
-        self._client.post("journal/create.json", data=payload)
+        res = self._client.post("journal/create.json", data=payload)
         self._client.invalidate_journal_cache()
+        return res['insertId']
 
     def update_ledger_entry(self, entry: pd.DataFrame):
         """
