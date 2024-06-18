@@ -312,7 +312,7 @@ class CashCtrlLedger(LedgerEngine):
 
     def _get_ledger_attachments(self) -> Dict[str, List[str]]:
         """
-        Finds real attachments for the ledger entries and places them in the 'attachments columns'
+        Locates a path list of real attachments for the ledger entries
 
         Returns:
             Dict[str, List[str]]: A Dict that contain pairs of key as ledger Id and value
