@@ -368,6 +368,8 @@ def test_mirror_ledger(add_vat_code):
     assert txn_to_str(initial) == txn_to_str(mirrored)
 
 def test_get_ledger_attachments(files, ledger_ids):
+    def sort_dict_values(items):
+        return {key: value.sort() for key, value in items.items()}
     engine = CashCtrlLedger()
     initial = engine._get_ledger_attachments()
 
@@ -385,7 +387,4 @@ def test_get_ledger_attachments(files, ledger_ids):
     engine._client.post("journal/update_attachments.json", data={'id': ledger_ids[1], 'fileIds': file_ids})
     engine._client.invalidate_journal_cache()
     expected = initial | {ledger_ids[0]: ['/file1.txt'], ledger_ids[1]:  ['/file1.txt', '/subdir/file2.txt']}
-    expected[ledger_ids[1]].sort()
-    attachments = engine._get_ledger_attachments()
-    attachments[ledger_ids[1]].sort()
-    assert attachments == expected
+    assert sort_dict_values(engine._get_ledger_attachments()) == sort_dict_values(expected)
