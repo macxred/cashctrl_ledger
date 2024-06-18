@@ -351,7 +351,7 @@ def test_mirror_ledger(add_vat_code):
 def test_get_ledger_attachments(files):
     cashctrl_ledger = CashCtrlLedger()
 
-    # Mirror ledger entries
+    # Populate ledger
     target = pd.concat([individual_transaction, collective_transaction])
     initial_ledger = cashctrl_ledger.ledger().reset_index(drop=True)
     cashctrl_ledger.mirror_ledger(target=target)
@@ -360,7 +360,7 @@ def test_get_ledger_attachments(files):
     created_ledger = outer_join[outer_join['_merge'] == "right_only"].drop('_merge', axis = 1)
     document_dict = created_ledger.set_index('id')['document'].to_dict()
 
-    # Manually attach files
+    # Attach files
     for id, document in document_dict.items():
         file_id = cashctrl_ledger._client.file_path_to_id(document)
         cashctrl_ledger._client.post("journal/update_attachments.json", data={'id': id, 'fileIds': file_id})

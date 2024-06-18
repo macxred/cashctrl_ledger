@@ -312,25 +312,21 @@ class CashCtrlLedger(LedgerEngine):
 
     def _get_ledger_attachments(self) -> Dict[str, List[str]]:
         """
-        Locates a path list of real attachments for the ledger entries
+        Retrieves paths of files attached to CashCtrl ledger entries
 
         Returns:
-            Dict[str, List[str]]: A Dict that contain pairs of key as ledger Id and value
-            as list of strings of attached files.
+            Dict[str, List[str]]: A Dict that contains ledger ids with attached
+            files as keys and a list of file paths as values.
         """
         ledger = self._client.list_journal_entries()
-        ledger_attached = ledger[ledger['attachmentCount'] > 0]
-        attachment_paths = {}
-
-        for _, row in ledger_attached.iterrows():
-            res = self._client.get("journal/read.json", params={'id': row['id']})['data']
-            paths = []
-            for attachment in res['attachments']:
-                paths.append(self._client.file_id_to_path(attachment['fileId']))
+        result = {}
+        for id in ledger.loc[ledger['attachmentCount'] > 0, 'id']:
+            res = self._client.get("journal/read.json", params={'id': id})['data']
+            paths = [self._client.file_id_to_path(attachment['fileId'])
+                     for attachment in res['attachments']]
             if len(paths):
-                attachment_paths[row['id']] = paths
-
-        return attachment_paths
+                result[id] = paths
+        return result
 
     def ledger(self) -> pd.DataFrame:
         """
