@@ -11,36 +11,57 @@ from pyledger import StandaloneLedger
 from requests.exceptions import RequestException
 
 
-LEDGER_CSV = """
-    id,   date, account, counter_account, currency, amount,      vat_code, text,                             document
-    1, 2024-05-24, 2270,            2210,      CHF,    100, Test_VAT_code, pytest single transaction 1,      /file1.txt
-    2, 2024-05-24, 2210,                ,      USD,   -100, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
-    2, 2024-05-24, 2270,                ,      USD,    100, Test_VAT_code, pytest collective txn 1 - line 2, /subdir/file2.txt
-    3, 2024-04-24, 2210,                ,      EUR,   -200, Test_VAT_code, pytest collective txn 2 - line 1, /document-col-alt.pdf
-    3, 2024-04-24, 2270,                ,      EUR,    200, Test_VAT_code, pytest collective txn 2 - line 2, /document-col-alt.pdf
-    4, 2024-05-24, 2270,            2210,      CHF,    300, Test_VAT_code, pytest single transaction 2,      /document-alt.pdf
+ACCOUNT_CSV = """
+    group, account, currency, vat_code, text
+    /Assets, 10021,      EUR,         , Test EUR Bank Account
+    /Assets, 10022,      USD,         , Test USD Bank Account
+    /Assets, 10023,      CHF,         , Test CHF Bank Account
+    /Assets, 19991,      EUR,         , Transitory Account EUR
+    /Assets, 19992,      USD,         , Transitory Account USD
+    /Assets, 19993,      CHF,         , Transitory Account CHF
+    /Assets, 22000,      CHF,         , Input Tax
 """
+
+VAT_CSV = """
+    id,             rate, account, inclusive, text
+    Test_VAT_code,  0.02,   22000,      True, Input Tax 2%
+"""
+
+LEDGER_CSV = """
+    id,    date, account, counter_account, currency, amount,      vat_code, text,                             document
+    1, 2024-05-24, 10023,           19993,      CHF,    100, Test_VAT_code, pytest single transaction 1,      /file1.txt
+    2, 2024-05-24, 10022,                ,      USD,   -100, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
+    2, 2024-05-24, 10022,                ,      USD,      1, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
+    2, 2024-05-24, 10022,                ,      USD,     99, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
+    3, 2024-04-24, 10021,                ,      EUR,   -200, Test_VAT_code, pytest collective txn 2 - line 1, /document-col-alt.pdf
+    3, 2024-04-24, 10021,                ,      EUR,    200, Test_VAT_code, pytest collective txn 2 - line 2, /document-col-alt.pdf
+    4, 2024-05-24, 10022,           19992,      USD,    300, Test_VAT_code, pytest single transaction 2,      /document-alt.pdf
+"""
+
 LEDGER_ENTRIES = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
+TEST_ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
+TEST_VAT_CODE = pd.read_csv(StringIO(VAT_CSV), skipinitialspace=True)
 
 
 @pytest.fixture(scope="module")
 def add_vat_code():
-    # Creates VAT code
     cashctrl = CashCtrlLedger()
-    initial_ledger = cashctrl.ledger().reset_index(drop=True)
-    cashctrl.add_vat_code(
-        code="Test_VAT_code",
-        text='VAT 2%',
-        account=2200,
-        rate=0.02,
-        inclusive=True,
-    )
+
+    # Fetch original state
+    initial_vat_codes = cashctrl.vat_codes().reset_index()
+    initial_account_chart = cashctrl.account_chart().reset_index()
+    initial_ledger = cashctrl.ledger()
+
+    # Create test accounts and VAT code
+    cashctrl.mirror_account_chart(TEST_ACCOUNTS, delete=False)
+    cashctrl.mirror_vat_codes(TEST_VAT_CODE, delete=False)
 
     yield
 
     # Restore initial state
-    cashctrl.mirror_ledger(target=initial_ledger, delete=True)
-    cashctrl.delete_vat_code(code="Test_VAT_code")
+    cashctrl.mirror_ledger(initial_ledger, delete=True)
+    cashctrl.mirror_vat_codes(initial_vat_codes, delete=True)
+    cashctrl.mirror_account_chart(initial_account_chart, delete=True)
 
 def txn_to_str(df: pd.DataFrame) -> List[str]:
     df = nest(df, columns=[col for col in df.columns if not col in ['id', 'date']], key='txn')

@@ -9,7 +9,7 @@ from cashctrl_ledger import CashCtrlLedger
 
 # Fixture that creates VAT code with expected code on the start
 # of the test and deletes that VAT code at the end of test
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def add_and_delete_vat_code():
     # Creates VAT code
     cashctrl_ledger = CashCtrlLedger()
