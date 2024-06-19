@@ -9,19 +9,13 @@ from io import StringIO
 from cashctrl_ledger import CashCtrlLedger
 
 LEDGER_CSV = """
-    id,   date, account, counter_account,  currency, amount,      vat_code, text,                             document
-    1, 2024-05-24, 2100,            2200,       CHF,    100, Test_VAT_code, pytest single transaction 1,
-    2, 2024-05-24, 2100,            2200,       CHF,    100, Test_VAT_code, pytest single transaction 1,      /file1.txt
-    3, 2024-05-24, 2100,            2200,       CHF,    100, Test_VAT_code, pytest single transaction 1,      /subdir/file2.txt
-    4, 2024-05-24, 2100,            2200,       CHF,    100, Test_VAT_code, pytest single transaction 1,      /file1.txt
+    id,   date, account, counter_account,  currency, amount,  text,                             document
+    1, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,
+    2, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      /file1.txt
+    3, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      /subdir/file2.txt
+    4, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      /file1.txt
 """
 
-VAT_CSV = """
-    id,             rate, account, inclusive, text
-    Test_VAT_code,  0.02,   2200,      True, Input Tax 2%
-"""
-
-TEST_VAT_CODE = pd.read_csv(StringIO(VAT_CSV), skipinitialspace=True)
 LEDGER_ENTRIES = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
 
 @pytest.fixture(scope="module")
@@ -54,7 +48,7 @@ def files(mock_directory):
     params = { 'ids': ','.join(str(i) for i in created_ids), 'force': True }
     cc_client._client.post("file/delete.json", params=params)
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def ledger_ids():
     """Populate remote ledger with three new entries and return their ids in a list."""
     entry = pd.DataFrame({
@@ -66,32 +60,26 @@ def ledger_ids():
         'text': ['test entry'],
     })
     engine = CashCtrlLedger()
-    initial_ledger = engine.ledger()
     ledger_ids = [engine.add_ledger_entry(entry) for _ in range(3)]
 
     yield ledger_ids
 
     # Restore original ledger state
-    engine.mirror_ledger(initial_ledger, delete=True)
+    engine.delete_ledger_entry(list(map(str, ledger_ids)))
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def ledger_attached_ids():
+    """
+    Populate remote ledger with four new entries with specified document
+    field and return their ids in a list.
+    """
     cashctrl = CashCtrlLedger()
-
-    # Fetch original state
-    initial_ledger = cashctrl.ledger()
-    initial_vat_codes = cashctrl.vat_codes().reset_index()
-
-    # Create test VAT code and ledger
-    cashctrl.mirror_vat_codes(TEST_VAT_CODE, delete=False)
-    cashctrl.mirror_ledger(pd.DataFrame({}), delete=True)
     ledger_ids = [cashctrl.add_ledger_entry(LEDGER_ENTRIES.query(f'id == {i}')) for i in range(1, 5)]
 
     yield ledger_ids
 
-    # Restore initial state
-    cashctrl.mirror_ledger(initial_ledger, delete=True)
-    cashctrl.mirror_vat_codes(initial_vat_codes, delete=True)
+    # Restore original ledger state
+    cashctrl.delete_ledger_entry(list(map(str, ledger_ids)))
 
 def sort_dict_values(items):
     return {key: value.sort() for key, value in items.items()}
@@ -128,6 +116,7 @@ def test_attach_ledger_files(files, ledger_attached_ids):
     # Update attachments with detach=False
     engine.attach_ledger_files(detach=False)
     attachments = engine._get_ledger_attachments()
+    attachments = {k: v for k, v in attachments.items() if k in ledger_attached_ids}
     expected = {
         ledger_attached_ids[0]: ['/file1.txt'],
         ledger_attached_ids[1]: ['/subdir/file2.txt'],
@@ -139,6 +128,7 @@ def test_attach_ledger_files(files, ledger_attached_ids):
     # Update attachments with detach=True
     engine.attach_ledger_files(detach=True)
     attachments = engine._get_ledger_attachments()
+    attachments = {k: v for k, v in attachments.items() if k in ledger_attached_ids}
     expected = {
         ledger_attached_ids[1]: ['/subdir/file2.txt'],
         ledger_attached_ids[2]: ['/file1.txt'],
