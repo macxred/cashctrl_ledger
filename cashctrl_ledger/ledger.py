@@ -285,7 +285,9 @@ class CashCtrlLedger(LedgerEngine):
             df['txn_str'] = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(df['date'], df['txn'])]
             return df
         remote = process_ledger(self.ledger())
-        target = process_ledger(self.sanitize_ledger(self.standardize_ledger(target)))
+        target = self.sanitize_ledger(self.standardize_ledger(target))
+        target['date'] = target['date'].ffill()
+        target = process_ledger(target)
         if target['id'].duplicated().any():
             # We expect nesting to combine all rows with the same
             raise ValueError("Non-unique dates in `target` transactions.")
