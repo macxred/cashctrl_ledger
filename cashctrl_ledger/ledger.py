@@ -286,6 +286,9 @@ class CashCtrlLedger(LedgerEngine):
             return df
         remote = process_ledger(self.ledger())
         target = process_ledger(self.sanitize_ledger(self.standardize_ledger(target)))
+        if target['id'].duplicated().any():
+            # We expect nesting to combine all rows with the same
+            raise ValueError("Non-unique dates in `target` transactions.")
 
         # Count occurrences of each unique transaction in target and remote,
         # find number of additions and deletions for each unique transaction
