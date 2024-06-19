@@ -1,3 +1,7 @@
+"""
+Unit tests for listing, attaching and detaching remote files.
+"""
+
 from typing import List
 import pytest
 import pandas as pd
