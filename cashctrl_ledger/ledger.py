@@ -341,6 +341,27 @@ class CashCtrlLedger(LedgerEngine):
                 result[id] = paths
         return result
 
+    def attach_ledger_files(self, detach=False):
+        attachments = self._get_ledger_attachments()
+        ledger = self._client.list_journal_entries()
+        files = self._client.list_files()
+        df = pd.DataFrame({
+            'id': ledger['id'],
+            'target': [ref if ref in files['path'].values else None for ref in ledger['reference']],
+            'remote': [attachments.get(id, []) for id in ledger['id']],
+        })
+
+        for _, row in df.iterrows():
+            if pd.isna(row['target']):
+                if row['remote'] and detach:
+                    self._client.post("journal/update_attachments.json", data={'id': row['id'], 'fileIds': ''})
+            else:
+                if len(row['remote']) != 1 or row['remote'][0] != row['target']:
+                    file_id = self._client.file_path_to_id(row['target'])
+                    self._client.post("journal/update_attachments.json", data={'id': row['id'], 'fileIds': file_id})
+
+        self._client.invalidate_journal_cache()
+
     def ledger(self) -> pd.DataFrame:
         """
         Retrieves ledger entries from the remote CashCtrl account and converts
