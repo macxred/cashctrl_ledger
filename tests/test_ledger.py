@@ -68,7 +68,6 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     expected = StandaloneLedger.standardize_ledger(target)
     assert_frame_equal(updated, expected, ignore_index=True)
 
-
     # TODO: CashCtrl doesn`t allow to convert a single transaction into collective
     # transaction if the single transaction has a taxId assigned. See cashctrl#27.
     # As a workaround, we reset the taxId manually before update with a collective transaction
@@ -87,7 +86,7 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     # Test delete the created ledger entry
     cashctrl.delete_ledger_entry(id)
     remote = cashctrl.ledger()
-    assert id not in remote['id']
+    assert all(remote['id'] != str(id)), f"Ledger entry {id} was not deleted"
 
 def test_ledger_accessor_mutators_single_transaction_without_VAT():
     cashctrl = CashCtrlLedger()
@@ -114,7 +113,7 @@ def test_ledger_accessor_mutators_single_transaction_without_VAT():
     # Test delete the updated ledger entry
     cashctrl.delete_ledger_entry(id)
     remote = cashctrl.ledger()
-    assert id not in remote['id']
+    assert all(remote['id'] != str(id)), f"Ledger entry {id} was not deleted"
 
 def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     cashctrl = CashCtrlLedger()
@@ -149,7 +148,7 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     # Test delete the updated ledger entry
     cashctrl.delete_ledger_entry(id)
     remote = cashctrl.ledger()
-    assert id not in remote['id']
+    assert all(remote['id'] != str(id)), f"Ledger entry {id} was not deleted"
 
 def test_ledger_accessor_mutators_collective_transaction_without_vat():
     cashctrl = CashCtrlLedger()
@@ -162,7 +161,6 @@ def test_ledger_accessor_mutators_collective_transaction_without_vat():
     created = remote.loc[remote['id'] == str(id)]
     expected = StandaloneLedger.standardize_ledger(target)
     assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
-
 
     # Test update the ledger entry
     target = LEDGER_ENTRIES.query('id == 3').copy()
@@ -177,7 +175,7 @@ def test_ledger_accessor_mutators_collective_transaction_without_vat():
     # Test delete the updated ledger entry
     cashctrl.delete_ledger_entry(id)
     remote = cashctrl.ledger()
-    assert id not in remote['id']
+    assert all(remote['id'] != str(id)), f"Ledger entry {id} was not deleted"
 
 def test_add_ledger_with_non_existing_vat():
     # Adding a ledger entry with non existing VAT code should raise an error
