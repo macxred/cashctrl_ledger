@@ -10,6 +10,19 @@ from cashctrl_ledger import CashCtrlLedger, df_to_consistent_str, nest
 from pyledger import StandaloneLedger
 from requests.exceptions import RequestException
 
+
+LEDGER_CSV = """
+    id,   date, account, counter_account, currency, amount,      vat_code, text,                             document
+    1, 2024-05-24, 2270,            2210,      CHF,    100, Test_VAT_code, pytest single transaction 1,      /file1.txt
+    2, 2024-05-24, 2210,                ,      USD,   -100, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
+    2, 2024-05-24, 2270,                ,      USD,    100, Test_VAT_code, pytest collective txn 1 - line 2, /subdir/file2.txt
+    3, 2024-04-24, 2210,                ,      EUR,   -200, Test_VAT_code, pytest collective txn 2 - line 1, /document-col-alt.pdf
+    3, 2024-04-24, 2270,                ,      EUR,    200, Test_VAT_code, pytest collective txn 2 - line 2, /document-col-alt.pdf
+    4, 2024-05-24, 2270,            2210,      CHF,    300, Test_VAT_code, pytest single transaction 2,      /document-alt.pdf
+"""
+LEDGER_ENTRIES = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
+
+
 @pytest.fixture(scope="module")
 def add_vat_code():
     # Creates VAT code
@@ -29,30 +42,17 @@ def add_vat_code():
     cashctrl.mirror_ledger(target=initial_ledger, delete=True)
     cashctrl.delete_vat_code(code="Test_VAT_code")
 
-@pytest.fixture
-def ledger_entries():
-    LEDGER_CSV = """
-        id, date,    account, counter_account, currency, amount,      vat_code, text,                             document
-         1, 2024-05-24, 2270,            2210,      CHF,    100, Test_VAT_code, pytest single transaction 1,      /file1.txt
-         2, 2024-05-24, 2210,                ,      USD,   -100, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
-         2, 2024-05-24, 2270,                ,      USD,    100, Test_VAT_code, pytest collective txn 1 - line 2, /subdir/file2.txt
-         3, 2024-04-24, 2210,                ,      EUR,   -200, Test_VAT_code, pytest collective txn 2 - line 1, /document-col-alt.pdf
-         3, 2024-04-24, 2270,                ,      EUR,    200, Test_VAT_code, pytest collective txn 2 - line 2, /document-col-alt.pdf
-         4, 2024-05-24, 2270,            2210,      CHF,    300, Test_VAT_code, pytest single transaction 2,      /document-alt.pdf
-    """
-    return pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
-
 def txn_to_str(df: pd.DataFrame) -> List[str]:
     df = nest(df, columns=[col for col in df.columns if not col in ['id', 'date']], key='txn')
     df = df.drop(columns=['id'])
     result = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(df['date'], df['txn'])]
     return result.sort()
 
-def test_ledger_accessor_mutators_single_transaction(add_vat_code, ledger_entries):
+def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     cashctrl = CashCtrlLedger()
 
     # Test adding a ledger entry
-    target = ledger_entries.iloc[[0]]
+    target = LEDGER_ENTRIES.iloc[[0]]
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)].reset_index(drop=True)
@@ -60,7 +60,7 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code, ledger_entrie
     pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
 
     # Test update the ledger entry
-    target = ledger_entries.iloc[[5]].copy()
+    target = LEDGER_ENTRIES.iloc[[5]].copy()
     target['id'] = id
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
@@ -75,7 +75,7 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code, ledger_entrie
     cashctrl.update_ledger_entry(target)
 
     # Test replace with an collective ledger entry
-    target = ledger_entries.iloc[[1, 2]].copy()
+    target = LEDGER_ENTRIES.iloc[[1, 2]].copy()
     target['id'] = id
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
@@ -88,11 +88,11 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code, ledger_entrie
     remote = cashctrl.ledger()
     assert id not in remote['id']
 
-def test_ledger_accessor_mutators_single_transaction_without_VAT(ledger_entries):
+def test_ledger_accessor_mutators_single_transaction_without_VAT():
     cashctrl = CashCtrlLedger()
 
     # Test adding a ledger entry without VAT code
-    target = ledger_entries.iloc[[5]].copy()
+    target = LEDGER_ENTRIES.iloc[[5]].copy()
     target['vat_code'] = None
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
@@ -101,7 +101,7 @@ def test_ledger_accessor_mutators_single_transaction_without_VAT(ledger_entries)
     pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
 
     # Test update the ledger entry
-    target = ledger_entries.iloc[[0]].copy()
+    target = LEDGER_ENTRIES.iloc[[0]].copy()
     target['id'] = id
     target['vat_code'] = None
     cashctrl.update_ledger_entry(target)
@@ -115,11 +115,11 @@ def test_ledger_accessor_mutators_single_transaction_without_VAT(ledger_entries)
     remote = cashctrl.ledger()
     assert id not in remote['id']
 
-def test_ledger_accessor_mutators_collective_transaction(add_vat_code, ledger_entries):
+def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     cashctrl = CashCtrlLedger()
 
     # Test adding a ledger entry
-    target = ledger_entries.iloc[[1, 2]]
+    target = LEDGER_ENTRIES.iloc[[1, 2]]
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)].reset_index(drop=True)
@@ -127,7 +127,7 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code, ledger_en
     pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
 
     # Test update the ledger entry
-    target = ledger_entries.iloc[[3, 4]].copy()
+    target = LEDGER_ENTRIES.iloc[[3, 4]].copy()
     target['id'] = id
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
@@ -136,7 +136,7 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code, ledger_en
     pd.testing.assert_frame_equal(updated, expected)
 
     # Test replace with an individual ledger entry
-    target = ledger_entries.iloc[[0]].copy()
+    target = LEDGER_ENTRIES.iloc[[0]].copy()
     target['id'] = id
     target['vat_code'] = None
     cashctrl.update_ledger_entry(target)
@@ -150,11 +150,11 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code, ledger_en
     remote = cashctrl.ledger()
     assert id not in remote['id']
 
-def test_ledger_accessor_mutators_collective_transaction_without_vat(ledger_entries):
+def test_ledger_accessor_mutators_collective_transaction_without_vat():
     cashctrl = CashCtrlLedger()
 
     # Test adding a ledger entry
-    target = ledger_entries.iloc[[1, 2]].copy()
+    target = LEDGER_ENTRIES.iloc[[1, 2]].copy()
     target['vat_code'] = None
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
@@ -163,7 +163,7 @@ def test_ledger_accessor_mutators_collective_transaction_without_vat(ledger_entr
     pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
 
     # Test update the ledger entry
-    target = ledger_entries.iloc[[3, 4]].copy()
+    target = LEDGER_ENTRIES.iloc[[3, 4]].copy()
     target['id'] = id
     target['vat_code'] = None
     cashctrl.update_ledger_entry(target)
@@ -177,50 +177,50 @@ def test_ledger_accessor_mutators_collective_transaction_without_vat(ledger_entr
     remote = cashctrl.ledger()
     assert id not in remote['id']
 
-def test_add_ledger_with_non_existing_vat(ledger_entries):
+def test_add_ledger_with_non_existing_vat():
     # Adding a ledger entry with non existing VAT code should raise an error
     cashctrl = CashCtrlLedger()
-    target = ledger_entries.iloc[[0]].copy()
+    target = LEDGER_ENTRIES.iloc[[0]].copy()
     target['vat_code'].iat[0] = 'Test_Non_Existent_VAT_code'
     with pytest.raises(ValueError, match='No id found for tax code'):
         cashctrl.add_ledger_entry(target)
 
-def test_add_ledger_with_non_existing_account(ledger_entries):
+def test_add_ledger_with_non_existing_account():
     # Adding a ledger entry with non existing account should raise an error
     cashctrl = CashCtrlLedger()
-    target = ledger_entries.iloc[[0]].copy()
+    target = LEDGER_ENTRIES.iloc[[0]].copy()
     target['account'] = 33333
     with pytest.raises(ValueError, match='No id found for account'):
         cashctrl.add_ledger_entry(target)
 
-def test_add_ledger_with_non_existing_currency(ledger_entries):
+def test_add_ledger_with_non_existing_currency():
     # Adding a ledger entry with non existing currency code should raise an error
     cashctrl = CashCtrlLedger()
-    target = ledger_entries.iloc[[0]].copy()
+    target = LEDGER_ENTRIES.iloc[[0]].copy()
     target['currency'] = 'Non_Existent_Currency'
     with pytest.raises(ValueError, match='No id found for currency'):
         cashctrl.add_ledger_entry(target)
 
-def test_update_ledger_with_illegal_attributes(add_vat_code, ledger_entries):
+def test_update_ledger_with_illegal_attributes(add_vat_code):
     cashctrl = CashCtrlLedger()
-    id = cashctrl.add_ledger_entry(ledger_entries.iloc[[0]])
+    id = cashctrl.add_ledger_entry(LEDGER_ENTRIES.iloc[[0]])
 
     # Updating a ledger with non existent VAT code should raise an error
-    target = ledger_entries.iloc[[0]].copy()
+    target = LEDGER_ENTRIES.iloc[[0]].copy()
     target['id'] = id
     target['vat_code'] = 'Test_Non_Existent_VAT_code'
     with pytest.raises(ValueError, match='No id found for tax code'):
         cashctrl.update_ledger_entry(target)
 
     # Updating a ledger with non existent account code should raise an error
-    target = ledger_entries.iloc[[0]].copy()
+    target = LEDGER_ENTRIES.iloc[[0]].copy()
     target['id'] = id
     target['account'].iat[0] = 333333
     with pytest.raises(ValueError, match='No id found for account'):
         cashctrl.update_ledger_entry(target)
 
     # Updating a ledger with non existent currency code should raise an error
-    target = ledger_entries.iloc[[0]].copy()
+    target = LEDGER_ENTRIES.iloc[[0]].copy()
     target['id'] = id
     target['currency'].iat[0] = 'Non_Existent_Currency'
     with pytest.raises(ValueError, match='No id found for currency'):
@@ -230,9 +230,9 @@ def test_update_ledger_with_illegal_attributes(add_vat_code, ledger_entries):
     cashctrl.delete_ledger_entry(id)
 
 # Updating a non-existent ledger should raise an error
-def test_update_non_existent_ledger(ledger_entries):
+def test_update_non_existent_ledger():
     cashctrl = CashCtrlLedger()
-    target = ledger_entries.iloc[[0]].copy()
+    target = LEDGER_ENTRIES.iloc[[0]].copy()
     target['id'] = 999999
     with pytest.raises(RequestException):
         cashctrl.update_ledger_entry(target)
@@ -243,11 +243,11 @@ def test_delete_non_existent_ledger():
     with pytest.raises(RequestException):
         cashctrl.delete_ledger_entry(ids='non-existent')
 
-def test_mirror_ledger(add_vat_code, ledger_entries):
+def test_mirror_ledger(add_vat_code):
     cashctrl = CashCtrlLedger()
 
     # Mirror with one single and one collective transaction
-    target = ledger_entries.iloc[[0, 1, 2]]
+    target = LEDGER_ENTRIES.iloc[[0, 1, 2]]
     cashctrl.mirror_ledger(target=target, delete=True)
     expected = StandaloneLedger.standardize_ledger(target)
     mirrored = cashctrl.ledger()
@@ -255,10 +255,10 @@ def test_mirror_ledger(add_vat_code, ledger_entries):
 
     # Mirror with duplicate transactions and delete=False
     target = pd.concat([
-        ledger_entries.iloc[[0]],
-        ledger_entries.iloc[[0]].assign(id=5),
-        ledger_entries.iloc[[1, 2]].assign(id=6),
-        ledger_entries.iloc[[1, 2]]
+        LEDGER_ENTRIES.iloc[[0]],
+        LEDGER_ENTRIES.iloc[[0]].assign(id=5),
+        LEDGER_ENTRIES.iloc[[1, 2]].assign(id=6),
+        LEDGER_ENTRIES.iloc[[1, 2]]
     ])
     cashctrl.mirror_ledger(target=target)
     expected = StandaloneLedger.standardize_ledger(target)
@@ -266,20 +266,20 @@ def test_mirror_ledger(add_vat_code, ledger_entries):
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
     # Mirror with alternative transactions and delete=False
-    target = ledger_entries.iloc[[5, 3, 4]]
+    target = LEDGER_ENTRIES.iloc[[5, 3, 4]]
     cashctrl.mirror_ledger(target=target, delete=False)
     expected = pd.concat([mirrored, StandaloneLedger.standardize_ledger(target)])
     mirrored = cashctrl.ledger()
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
     # Mirror existing transactions with delete=False has no impact
-    target = ledger_entries.iloc[[0, 1, 2]]
+    target = LEDGER_ENTRIES.iloc[[0, 1, 2]]
     cashctrl.mirror_ledger(target=target, delete=False)
     mirrored = cashctrl.ledger()
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
     # Mirror with delete=True
-    target = ledger_entries.iloc[[0, 1, 2]]
+    target = LEDGER_ENTRIES.iloc[[0, 1, 2]]
     cashctrl.mirror_ledger(target=target)
     mirrored = cashctrl.ledger()
     expected = StandaloneLedger.standardize_ledger(target)
