@@ -5,11 +5,12 @@ from cashctrl_ledger import CashCtrlLedger, df_to_consistent_str, nest
 from pyledger import StandaloneLedger
 from requests.exceptions import RequestException
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def add_vat_code():
     # Creates VAT code
-    cashctrl_ledger = CashCtrlLedger()
-    cashctrl_ledger.add_vat_code(
+    cashctrl = CashCtrlLedger()
+    initial_ledger = cashctrl.ledger().reset_index(drop=True)
+    cashctrl.add_vat_code(
         code="Test_VAT_code",
         text='VAT 2%',
         account=2200,
@@ -19,8 +20,9 @@ def add_vat_code():
 
     yield
 
-    # Deletes VAT code
-    cashctrl_ledger.delete_vat_code(code="Test_VAT_code")
+    # Restore initial state
+    cashctrl.mirror_ledger(target=initial_ledger, delete=True)
+    cashctrl.delete_vat_code(code="Test_VAT_code")
 
 individual_transaction = pd.DataFrame({
     'id': ['1'],
@@ -266,7 +268,6 @@ def test_delete_non_existent_ledger():
 
 def test_mirror_ledger(add_vat_code):
     cashctrl_ledger = CashCtrlLedger()
-    initial = cashctrl_ledger.ledger().reset_index(drop=True)
 
     # Mirror with one single and one collective transaction
     target = pd.concat([individual_transaction, collective_transaction])
@@ -312,8 +313,3 @@ def test_mirror_ledger(add_vat_code):
     # Mirror an empty target state
     cashctrl_ledger.mirror_ledger(target=pd.DataFrame({}), delete=True)
     assert cashctrl_ledger.ledger().empty
-
-    # Restore initial state
-    cashctrl_ledger.mirror_ledger(target=initial, delete=True)
-    mirrored = cashctrl_ledger.ledger().reset_index(drop=True)
-    assert txn_to_str(initial) == txn_to_str(mirrored)
