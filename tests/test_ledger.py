@@ -6,7 +6,7 @@ from io import StringIO
 from typing import List
 import pytest
 import pandas as pd
-from cashctrl_ledger import CashCtrlLedger, df_to_consistent_str, nest
+from cashctrl_ledger import CashCtrlLedger, df_to_consistent_str, nest, assert_frame_equal
 from pyledger import StandaloneLedger
 from requests.exceptions import RequestException
 
@@ -55,18 +55,19 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     target = LEDGER_ENTRIES.iloc[[0]]
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)].reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(target).reset_index(drop=True)
-    pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
+    created = remote.loc[remote['id'] == str(id)]
+    expected = StandaloneLedger.standardize_ledger(target)
+    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
     # Test update the ledger entry
     target = LEDGER_ENTRIES.iloc[[5]].copy()
     target['id'] = id
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
-    updated = remote.loc[remote['id'] == str(id)].reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(target).reset_index(drop=True)
-    pd.testing.assert_frame_equal(updated, expected)
+    updated = remote.loc[remote['id'] == str(id)]
+    expected = StandaloneLedger.standardize_ledger(target)
+    assert_frame_equal(updated, expected, ignore_index=True)
+
 
     # TODO: CashCtrl doesn`t allow to convert a single transaction into collective
     # transaction if the single transaction has a taxId assigned. See cashctrl#27.
@@ -79,9 +80,9 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     target['id'] = id
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
-    updated = remote.loc[remote['id'] == str(id)].reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(target).reset_index(drop=True)
-    pd.testing.assert_frame_equal(updated, expected)
+    updated = remote.loc[remote['id'] == str(id)]
+    expected = StandaloneLedger.standardize_ledger(target)
+    assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test delete the created ledger entry
     cashctrl.delete_ledger_entry(id)
@@ -96,9 +97,9 @@ def test_ledger_accessor_mutators_single_transaction_without_VAT():
     target['vat_code'] = None
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)].reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(target).reset_index(drop=True)
-    pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
+    created = remote.loc[remote['id'] == str(id)]
+    expected = StandaloneLedger.standardize_ledger(target)
+    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
     # Test update the ledger entry
     target = LEDGER_ENTRIES.iloc[[0]].copy()
@@ -106,9 +107,9 @@ def test_ledger_accessor_mutators_single_transaction_without_VAT():
     target['vat_code'] = None
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
-    updated = remote.loc[remote['id'] == str(id)].reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(target).reset_index(drop=True)
-    pd.testing.assert_frame_equal(updated, expected)
+    updated = remote.loc[remote['id'] == str(id)]
+    expected = StandaloneLedger.standardize_ledger(target)
+    assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test delete the updated ledger entry
     cashctrl.delete_ledger_entry(id)
@@ -122,18 +123,18 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     target = LEDGER_ENTRIES.iloc[[1, 2]]
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)].reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(target).reset_index(drop=True)
-    pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
+    created = remote.loc[remote['id'] == str(id)]
+    expected = StandaloneLedger.standardize_ledger(target)
+    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
     # Test update the ledger entry
     target = LEDGER_ENTRIES.iloc[[3, 4]].copy()
     target['id'] = id
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
-    updated = remote.loc[remote['id'] == str(id)].reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(target).reset_index(drop=True)
-    pd.testing.assert_frame_equal(updated, expected)
+    updated = remote.loc[remote['id'] == str(id)]
+    expected = StandaloneLedger.standardize_ledger(target)
+    assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test replace with an individual ledger entry
     target = LEDGER_ENTRIES.iloc[[0]].copy()
@@ -141,9 +142,9 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     target['vat_code'] = None
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
-    updated = remote.loc[remote['id'] == str(id)].reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(target).reset_index(drop=True)
-    pd.testing.assert_frame_equal(updated, expected)
+    updated = remote.loc[remote['id'] == str(id)]
+    expected = StandaloneLedger.standardize_ledger(target)
+    assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test delete the updated ledger entry
     cashctrl.delete_ledger_entry(id)
@@ -158,9 +159,10 @@ def test_ledger_accessor_mutators_collective_transaction_without_vat():
     target['vat_code'] = None
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)].reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(target).reset_index(drop=True)
-    pd.testing.assert_frame_equal(created.drop(columns=['id']), expected.drop(columns=['id']))
+    created = remote.loc[remote['id'] == str(id)]
+    expected = StandaloneLedger.standardize_ledger(target)
+    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
+
 
     # Test update the ledger entry
     target = LEDGER_ENTRIES.iloc[[3, 4]].copy()
@@ -168,9 +170,9 @@ def test_ledger_accessor_mutators_collective_transaction_without_vat():
     target['vat_code'] = None
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
-    updated = remote.loc[remote['id'] == str(id)].reset_index(drop=True)
-    expected = StandaloneLedger.standardize_ledger(target).reset_index(drop=True)
-    pd.testing.assert_frame_equal(updated, expected)
+    updated = remote.loc[remote['id'] == str(id)]
+    expected = StandaloneLedger.standardize_ledger(target)
+    assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test delete the updated ledger entry
     cashctrl.delete_ledger_entry(id)

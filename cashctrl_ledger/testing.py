@@ -1,3 +1,7 @@
+"""
+Module for functions that help in testing.
+"""
+
 import pandas as pd
 
 def assert_frame_equal(left, right, *args, ignore_index=False, ignore_columns=None, **kwargs):
