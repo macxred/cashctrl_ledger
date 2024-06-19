@@ -383,15 +383,15 @@ class CashCtrlLedger(LedgerEngine):
 
         return StandaloneLedger.standardize_ledger(result)
 
-    def add_ledger_entry(self, entry: pd.DataFrame) -> int:
+    def _map_ledger_entry(self, entry: pd.DataFrame) -> dict:
         """
-        Adds a new ledger entry to the remote CashCtrl instance.
+        Converts a single ledger entry to a data structure for upload to CashCtrl.
 
         Parameters:
-            entry (pd.DataFrame): DataFrame with the ledger schema
+            entry (pd.DataFrame): DataFrame with ledger entry in pyledger schema
 
         Returns:
-            int: The Id of created ledger entry.
+            dict: A data structure to post as json to the CashCtrl REST API.
         """
         entry = StandaloneLedger.standardize_ledger(entry)
 
@@ -430,7 +430,20 @@ class CashCtrlLedger(LedgerEngine):
             }
         else:
             raise ValueError('The ledger entry contains no transaction.')
+        return payload
 
+
+    def add_ledger_entry(self, entry: pd.DataFrame) -> int:
+        """
+        Adds a new ledger entry to the remote CashCtrl instance.
+
+        Parameters:
+            entry (pd.DataFrame): DataFrame with ledger entry in pyledger schema
+
+        Returns:
+            int: The Id of created ledger entry.
+        """
+        payload = self._map_ledger_entry(entry)
         res = self._client.post("journal/create.json", data=payload)
         self._client.invalidate_journal_cache()
         return res['insertId']
@@ -440,50 +453,12 @@ class CashCtrlLedger(LedgerEngine):
         Adds a new ledger entry to the remote CashCtrl instance.
 
         Parameters:
-            entry (pd.DataFrame): DataFrame with the ledger schema
+            entry (pd.DataFrame): DataFrame with ledger entry in pyledger schema
         """
-        entry = StandaloneLedger.standardize_ledger(entry)
-
-        # Individual ledger entry
-        if len(entry) == 1:
-            payload = {
-                'id': entry['id'].iat[0],
-                'dateAdded': entry['date'].iat[0],
-                'amount': entry['amount'].iat[0],
-                'creditId': self._client.account_to_id(entry['account'].iat[0]),
-                'debitId': self._client.account_to_id(entry['counter_account'].iat[0]),
-                'currencyId': None if pd.isna(entry['currency'].iat[0]) else self._client.currency_to_id(entry['currency'].iat[0]),
-                'title': entry['text'].iat[0],
-                'taxId': None if pd.isna(entry['vat_code'].iat[0]) else self._client.tax_code_to_id(entry['vat_code'].iat[0]),
-                'reference': None if pd.isna(entry['document'].iat[0]) else entry['document'].iat[0],
-            }
-
-        # Collective ledger entry
-        elif len(entry) > 1:
-            if entry['id'].nunique() != 1:
-                raise ValueError('Id needs to be unique in all rows of a collective booking.')
-            if entry['currency'].nunique() != 1:
-                raise ValueError("CashCtrl only allows for a single currency in a collective booking.")
-            if entry['date'].nunique() != 1:
-                raise ValueError('Date needs to be unique in all rows of a collective booking.')
-            payload = {
-                'id': entry['id'].iat[0],
-                'dateAdded': entry['date'].iat[0].strftime("%Y-%m-%d"),
-                'currencyId': None if pd.isna(entry['currency'].iat[0]) else self._client.currency_to_id(entry['currency'].iat[0]),
-                'reference': None if pd.isna(entry['document'].iat[0]) else entry['document'].iat[0],
-                'items': [{
-                        'dateAdded': entry['date'].iat[0].strftime("%Y-%m-%d"),
-                        'accountId': self._client.account_to_id(row['account']),
-                        'credit': max(row['amount'], 0),
-                        'debit': max(-row['amount'], 0),
-                        'taxId': None if pd.isna(row['vat_code']) else self._client.tax_code_to_id(row['vat_code']),
-                        'description': row['text'],
-                    } for _, row in entry.iterrows()
-                ]
-            }
-        else:
-            raise ValueError('The ledger entry contains no transaction.')
-
+        payload = self._map_ledger_entry(entry)
+        if entry['id'].nunique() != 1:
+            raise ValueError('Id needs to be unique in all rows of a collective booking.')
+        payload['id'] = entry['id'].iat[0]
         self._client.post("journal/update.json", data=payload)
         self._client.invalidate_journal_cache()
 
