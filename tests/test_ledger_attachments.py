@@ -18,29 +18,11 @@ LEDGER_CSV = """
 
 VAT_CSV = """
     id,             rate, account, inclusive, text
-    Test_VAT_code,  0.02,   22000,      True, Input Tax 2%
+    Test_VAT_code,  0.02,   2200,      True, Input Tax 2%
 """
 
 TEST_VAT_CODE = pd.read_csv(StringIO(VAT_CSV), skipinitialspace=True)
 LEDGER_ENTRIES = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
-
-@pytest.fixture(scope="session")
-def ledger_attached_ids():
-    cashctrl = CashCtrlLedger()
-
-    # Fetch original state
-    initial_vat_codes = cashctrl.vat_codes().reset_index()
-
-    # Create test VAT code and ledger
-    cashctrl.mirror_vat_codes(TEST_VAT_CODE, delete=False)
-    ledger_ids = [cashctrl.add_ledger_entry(LEDGER_ENTRIES.query(f'id == {i}')) for i in range(1, 5)]
-
-    yield ledger_ids
-
-    # Restore initial state
-
-    cashctrl.delete_ledger_entry([str(id) for id in ledger_ids])
-    cashctrl.mirror_vat_codes(initial_vat_codes, delete=True)
 
 @pytest.fixture(scope="module")
 def tmp_path_for_module(tmp_path_factory):
@@ -72,7 +54,7 @@ def files(mock_directory):
     params = { 'ids': ','.join(str(i) for i in created_ids), 'force': True }
     cc_client._client.post("file/delete.json", params=params)
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def ledger_ids():
     """Populate remote ledger with three new entries and return their ids in a list."""
     entry = pd.DataFrame({
@@ -84,12 +66,32 @@ def ledger_ids():
         'text': ['test entry'],
     })
     engine = CashCtrlLedger()
+    initial_ledger = engine.ledger()
     ledger_ids = [engine.add_ledger_entry(entry) for _ in range(3)]
 
     yield ledger_ids
 
     # Restore original ledger state
-    engine.delete_ledger_entry(list(map(str, ledger_ids)))
+    engine.mirror_ledger(initial_ledger, delete=True)
+
+@pytest.fixture(scope="session")
+def ledger_attached_ids():
+    cashctrl = CashCtrlLedger()
+
+    # Fetch original state
+    initial_ledger = cashctrl.ledger()
+    initial_vat_codes = cashctrl.vat_codes().reset_index()
+
+    # Create test VAT code and ledger
+    cashctrl.mirror_vat_codes(TEST_VAT_CODE, delete=False)
+    cashctrl.mirror_ledger(pd.DataFrame({}), delete=True)
+    ledger_ids = [cashctrl.add_ledger_entry(LEDGER_ENTRIES.query(f'id == {i}')) for i in range(1, 5)]
+
+    yield ledger_ids
+
+    # Restore initial state
+    cashctrl.mirror_ledger(initial_ledger, delete=True)
+    cashctrl.mirror_vat_codes(initial_vat_codes, delete=True)
 
 def sort_dict_values(items):
     return {key: value.sort() for key, value in items.items()}
