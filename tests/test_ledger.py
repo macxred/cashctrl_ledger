@@ -107,7 +107,6 @@ def test_ledger_accessor_mutators_single_transaction(set_up_vat_and_account):
     remote = cashctrl.ledger()
     updated = remote.loc[remote['id'] == str(id)]
     expected = cashctrl.standardize_ledger(target)
-    expected['document'] = expected['document'].ffill().bfill()
     assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test delete the created ledger entry
@@ -151,7 +150,6 @@ def test_ledger_accessor_mutators_collective_transaction(set_up_vat_and_account)
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)]
     expected = cashctrl.standardize_ledger(target)
-    expected['document'] = expected['document'].ffill().bfill()
     assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
     # Test update the ledger entry
@@ -188,7 +186,6 @@ def test_ledger_accessor_mutators_collective_transaction_without_vat():
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)]
     expected = cashctrl.standardize_ledger(target)
-    expected['document'] = expected['document'].ffill().bfill()
     assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
     # Test update the ledger entry
@@ -297,7 +294,6 @@ def test_mirror_ledger(set_up_vat_and_account):
     target = LEDGER_ENTRIES.query('id in [1, 2]')
     cashctrl.mirror_ledger(target=target, delete=True)
     expected = cashctrl.standardize_ledger(target)
-    expected['document'] = expected.groupby('id')['document'].ffill()
     mirrored = cashctrl.ledger()
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
@@ -311,7 +307,6 @@ def test_mirror_ledger(set_up_vat_and_account):
     cashctrl.mirror_ledger(target=target)
     expected = cashctrl.standardize_ledger(target)
     mirrored = cashctrl.ledger()
-    expected['document'] = expected.groupby('id')['document'].ffill()
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
     # Mirror with alternative transactions and delete=False
@@ -332,7 +327,6 @@ def test_mirror_ledger(set_up_vat_and_account):
     cashctrl.mirror_ledger(target=target)
     mirrored = cashctrl.ledger()
     expected = cashctrl.standardize_ledger(target)
-    expected['document'] = expected.groupby('id')['document'].ffill()
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
     # Mirror an empty target state

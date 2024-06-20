@@ -279,18 +279,28 @@ class CashCtrlLedger(LedgerEngine):
         self._client.post("tax/update.json", data=payload)
         self._client.invalidate_tax_rates_cache()
 
+    def standardize_ledger(self, ledger: pd.DataFrame) -> pd.DataFrame:
+        df = super().standardize_ledger(ledger)
+        # In CashCtrl, attachments are stored at the transaction level rather than
+        # for each individual line item within collective transactions. To ensure
+        # consistency between equivalent transactions, we fill any missing (NA)
+        # document paths with non-missing paths from other line items in the same
+        # transaction.
+        df['document'] = df.groupby('id')['document'].ffill()
+        df['document'] = df.groupby('id')['document'].bfill()
+        return df
+
     def mirror_ledger(self, target: pd.DataFrame, delete: bool = True):
+        # Standardize data frame schema, discard incoherent entries with a warning
+        target = self.standardize_ledger(target)
+        target = self.sanitize_ledger(target)
+
         # Nest to create one row per transaction, add unique string identifier
         def process_ledger(df: pd.DataFrame) -> pd.DataFrame:
             df = nest(df, columns=[col for col in df.columns if not col in ['id', 'date']], key='txn')
             df['txn_str'] = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(df['date'], df['txn'])]
             return df
         remote = process_ledger(self.ledger())
-        target = self.sanitize_ledger(self.standardize_ledger(target))
-        if target['document'].isna().any():
-            target['document'] = target.groupby('id')['document'].ffill()
-            target['document'] = target.groupby('id')['document'].bfill()
-        target['date'] = target['date'].ffill()
         target = process_ledger(target)
         if target['id'].duplicated().any():
             # We expect nesting to combine all rows with the same
