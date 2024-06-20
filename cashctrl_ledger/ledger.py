@@ -341,6 +341,42 @@ class CashCtrlLedger(LedgerEngine):
                 result[id] = paths
         return result
 
+    def attach_ledger_files(self, detach: bool = False):
+        """
+        Updates the attachments of all ledger entries based on the file paths specified
+        in the 'reference' field of each journal entry. If a file with the specified path
+        exists in the remote CashCtrl account, it will be attached to the corresponding
+        ledger entry.
+
+        Note: The 'reference' field in CashCtrl corresponds to the 'document' column in pyledger.
+
+        Parameters:
+            detach (bool): If True, any files currently attached to ledger entries that do
+                        not have a valid reference path or whose reference path does not
+                        match an actual file will be detached.
+        """
+        # Map ledger entries to their actual and targeted attachments
+        attachments = self._get_ledger_attachments()
+        ledger = self._client.list_journal_entries()
+        ledger['reference'] = '/' + ledger['reference']
+        files = self._client.list_files()
+        df = pd.DataFrame({
+            'ledger_id': ledger['id'],
+            'target_attachment': np.where(ledger['reference'].isin(files['path']),
+                                          ledger['reference'], pd.NA),
+            'actual_attachments': [attachments.get(id, []) for id in ledger['id']],
+        })
+
+        # Update attachments to align with the target attachments
+        for id, target, actual in zip(df['ledger_id'], df['target_attachment'], df['actual_attachments']):
+            if pd.isna(target):
+                if actual and detach:
+                    self._client.post("journal/update_attachments.json", data={'id': id, 'fileIds': ''})
+            elif (len(actual) != 1) or (actual[0] != target):
+                file_id = self._client.file_path_to_id(target)
+                self._client.post("journal/update_attachments.json", data={'id': id, 'fileIds': file_id})
+        self._client.invalidate_journal_cache()
+
     def ledger(self) -> pd.DataFrame:
         """
         Retrieves ledger entries from the remote CashCtrl account and converts
