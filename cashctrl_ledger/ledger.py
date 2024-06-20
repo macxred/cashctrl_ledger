@@ -341,7 +341,7 @@ class CashCtrlLedger(LedgerEngine):
                 result[id] = paths
         return result
 
-    def attach_ledger_files(self, detach=False):
+    def attach_ledger_files(self, detach: bool = False):
         """
         Attaches files to ledger entries that are specified in the 'document' field
 
@@ -353,6 +353,7 @@ class CashCtrlLedger(LedgerEngine):
         # - We discard references that do not match an existing remote file path.
         attachments = self._get_ledger_attachments()
         ledger = self._client.list_journal_entries()
+        ledger['reference'] = '/' + ledger['reference']
         files = self._client.list_files()
         df = pd.DataFrame({
             'ledger_id': ledger['id'],

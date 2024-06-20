@@ -10,10 +10,10 @@ from cashctrl_ledger import CashCtrlLedger
 LEDGER_CSV = """
     id,   date, account, counter_account,  currency, amount,  text,                             document
     1, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,
-    2, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      /file1.txt
-    3, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      /subdir/file2.txt
-    4, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      /file1.txt
-    5, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      /file_invalid.txt
+    2, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      file1.txt
+    3, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      subdir/file2.txt
+    4, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      file1.txt
+    5, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      file_invalid.txt
 """
 
 LEDGER_ENTRIES = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
