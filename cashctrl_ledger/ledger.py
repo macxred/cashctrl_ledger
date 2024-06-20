@@ -595,7 +595,9 @@ class CashCtrlLedger(LedgerEngine):
                 if row['currency'] == currency:
                     amount = row['amount']
                 elif row['currency'] == base_currency:
-                    amount = row['amount'] / fx_rate
+                    # TODO: Once precision() is implemented, use `round_to_precision()`
+                    # instead of hard-coded rounding
+                    amount = round(row['amount'] / fx_rate, 2)
                 else:
                     raise ValueError("Currencies oder than base or transaction currency "
                                      "are not allowed in CashCtrl collective transactions.")

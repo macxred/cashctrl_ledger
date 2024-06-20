@@ -231,7 +231,7 @@ def test_ledger_accessor_mutators_another_fx_transaction(set_up_vat_and_account)
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger_entries(target)
+    expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
 def test_add_ledger_with_non_existing_vat():
