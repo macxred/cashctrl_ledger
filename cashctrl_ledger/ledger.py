@@ -316,8 +316,15 @@ class CashCtrlLedger(LedgerEngine):
         for txn_str, n in zip(count['txn_str'], count['n_add']):
             if n > 0:
                 txn = unnest(target.loc[target['txn_str'] == txn_str, :].head(1), 'txn')
+                if txn['id'].dropna().nunique() > 0:
+                    id = txn['id'].dropna().unique()[0]
+                else:
+                    id = txn['text'].iat[0]
                 for _ in range(n):
-                    self.add_ledger_entry(txn)
+                    try:
+                        self.add_ledger_entry(txn)
+                    except Exception as e:
+                        raise Exception(f"Error while adding ledger entry {id}: {e}") from e
 
     def _get_ledger_attachments(self) -> Dict[str, List[str]]:
         """
@@ -483,6 +490,17 @@ class CashCtrlLedger(LedgerEngine):
         - ValueError: If more than one non-base currency is present or if no
             coherent exchange rate is found.
         """
+        if not isinstance(entry, pd.DataFrame) or entry.empty:
+            raise ValueError("`entry` must be a pd.DataFrame with at least one row.")
+        if 'id' in entry.columns:
+            id = entry['id'].iat[0]
+        else:
+            id = ""
+        expected_columns = ['currency', 'amount', 'base_currency_amount']
+        if not set(expected_columns).issubset(entry.columns):
+            missing = [col for col in expected_columns if col not in entry.columns]
+            raise ValueError(f"Missing required column(s) {missing}: {id}.")
+
         # Check if all entries are denominated in base currency
         base_currency = self.base_currency
         if all(entry['currency'].isna() | (entry['currency'] == base_currency)):
@@ -492,7 +510,7 @@ class CashCtrlLedger(LedgerEngine):
         fx_entries = entry.loc[entry['currency'].notna() & (entry['currency'] != base_currency)]
         if fx_entries['currency'].nunique() != 1:
             raise ValueError("CashCtrl allows only the base currency plus a "
-                             "single foreign currency in a collective booking.")
+                             f"single foreign currency in a collective booking: {id}.")
         currency = fx_entries['currency'].iat[0]
 
         # Define precision parameters for exchange rate calculation
