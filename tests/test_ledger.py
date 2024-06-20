@@ -48,7 +48,7 @@ TEST_VAT_CODE = pd.read_csv(StringIO(VAT_CSV), skipinitialspace=True)
 
 
 @pytest.fixture(scope="module")
-def add_vat_code():
+def set_up_vat_and_account():
     cashctrl = CashCtrlLedger()
 
     # Fetch original state
@@ -74,7 +74,7 @@ def txn_to_str(df: pd.DataFrame) -> List[str]:
     result.sort()
     return result
 
-def test_ledger_accessor_mutators_single_transaction(add_vat_code):
+def test_ledger_accessor_mutators_single_transaction(set_up_vat_and_account):
     cashctrl = CashCtrlLedger()
 
     # Test adding a ledger entry
@@ -142,7 +142,7 @@ def test_ledger_accessor_mutators_single_transaction_without_VAT():
     remote = cashctrl.ledger()
     assert all(remote['id'] != str(id)), f"Ledger entry {id} was not deleted"
 
-def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
+def test_ledger_accessor_mutators_collective_transaction(set_up_vat_and_account):
     cashctrl = CashCtrlLedger()
 
     # Test adding a ledger entry
@@ -206,10 +206,8 @@ def test_ledger_accessor_mutators_collective_transaction_without_vat():
     remote = cashctrl.ledger()
     assert all(remote['id'] != str(id)), f"Ledger entry {id} was not deleted"
 
-def test_ledger_accessor_mutators_complex_transactions():
+def test_ledger_accessor_mutators_fx_transaction(set_up_vat_and_account):
     cashctrl = CashCtrlLedger()
-
-    # Test adding a ledger entry
     target = LEDGER_ENTRIES.query('id == 5')
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
@@ -217,7 +215,8 @@ def test_ledger_accessor_mutators_complex_transactions():
     expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
-    # Test adding a ledger entry with missing base currency amount
+def test_ledger_accessor_mutators_fx_transaction_na_base_currency_amount(set_up_vat_and_account):
+    cashctrl = CashCtrlLedger()
     target = LEDGER_ENTRIES.query('id == 6')
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
@@ -249,7 +248,7 @@ def test_add_ledger_with_non_existing_currency():
     with pytest.raises(ValueError, match='No id found for currency'):
         cashctrl.add_ledger_entry(target)
 
-def test_update_ledger_with_illegal_attributes(add_vat_code):
+def test_update_ledger_with_illegal_attributes(set_up_vat_and_account):
     cashctrl = CashCtrlLedger()
     id = cashctrl.add_ledger_entry(LEDGER_ENTRIES.query('id == 1'))
 
@@ -291,7 +290,7 @@ def test_delete_non_existent_ledger():
     with pytest.raises(RequestException):
         cashctrl.delete_ledger_entry(ids='non-existent')
 
-def test_mirror_ledger(add_vat_code):
+def test_mirror_ledger(set_up_vat_and_account):
     cashctrl = CashCtrlLedger()
 
     # Mirror with one single and one collective transaction
