@@ -342,24 +342,27 @@ class CashCtrlLedger(LedgerEngine):
         return result
 
     def attach_ledger_files(self, detach=False):
+        # For every ledger entry, list targeted and actual attachments
+        # - Desired attachments are specified in journal entry 'reference' fields.
+        # - We discard references that do not match an existing remote file path.
         attachments = self._get_ledger_attachments()
         ledger = self._client.list_journal_entries()
         files = self._client.list_files()
         df = pd.DataFrame({
-            'id': ledger['id'],
-            'target': [ref if ref in files['path'].values else None for ref in ledger['reference']],
-            'remote': [attachments.get(id, []) for id in ledger['id']],
+            'ledger_id': ledger['id'],
+            'target_attachment': np.where(ledger['reference'].isin(files['path']),
+                                          ledger['reference'], pd.NA),
+            'actual_attachments': [attachments.get(id, []) for id in ledger['id']],
         })
 
-        for _, row in df.iterrows():
-            if pd.isna(row['target']):
-                if row['remote'] and detach:
-                    self._client.post("journal/update_attachments.json", data={'id': row['id'], 'fileIds': ''})
-            else:
-                if len(row['remote']) != 1 or row['remote'][0] != row['target']:
-                    file_id = self._client.file_path_to_id(row['target'])
-                    self._client.post("journal/update_attachments.json", data={'id': row['id'], 'fileIds': file_id})
-
+        # Align actual with targeted attachments
+        for id, target, actual in zip(df['ledger_id'], df['target_attachment'], df['actual_attachments']):
+            if pd.isna(target):
+                if actual and detach:
+                    self._client.post("journal/update_attachments.json", data={'id': id, 'fileIds': ''})
+            elif (len(actual) != 1) or (actual[0] != target):
+                file_id = self._client.file_path_to_id(target)
+                self._client.post("journal/update_attachments.json", data={'id': id, 'fileIds': file_id})
         self._client.invalidate_journal_cache()
 
     def ledger(self) -> pd.DataFrame:
