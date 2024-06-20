@@ -343,14 +343,19 @@ class CashCtrlLedger(LedgerEngine):
 
     def attach_ledger_files(self, detach: bool = False):
         """
-        Attaches files to ledger entries that are specified in the 'document' field
+        Updates the attachments of all ledger entries based on the file paths specified
+        in the 'reference' field of each journal entry. If a file with the specified path
+        exists in the remote CashCtrl account, it will be attached to the corresponding
+        ledger entry.
+
+        Note: The 'reference' field in CashCtrl corresponds to the 'document' column in pyledger.
 
         Parameters:
-            detach (bool): Specifies whether unmatched file should be detached or not.
+            detach (bool): If True, any files currently attached to ledger entries that do
+                        not have a valid reference path or whose reference path does not
+                        match an actual file will be detached.
         """
-        # For every ledger entry, list targeted and actual attachments
-        # - Desired attachments are specified in journal entry 'reference' fields.
-        # - We discard references that do not match an existing remote file path.
+        # Map ledger entries to their actual and targeted attachments
         attachments = self._get_ledger_attachments()
         ledger = self._client.list_journal_entries()
         ledger['reference'] = '/' + ledger['reference']
@@ -362,7 +367,7 @@ class CashCtrlLedger(LedgerEngine):
             'actual_attachments': [attachments.get(id, []) for id in ledger['id']],
         })
 
-        # Align actual with targeted attachments
+        # Update attachments to align with the target attachments
         for id, target, actual in zip(df['ledger_id'], df['target_attachment'], df['actual_attachments']):
             if pd.isna(target):
                 if actual and detach:
