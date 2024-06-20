@@ -4,7 +4,6 @@ Unit tests for listing, attaching and detaching remote files.
 
 import pytest
 import pandas as pd
-from typing import List
 from io import StringIO
 from cashctrl_ledger import CashCtrlLedger
 
@@ -14,6 +13,7 @@ LEDGER_CSV = """
     2, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      /file1.txt
     3, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      /subdir/file2.txt
     4, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      /file1.txt
+    5, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      /file_invalid.txt
 """
 
 LEDGER_ENTRIES = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
@@ -65,7 +65,7 @@ def ledger_ids():
     yield ledger_ids
 
     # Restore original ledger state
-    engine.delete_ledger_entry(list(map(str, ledger_ids)))
+    engine.delete_ledger_entry([str(id) for id in ledger_ids])
 
 @pytest.fixture(scope="module")
 def ledger_attached_ids():
@@ -74,12 +74,12 @@ def ledger_attached_ids():
     field and return their ids in a list.
     """
     cashctrl = CashCtrlLedger()
-    ledger_ids = [cashctrl.add_ledger_entry(LEDGER_ENTRIES.query(f'id == {i}')) for i in range(1, 5)]
+    ledger_ids = [cashctrl.add_ledger_entry(LEDGER_ENTRIES.query(f'id == {id}')) for id in LEDGER_ENTRIES['id']]
 
     yield ledger_ids
 
     # Restore original ledger state
-    cashctrl.delete_ledger_entry(list(map(str, ledger_ids)))
+    cashctrl.delete_ledger_entry([str(id) for id in ledger_ids])
 
 def sort_dict_values(items):
     return {key: value.sort() for key, value in items.items()}
@@ -112,6 +112,7 @@ def test_attach_ledger_files(files, ledger_attached_ids):
     engine._client.post("journal/update_attachments.json", data={'id': ledger_attached_ids[1], 'fileIds': files['id'].iat[0]})
     # Attach file that should left untouched
     engine._client.post("journal/update_attachments.json", data={'id': ledger_attached_ids[2], 'fileIds': files['id'].iat[0]})
+    engine._client.invalidate_journal_cache()
 
     # Update attachments with detach=False
     engine.attach_ledger_files(detach=False)
@@ -135,3 +136,37 @@ def test_attach_ledger_files(files, ledger_attached_ids):
         ledger_attached_ids[3]: ['/file1.txt'],
     }
     assert sort_dict_values(expected) == sort_dict_values(attachments)
+
+def test_attach_ledger_files_that_dont_match_remote_files(files, ledger_attached_ids):
+    engine = CashCtrlLedger()
+    # Attach file that should trigger update of non-existent file
+    engine._client.post("journal/update_attachments.json", data={'id': ledger_attached_ids[4], 'fileIds': files['id'].iat[0]})
+    engine._client.invalidate_journal_cache()
+
+    # With detach=false attached file should left the same
+    engine.attach_ledger_files(detach=False)
+    attachments = engine._get_ledger_attachments()
+    attachments = {k: v for k, v in attachments.items() if k == ledger_attached_ids[4]}
+    expected = { ledger_attached_ids[4]: ['/file1.txt'] }
+    assert expected == attachments
+
+    # With detach=true attached file should be deleted
+    engine.attach_ledger_files(detach=True)
+    attachments = engine._get_ledger_attachments()
+    attachments = {k: v for k, v in attachments.items() if k == ledger_attached_ids[4]}
+    assert {} == attachments
+
+def test_attach_ledger_files_to_ledger_with_multiple_attachments(files, ledger_attached_ids):
+    engine = CashCtrlLedger()
+    # Attach files that should trigger update
+    engine._client.post("journal/update_attachments.json",
+                        data={'id': ledger_attached_ids[1],
+                              'fileIds': f"{files['id'].iat[0]}, {files['id'].iat[1]}"})
+    engine._client.invalidate_journal_cache()
+
+    # Should update attachments from multiple to only one specified
+    engine.attach_ledger_files(detach=False)
+    attachments = engine._get_ledger_attachments()
+    attachments = {k: v for k, v in attachments.items() if k == ledger_attached_ids[1]}
+    expected = { ledger_attached_ids[1]: ['/file1.txt'] }
+    assert expected == attachments

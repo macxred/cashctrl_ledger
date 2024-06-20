@@ -342,6 +342,12 @@ class CashCtrlLedger(LedgerEngine):
         return result
 
     def attach_ledger_files(self, detach=False):
+        """
+        Attaches files to ledger entries that are specified in the 'document' field
+
+        Parameters:
+            detach (bool): Specifies whether unmatched file should be detached or not.
+        """
         # For every ledger entry, list targeted and actual attachments
         # - Desired attachments are specified in journal entry 'reference' fields.
         # - We discard references that do not match an existing remote file path.
