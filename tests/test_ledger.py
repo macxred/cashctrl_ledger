@@ -67,7 +67,8 @@ def txn_to_str(df: pd.DataFrame) -> List[str]:
     df = nest(df, columns=[col for col in df.columns if not col in ['id', 'date']], key='txn')
     df = df.drop(columns=['id'])
     result = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(df['date'], df['txn'])]
-    return result.sort()
+    result.sort()
+    return result
 
 def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     cashctrl = CashCtrlLedger()
