@@ -287,6 +287,13 @@ class CashCtrlLedger(LedgerEngine):
             return df
         remote = process_ledger(self.ledger())
         target = self.sanitize_ledger(self.standardize_ledger(target))
+        replace_amount = target['base_currency_amount'].isna() & (target['currency'] == self.base_currency())
+        if replace_amount.any():
+            target['base_currency_amount'] = np.where(replace_amount, target['amount'],
+                                                      target['base_currency_amount'])
+        if target['document'].isna().any():
+            target['document'] = target.groupby('id')['document'].ffill()
+            target['document'] = target.groupby('id')['document'].bfill()
         target['date'] = target['date'].ffill()
         target = process_ledger(target)
         if target['id'].duplicated().any():

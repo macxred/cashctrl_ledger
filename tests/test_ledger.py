@@ -28,14 +28,18 @@ VAT_CSV = """
 """
 
 LEDGER_CSV = """
-    id,    date, account, counter_account, currency, amount, base_currency_amount,      vat_code, text,                             document
-    1, 2024-05-24, 10023,           19993,      CHF,    100,               100.00, Test_VAT_code, pytest single transaction 1,      /file1.txt
-    2, 2024-05-24, 10022,                ,      USD,   -100,               -88.88, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
-    2, 2024-05-24, 10022,                ,      USD,      1,                 0.89, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
-    2, 2024-05-24, 10022,                ,      USD,     99,                87.99, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
-    3, 2024-04-24, 10021,                ,      EUR,   -200,              -175.55, Test_VAT_code, pytest collective txn 2 - line 1, /document-col-alt.pdf
-    3, 2024-04-24, 10021,                ,      EUR,    200,               175.55, Test_VAT_code, pytest collective txn 2 - line 2, /document-col-alt.pdf
-    4, 2024-05-24, 10022,           19992,      USD,    300,               450.45, Test_VAT_code, pytest single transaction 2,      /document-alt.pdf
+    id,    date, account, counter_account, currency,     amount, base_currency_amount,      vat_code, text,                             document
+    1, 2024-05-24, 10023,           19993,      CHF,     100.00,                     , Test_VAT_code, pytest single transaction 1,      /file1.txt
+    2, 2024-05-24, 10022,                ,      USD,    -100.00,               -88.88, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
+    2, 2024-05-24, 10022,                ,      USD,       1.00,                 0.89, Test_VAT_code, pytest collective txn 1 - line 1, /subdir/file2.txt
+    2, 2024-05-24, 10022,                ,      USD,      99.00,                87.99, Test_VAT_code, pytest collective txn 1 - line 1,
+    3, 2024-04-24, 10021,                ,      EUR,    -200.00,              -175.55, Test_VAT_code, pytest collective txn 2 - line 1, /document-col-alt.pdf
+    3, 2024-04-24, 10021,                ,      EUR,     200.00,               175.55, Test_VAT_code, pytest collective txn 2 - line 2, /document-col-alt.pdf
+    4, 2024-05-24, 10022,           19992,      USD,     300.00,               450.45, Test_VAT_code, pytest single transaction 2,      /document-alt.pdf
+    5, 2024-04-04, 19993,                ,      CHF, -125000.00,           -125000.00,              , Convert -125'000 CHF to USD @ 1.10511,
+    5, 2024-04-04, 19992,                ,      USD,  138138.75,            125000.00,              , Convert -125'000 CHF to USD @ 1.10511,
+    6, 2024-04-04, 19993,                ,      CHF, -250000.00,                     ,              , Convert -250'000 CHF to USD @ 1.10511,
+    6, 2024-04-04, 19992,                ,      USD,  276277.50,            250000.00,              , Convert -250'000 CHF to USD @ 1.10511,
 """
 
 LEDGER_ENTRIES = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
@@ -79,6 +83,7 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)]
     expected = StandaloneLedger.standardize_ledger(target)
+    expected['base_currency_amount'] = expected['base_currency_amount'].fillna(expected['amount'])
     assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
     # Test update the ledger entry
@@ -103,6 +108,7 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     remote = cashctrl.ledger()
     updated = remote.loc[remote['id'] == str(id)]
     expected = StandaloneLedger.standardize_ledger(target)
+    expected['document'] = expected['document'].ffill().bfill()
     assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test delete the created ledger entry
@@ -130,6 +136,7 @@ def test_ledger_accessor_mutators_single_transaction_without_VAT():
     remote = cashctrl.ledger()
     updated = remote.loc[remote['id'] == str(id)]
     expected = StandaloneLedger.standardize_ledger(target)
+    expected['base_currency_amount'] = expected['base_currency_amount'].fillna(expected['amount'])
     assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test delete the updated ledger entry
@@ -146,6 +153,7 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)]
     expected = StandaloneLedger.standardize_ledger(target)
+    expected['document'] = expected['document'].ffill().bfill()
     assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
     # Test update the ledger entry
@@ -165,6 +173,7 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     remote = cashctrl.ledger()
     updated = remote.loc[remote['id'] == str(id)]
     expected = StandaloneLedger.standardize_ledger(target)
+    expected['base_currency_amount'] = expected['base_currency_amount'].fillna(expected['amount'])
     assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test delete the updated ledger entry
@@ -182,6 +191,7 @@ def test_ledger_accessor_mutators_collective_transaction_without_vat():
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)]
     expected = StandaloneLedger.standardize_ledger(target)
+    expected['document'] = expected['document'].ffill().bfill()
     assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
     # Test update the ledger entry
@@ -198,6 +208,26 @@ def test_ledger_accessor_mutators_collective_transaction_without_vat():
     cashctrl.delete_ledger_entry(id)
     remote = cashctrl.ledger()
     assert all(remote['id'] != str(id)), f"Ledger entry {id} was not deleted"
+
+def test_ledger_accessor_mutators_complex_transactions():
+    cashctrl = CashCtrlLedger()
+
+    # Test adding a ledger entry
+    target = LEDGER_ENTRIES.query('id == 5')
+    id = cashctrl.add_ledger_entry(target)
+    remote = cashctrl.ledger()
+    created = remote.loc[remote['id'] == str(id)]
+    expected = StandaloneLedger.standardize_ledger(target)
+    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
+
+    # Test adding a ledger entry with missing base currency amount
+    target = LEDGER_ENTRIES.query('id == 6')
+    id = cashctrl.add_ledger_entry(target)
+    remote = cashctrl.ledger()
+    created = remote.loc[remote['id'] == str(id)]
+    expected = StandaloneLedger.standardize_ledger(target)
+    expected['base_currency_amount'] = expected['base_currency_amount'].fillna(expected['amount'])
+    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
 def test_add_ledger_with_non_existing_vat():
     # Adding a ledger entry with non existing VAT code should raise an error
@@ -272,6 +302,8 @@ def test_mirror_ledger(add_vat_code):
     target = LEDGER_ENTRIES.query('id in [1, 2]')
     cashctrl.mirror_ledger(target=target, delete=True)
     expected = StandaloneLedger.standardize_ledger(target)
+    expected['base_currency_amount'] = expected['base_currency_amount'].fillna(expected['amount'])
+    expected['document'] = expected.groupby('id')['document'].ffill()
     mirrored = cashctrl.ledger()
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
@@ -285,6 +317,8 @@ def test_mirror_ledger(add_vat_code):
     cashctrl.mirror_ledger(target=target)
     expected = StandaloneLedger.standardize_ledger(target)
     mirrored = cashctrl.ledger()
+    expected['base_currency_amount'] = expected['base_currency_amount'].fillna(expected['amount'])
+    expected['document'] = expected.groupby('id')['document'].ffill()
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
     # Mirror with alternative transactions and delete=False
@@ -305,6 +339,8 @@ def test_mirror_ledger(add_vat_code):
     cashctrl.mirror_ledger(target=target)
     mirrored = cashctrl.ledger()
     expected = StandaloneLedger.standardize_ledger(target)
+    expected['base_currency_amount'] = expected['base_currency_amount'].fillna(expected['amount'])
+    expected['document'] = expected.groupby('id')['document'].ffill()
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
     # Mirror an empty target state
