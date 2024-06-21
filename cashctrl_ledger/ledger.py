@@ -288,6 +288,17 @@ class CashCtrlLedger(LedgerEngine):
         # transaction.
         df['document'] = df.groupby('id')['document'].ffill()
         df['document'] = df.groupby('id')['document'].bfill()
+
+        # TODO: move this code block to parent class
+        # Swap account and counter_account if a counter_account but no account is provided
+        swap_accounts = df['account'].isna() & df['counter_account'].notna()
+        if swap_accounts.any():
+            df.loc[swap_accounts, 'account'] = df.loc[swap_accounts, 'counter_account']
+            df.loc[swap_accounts, 'counter_account'] = pd.NA
+            df.loc[swap_accounts, 'amount'] = -1 * df.loc[swap_accounts, 'amount']
+            df.loc[swap_accounts, 'base_currency_amount'] = (
+                -1 * df.loc[swap_accounts, 'base_currency_amount'])
+
         return df
 
     def mirror_ledger(self, target: pd.DataFrame, delete: bool = True):
