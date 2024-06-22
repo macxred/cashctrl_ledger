@@ -151,9 +151,9 @@ ACCOUNTS = """
     8500,CHF,<values><de>Ausserordentlicher Aufwand</de><en>Extraordinary expenses</en><fr>Charges exceptionelles</fr><it>Costi straordinari</it></values>,,/Expense/Betriebsfremder Erfolg
     8510,CHF,<values><de>Ausserordentlicher Ertrag</de><en>Extraordinary revenue</en><fr>Produits exceptionelles</fr><it>Ricavi straordinari</it></values>,,/Expense/Betriebsfremder Erfolg
     8900,CHF,<values><de>Direkte Steuern</de><en>Direct taxes</en><fr>Impôts directs</fr><it>Imposte dirette</it></values>,,/Expense/Betriebsfremder Erfolg
-    9100,CHF,<values><de>Eröffnungsbilanz</de><en>Opening balance</en><fr>Bilan d'ouverture</fr><it>Bilancio di apertura</it></values>,,/Balance/Eröffnung \ Abschluss
-    9200,CHF,<values><de>Jahresgewinn oder -verlust</de><en>Annual profit or loss</en><fr>Bénefice ou perte de l'exercice</fr><it>Utile annuo o perdita annua</it></values>,,/Balance/Eröffnung \ Abschluss
-    9900,CHF,<values><de>Korrekturen</de><en>Corrections</en><fr>Corrections</fr><it>Correzioni</it></values>,,/Balance/Eröffnung \ Abschluss
+    9100,CHF,<values><de>Eröffnungsbilanz</de><en>Opening balance</en><fr>Bilan d'ouverture</fr><it>Bilancio di apertura</it></values>,,/Balance/Eröffnung \\ Abschluss
+    9200,CHF,<values><de>Jahresgewinn oder -verlust</de><en>Annual profit or loss</en><fr>Bénefice ou perte de l'exercice</fr><it>Utile annuo o perdita annua</it></values>,,/Balance/Eröffnung \\ Abschluss
+    9900,CHF,<values><de>Korrekturen</de><en>Corrections</en><fr>Corrections</fr><it>Correzioni</it></values>,,/Balance/Eröffnung \\ Abschluss
 """
 
 def main():
