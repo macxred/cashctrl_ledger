@@ -165,16 +165,13 @@ def main():
     if len(ids):
         cashctrl_ledger._client.post("journal/delete.json", {'ids': ids})
 
-    # Restore default VAT with delete=False
+    # Restore default VAT
     initial_vat = pd.read_csv(StringIO(VAT_CODES), skipinitialspace=True)
-    cashctrl_ledger.mirror_vat_codes(target_state=initial_vat, delete=False)
+    cashctrl_ledger.mirror_vat_codes(target_state=initial_vat, delete=True)
 
     # Restore default accounts
     initial_accounts = pd.read_csv(StringIO(ACCOUNTS), skipinitialspace=True)
     cashctrl_ledger.mirror_account_chart(target=initial_accounts)
-
-    # Restore default VAT with delete=True
-    cashctrl_ledger.mirror_vat_codes(target_state=initial_vat)
 
 if __name__ == "__main__":
     main()
