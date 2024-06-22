@@ -287,10 +287,6 @@ class CashCtrlLedger(LedgerEngine):
             return df
         remote = process_ledger(self.ledger())
         target = self.sanitize_ledger(self.standardize_ledger(target))
-        replace_amount = target['base_currency_amount'].isna() & (target['currency'] == self.base_currency())
-        if replace_amount.any():
-            target['base_currency_amount'] = np.where(replace_amount, target['amount'],
-                                                      target['base_currency_amount'])
         if target['document'].isna().any():
             target['document'] = target.groupby('id')['document'].ffill()
             target['document'] = target.groupby('id')['document'].bfill()
@@ -429,7 +425,7 @@ class CashCtrlLedger(LedgerEngine):
             cols = {'id': 'accountId', 'currencyCode': 'account_currency', 'number': 'account'}
             account_map = self._client.list_accounts()[cols.keys()].rename(columns=cols)
             collective = pd.merge(collective, account_map, 'left', on='accountId', validate='m:1')
-            base_currency = self.base_currency()
+            base_currency = self.base_currency
             account_in_base_currency = collective['account_currency'] == base_currency
             amount = collective['credit'].fillna(0) - collective['debit'].fillna(0)
             base_currency_amount = amount * collective['fx_rate']
@@ -449,7 +445,7 @@ class CashCtrlLedger(LedgerEngine):
             })
             result = pd.concat([result, mapped_collective])
 
-        return StandaloneLedger.standardize_ledger(result)
+        return self.standardize_ledger(result)
 
     def _collective_transaction_currency_and_rate(self, entry: pd.DataFrame) -> Tuple[str, float]:
         """
@@ -488,7 +484,7 @@ class CashCtrlLedger(LedgerEngine):
             coherent exchange rate is found.
         """
         # Check if all entries are denominated in base currency
-        base_currency = self.base_currency()
+        base_currency = self.base_currency
         if all(entry['currency'].isna() | (entry['currency'] == base_currency)):
             return base_currency, 1.0
 
@@ -534,7 +530,7 @@ class CashCtrlLedger(LedgerEngine):
         Returns:
             dict: A data structure to post as json to the CashCtrl REST API.
         """
-        entry = StandaloneLedger.standardize_ledger(entry)
+        entry = self.standardize_ledger(entry)
 
         # Individual ledger entry
         if len(entry) == 1:
@@ -554,7 +550,7 @@ class CashCtrlLedger(LedgerEngine):
         elif len(entry) > 1:
             # Individual transaction entries (line items)
             items = []
-            base_currency = self.base_currency()
+            base_currency = self.base_currency
             currency, fx_rate = self._collective_transaction_currency_and_rate(entry)
             for _, row in entry.iterrows():
                 if row['currency'] == currency:
@@ -627,6 +623,7 @@ class CashCtrlLedger(LedgerEngine):
         self._client.post("journal/delete.json", {'ids': ids})
         self._client.invalidate_journal_cache()
 
+    @property
     def base_currency(self):
         currencies = self._client.list_currencies()
         is_base_currency = currencies['isDefault'].astype('bool')

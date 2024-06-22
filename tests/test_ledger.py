@@ -82,8 +82,7 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)]
-    expected = StandaloneLedger.standardize_ledger(target)
-    expected['base_currency_amount'] = expected['base_currency_amount'].fillna(expected['amount'])
+    expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
     # Test update the ledger entry
@@ -92,7 +91,7 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
     updated = remote.loc[remote['id'] == str(id)]
-    expected = StandaloneLedger.standardize_ledger(target)
+    expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(updated, expected, ignore_index=True)
 
     # TODO: CashCtrl doesn`t allow to convert a single transaction into collective
@@ -107,7 +106,7 @@ def test_ledger_accessor_mutators_single_transaction(add_vat_code):
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
     updated = remote.loc[remote['id'] == str(id)]
-    expected = StandaloneLedger.standardize_ledger(target)
+    expected = cashctrl.standardize_ledger(target)
     expected['document'] = expected['document'].ffill().bfill()
     assert_frame_equal(updated, expected, ignore_index=True)
 
@@ -125,7 +124,7 @@ def test_ledger_accessor_mutators_single_transaction_without_VAT():
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)]
-    expected = StandaloneLedger.standardize_ledger(target)
+    expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
     # Test update the ledger entry
@@ -135,8 +134,7 @@ def test_ledger_accessor_mutators_single_transaction_without_VAT():
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
     updated = remote.loc[remote['id'] == str(id)]
-    expected = StandaloneLedger.standardize_ledger(target)
-    expected['base_currency_amount'] = expected['base_currency_amount'].fillna(expected['amount'])
+    expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test delete the updated ledger entry
@@ -152,7 +150,7 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)]
-    expected = StandaloneLedger.standardize_ledger(target)
+    expected = cashctrl.standardize_ledger(target)
     expected['document'] = expected['document'].ffill().bfill()
     assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
@@ -162,7 +160,7 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
     updated = remote.loc[remote['id'] == str(id)]
-    expected = StandaloneLedger.standardize_ledger(target)
+    expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test replace with an individual ledger entry
@@ -172,8 +170,7 @@ def test_ledger_accessor_mutators_collective_transaction(add_vat_code):
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
     updated = remote.loc[remote['id'] == str(id)]
-    expected = StandaloneLedger.standardize_ledger(target)
-    expected['base_currency_amount'] = expected['base_currency_amount'].fillna(expected['amount'])
+    expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test delete the updated ledger entry
@@ -190,7 +187,7 @@ def test_ledger_accessor_mutators_collective_transaction_without_vat():
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)]
-    expected = StandaloneLedger.standardize_ledger(target)
+    expected = cashctrl.standardize_ledger(target)
     expected['document'] = expected['document'].ffill().bfill()
     assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
@@ -201,7 +198,7 @@ def test_ledger_accessor_mutators_collective_transaction_without_vat():
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
     updated = remote.loc[remote['id'] == str(id)]
-    expected = StandaloneLedger.standardize_ledger(target)
+    expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test delete the updated ledger entry
@@ -217,7 +214,7 @@ def test_ledger_accessor_mutators_complex_transactions():
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)]
-    expected = StandaloneLedger.standardize_ledger(target)
+    expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
     # Test adding a ledger entry with missing base currency amount
@@ -225,8 +222,7 @@ def test_ledger_accessor_mutators_complex_transactions():
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)]
-    expected = StandaloneLedger.standardize_ledger(target)
-    expected['base_currency_amount'] = expected['base_currency_amount'].fillna(expected['amount'])
+    expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
 def test_add_ledger_with_non_existing_vat():
@@ -301,8 +297,7 @@ def test_mirror_ledger(add_vat_code):
     # Mirror with one single and one collective transaction
     target = LEDGER_ENTRIES.query('id in [1, 2]')
     cashctrl.mirror_ledger(target=target, delete=True)
-    expected = StandaloneLedger.standardize_ledger(target)
-    expected['base_currency_amount'] = expected['base_currency_amount'].fillna(expected['amount'])
+    expected = cashctrl.standardize_ledger(target)
     expected['document'] = expected.groupby('id')['document'].ffill()
     mirrored = cashctrl.ledger()
     assert txn_to_str(mirrored) == txn_to_str(expected)
@@ -315,16 +310,15 @@ def test_mirror_ledger(add_vat_code):
         LEDGER_ENTRIES.query('id == 2')
     ])
     cashctrl.mirror_ledger(target=target)
-    expected = StandaloneLedger.standardize_ledger(target)
+    expected = cashctrl.standardize_ledger(target)
     mirrored = cashctrl.ledger()
-    expected['base_currency_amount'] = expected['base_currency_amount'].fillna(expected['amount'])
     expected['document'] = expected.groupby('id')['document'].ffill()
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
     # Mirror with alternative transactions and delete=False
     target = LEDGER_ENTRIES.query('id in [3, 4]')
     cashctrl.mirror_ledger(target=target, delete=False)
-    expected = pd.concat([mirrored, StandaloneLedger.standardize_ledger(target)])
+    expected = pd.concat([mirrored, cashctrl.standardize_ledger(target)])
     mirrored = cashctrl.ledger()
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
@@ -338,8 +332,7 @@ def test_mirror_ledger(add_vat_code):
     target = LEDGER_ENTRIES.query('id in [1, 2]')
     cashctrl.mirror_ledger(target=target)
     mirrored = cashctrl.ledger()
-    expected = StandaloneLedger.standardize_ledger(target)
-    expected['base_currency_amount'] = expected['base_currency_amount'].fillna(expected['amount'])
+    expected = cashctrl.standardize_ledger(target)
     expected['document'] = expected.groupby('id')['document'].ffill()
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
