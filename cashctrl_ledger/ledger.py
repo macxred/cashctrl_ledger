@@ -289,6 +289,19 @@ class CashCtrlLedger(LedgerEngine):
         df['document'] = df.groupby('id')['document'].ffill()
         df['document'] = df.groupby('id')['document'].bfill()
 
+        # Split collective transaction line items with both debit and credit into
+        # two items with a single account each
+        is_collective = df['id'].duplicated(keep=False)
+        items_to_split = is_collective & df['account'].notna() & df['counter_account'].notna()
+        if items_to_split.any():
+            new = df.loc[items_to_split].copy()
+            new['account'] = new['counter_account']
+            new.loc[:, 'counter_account'] = pd.NA
+            new['amount'] = -1 * new['amount']
+            new['base_currency_amount'] = -1 * new['base_currency_amount']
+            df.loc[items_to_split, 'counter_account'] = pd.NA
+            df = pd.concat([df, new])
+
         # TODO: move this code block to parent class
         # Swap accounts if a counter_account but no account is provided,
         # or if individual transaction amount is negative
