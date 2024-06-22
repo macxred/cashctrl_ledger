@@ -42,6 +42,7 @@ LEDGER_CSV = """
     6, 2024-04-04, 19992,                ,      USD,  276277.50,            250000.00,              , Convert -250'000 CHF to USD @ 1.10511,
     7, 2024-01-16,      ,           19991,      EUR,  125000.00,            125362.50,              , Convert 125'000 EUR to CHF, /2024/banking/IB/2023-01.pdf
     7, 2024-01-16, 19993,                ,      CHF,  125362.50,            125362.50,              , Convert 125'000 EUR to CHF, /2024/banking/IB/2023-01.pdf
+    8, 2024-05-24, 10021,           19991,      EUR,     -10.00,                -9.00,              , Individual transaction with negative amount,
 """
 
 LEDGER_ENTRIES = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
@@ -228,6 +229,15 @@ def test_ledger_accessor_mutators_another_fx_transaction(set_up_vat_and_account)
     # Total debit (125 000.00) and total credit (125 000.00) must be equal.
     cashctrl = CashCtrlLedger()
     target = LEDGER_ENTRIES.query('id == 7')
+    id = cashctrl.add_ledger_entry(target)
+    remote = cashctrl.ledger()
+    created = remote.loc[remote['id'] == str(id)]
+    expected = cashctrl.standardize_ledger(target)
+    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
+
+def test_ledger_accessor_mutators_individual_transaction_negative_amount(set_up_vat_and_account):
+    cashctrl = CashCtrlLedger()
+    target = LEDGER_ENTRIES.query('id == 8')
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)]
