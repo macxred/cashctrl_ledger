@@ -40,4 +40,4 @@ jobs:
         run: python setup.py develop
 
       - name: Run restore_initial_state.py script
-        run: python scripts/restore_initial_state.py
+        run: python -W error scripts/restore_initial_state.py
