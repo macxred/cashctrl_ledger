@@ -290,11 +290,14 @@ class CashCtrlLedger(LedgerEngine):
         df['document'] = df.groupby('id')['document'].bfill()
 
         # TODO: move this code block to parent class
-        # Swap account and counter_account if a counter_account but no account is provided
-        swap_accounts = df['account'].isna() & df['counter_account'].notna()
+        # Swap accounts if a counter_account but no account is provided,
+        # or if individual transaction amount is negative
+        swap_accounts = (df['counter_account'].notna() &
+                         ((df['amount'] < 0) | df['account'].isna()))
         if swap_accounts.any():
+            initiaL_account = df.loc[swap_accounts, 'account']
             df.loc[swap_accounts, 'account'] = df.loc[swap_accounts, 'counter_account']
-            df.loc[swap_accounts, 'counter_account'] = pd.NA
+            df.loc[swap_accounts, 'counter_account'] = initiaL_account
             df.loc[swap_accounts, 'amount'] = -1 * df.loc[swap_accounts, 'amount']
             df.loc[swap_accounts, 'base_currency_amount'] = (
                 -1 * df.loc[swap_accounts, 'base_currency_amount'])
