@@ -620,7 +620,7 @@ class CashCtrlLedger(LedgerEngine):
                 items.append({
                     'accountId': self._client.account_to_id(row['account']),
                     'debit': -amount if amount < 0 else None,
-                    'credit': amount if amount > 0 else None,
+                    'credit': amount if amount >= 0 else None,
                     'taxId': None if pd.isna(row['vat_code']) else self._client.tax_code_to_id(row['vat_code']),
                     'description': row['text'],
                 })
