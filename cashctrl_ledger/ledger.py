@@ -5,6 +5,7 @@ Module to sync ledger system onto CashCtrl.
 import pandas as pd
 import numpy as np
 from typing import Dict, Tuple, Union, List
+from requests.exceptions import RequestException
 from cashctrl_api import CachedCashCtrlClient, enforce_dtypes
 from pyledger import LedgerEngine, StandaloneLedger
 from .constants import JOURNAL_ITEM_COLUMNS
@@ -51,21 +52,24 @@ class CashCtrlLedger(LedgerEngine):
             )
         return StandaloneLedger.standardize_vat_codes(result)
 
-    def mirror_vat_codes(self, target_state: pd.DataFrame, delete: bool = True):
+    def mirror_vat_codes(self, target: pd.DataFrame, delete: bool | str = False):
         """
         Aligns VAT rates on the remote CashCtrl account with the desired state provided as a DataFrame.
 
         Parameters:
-            target_state (pd.DataFrame): DataFrame containing VAT rates in the pyledger.vat_codes format.
-            delete (bool, optional): If True, deletes VAT codes on the remote account that are not present in target_state.
+            target (pd.DataFrame): DataFrame containing VAT rates in the pyledger.vat_codes format.
+            delete (bool or str, optional): Determines the behavior for deleting VAT codes on the remote account.
+                - True: Deletes VAT codes not present in target.
+                - False: Does not delete any VAT codes.
+                - 'keep_referenced': Deletes VAT codes not present in target, but silently ignores any that fail to delete because they are referenced.
         """
-        target_df = StandaloneLedger.standardize_vat_codes(target_state).reset_index()
+        target_df = StandaloneLedger.standardize_vat_codes(target).reset_index()
         current_state = self.vat_codes().reset_index()
 
         # Delete superfluous VAT codes on remote
         if delete:
             for idx in set(current_state['id']).difference(set(target_df['id'])):
-                self.delete_vat_code(code=idx)
+                self.delete_vat_code(code=idx, keep_referenced=delete == 'keep_referenced')
 
         # Create new VAT codes on remote
         ids = set(target_df['id']).difference(set(current_state['id']))
@@ -79,7 +83,7 @@ class CashCtrlLedger(LedgerEngine):
                 inclusive=row['inclusive'],
             )
 
-        # Update modified VAT cods on remote
+        # Update modified VAT codes on remote
         both = set(target_df['id']).intersection(set(current_state['id']))
         l = target_df.loc[target_df['id'].isin(both)]
         r = current_state.loc[current_state['id'].isin(both)]
@@ -640,18 +644,24 @@ class CashCtrlLedger(LedgerEngine):
         """
         raise NotImplementedError
 
-    def delete_vat_code(self, code: str, allow_missing: bool = False):
+    def delete_vat_code(self, code: str, allow_missing: bool = False, keep_referenced: bool = False):
         """
         Deletes a VAT code from the remote CashCtrl account.
 
         Parameters:
-            code (str): The VAT code name to be deleted.
-            allow_missing (bool): If True, no error is raised if the VAT
-                code is not found; if False, raises ValueError.
+            code (str): The ID of the VAT code to be deleted.
+            allow_missing (bool, optional): If True, does not raise an error if the VAT code does not exist.
+            keep_referenced (bool, optional): If True, silently skips deletion if the VAT code is referenced elsewhere.
         """
         delete_id = self._client.tax_code_to_id(code, allow_missing=allow_missing)
         if delete_id:
-            self._client.post('tax/delete.json', {'ids': delete_id})
+            try:
+                self._client.post('tax/delete.json', {'ids': delete_id})
+            except RequestException as e:
+                error_message = str(e)
+                # Silently skip deletion if keep_referenced is True and VAT code is referenced
+                if not (keep_referenced and "already referenced" in error_message):
+                    raise
             self._client.invalidate_tax_rates_cache()
 
     def ledger_entry():
