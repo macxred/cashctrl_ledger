@@ -279,18 +279,28 @@ class CashCtrlLedger(LedgerEngine):
         self._client.post("tax/update.json", data=payload)
         self._client.invalidate_tax_rates_cache()
 
+    def standardize_ledger(self, ledger: pd.DataFrame) -> pd.DataFrame:
+        df = super().standardize_ledger(ledger)
+        # In CashCtrl, attachments are stored at the transaction level rather than
+        # for each individual line item within collective transactions. To ensure
+        # consistency between equivalent transactions, we fill any missing (NA)
+        # document paths with non-missing paths from other line items in the same
+        # transaction.
+        df['document'] = df.groupby('id')['document'].ffill()
+        df['document'] = df.groupby('id')['document'].bfill()
+        return df
+
     def mirror_ledger(self, target: pd.DataFrame, delete: bool = True):
+        # Standardize data frame schema, discard incoherent entries with a warning
+        target = self.standardize_ledger(target)
+        target = self.sanitize_ledger(target)
+
         # Nest to create one row per transaction, add unique string identifier
         def process_ledger(df: pd.DataFrame) -> pd.DataFrame:
             df = nest(df, columns=[col for col in df.columns if not col in ['id', 'date']], key='txn')
             df['txn_str'] = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(df['date'], df['txn'])]
             return df
         remote = process_ledger(self.ledger())
-        target = self.sanitize_ledger(self.standardize_ledger(target))
-        if target['document'].isna().any():
-            target['document'] = target.groupby('id')['document'].ffill()
-            target['document'] = target.groupby('id')['document'].bfill()
-        target['date'] = target['date'].ffill()
         target = process_ledger(target)
         if target['id'].duplicated().any():
             # We expect nesting to combine all rows with the same
@@ -316,8 +326,15 @@ class CashCtrlLedger(LedgerEngine):
         for txn_str, n in zip(count['txn_str'], count['n_add']):
             if n > 0:
                 txn = unnest(target.loc[target['txn_str'] == txn_str, :].head(1), 'txn')
+                if txn['id'].dropna().nunique() > 0:
+                    id = txn['id'].dropna().unique()[0]
+                else:
+                    id = txn['text'].iat[0]
                 for _ in range(n):
-                    self.add_ledger_entry(txn)
+                    try:
+                        self.add_ledger_entry(txn)
+                    except Exception as e:
+                        raise Exception(f"Error while adding ledger entry {id}: {e}") from e
 
     def _get_ledger_attachments(self) -> Dict[str, List[str]]:
         """
@@ -483,6 +500,17 @@ class CashCtrlLedger(LedgerEngine):
         - ValueError: If more than one non-base currency is present or if no
             coherent exchange rate is found.
         """
+        if not isinstance(entry, pd.DataFrame) or entry.empty:
+            raise ValueError("`entry` must be a pd.DataFrame with at least one row.")
+        if 'id' in entry.columns:
+            id = entry['id'].iat[0]
+        else:
+            id = ""
+        expected_columns = ['currency', 'amount', 'base_currency_amount']
+        if not set(expected_columns).issubset(entry.columns):
+            missing = [col for col in expected_columns if col not in entry.columns]
+            raise ValueError(f"Missing required column(s) {missing}: {id}.")
+
         # Check if all entries are denominated in base currency
         base_currency = self.base_currency
         if all(entry['currency'].isna() | (entry['currency'] == base_currency)):
@@ -492,7 +520,7 @@ class CashCtrlLedger(LedgerEngine):
         fx_entries = entry.loc[entry['currency'].notna() & (entry['currency'] != base_currency)]
         if fx_entries['currency'].nunique() != 1:
             raise ValueError("CashCtrl allows only the base currency plus a "
-                             "single foreign currency in a collective booking.")
+                             f"single foreign currency in a collective booking: {id}.")
         currency = fx_entries['currency'].iat[0]
 
         # Define precision parameters for exchange rate calculation
