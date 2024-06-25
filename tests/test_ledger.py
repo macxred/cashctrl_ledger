@@ -50,6 +50,8 @@ LEDGER_CSV = """
     11, 2024-05-24, 10023,                ,      CHF,     100.00,                     , Test_VAT_code, Collective transaction with zero amount,
     11, 2024-05-24, 19993,                ,      CHF,    -100.00,                     ,              , Collective transaction with zero amount,
     11, 2024-05-24, 19993,                ,      CHF,       0.00,                     ,              , Collective transaction with zero amount,
+    12, 2024-03-02,      ,           19991,      EUR,  600000.00,            599580.00,              , Convert 600k EUR to CHF @ 0.9993,
+    12, 2024-03-02, 19993,                ,      CHF,  599580.00,            599580.00,              , Convert 600k EUR to CHF @ 0.9993,
 """
 LEDGER_ENTRIES = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
 TEST_ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
@@ -274,6 +276,15 @@ def test_ledger_accessor_mutators_leg_with_zero_amount(set_up_vat_and_account):
     # Collective transaction with leg of zero base currency
     cashctrl = CashCtrlLedger()
     target = LEDGER_ENTRIES.query('id == 11')
+    id = cashctrl.add_ledger_entry(target)
+    remote = cashctrl.ledger()
+    created = remote.loc[remote['id'] == str(id)]
+    expected = cashctrl.standardize_ledger(target)
+    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
+
+def test_adding_large_fx_conversion(set_up_vat_and_account):
+    cashctrl = CashCtrlLedger()
+    target = LEDGER_ENTRIES.query('id == 12')
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)]
