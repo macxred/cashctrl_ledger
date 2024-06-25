@@ -560,8 +560,8 @@ class CashCtrlLedger(LedgerEngine):
         tolerance = (fx_entries['amount'] * fx_rate_precision).clip(lower=precision / 2)
         lower_bound = base_amount - tolerance * np.where(base_amount < 0, -1, 1)
         upper_bound = base_amount + tolerance * np.where(base_amount < 0, -1, 1)
-        min_fx_rate = (lower_bound / fx_entries['amount']).max() + fx_rate_precision
-        max_fx_rate = (upper_bound / fx_entries['amount']).min() - fx_rate_precision
+        min_fx_rate = (lower_bound / fx_entries['amount']).max()
+        max_fx_rate = (upper_bound / fx_entries['amount']).min()
         if min_fx_rate > max_fx_rate:
             raise ValueError("Incoherent FX rates in collective booking.")
 
@@ -572,6 +572,11 @@ class CashCtrlLedger(LedgerEngine):
         fx_rates = fx_entries['base_currency_amount'] / fx_entries['amount']
         preferred_rate = fx_rates.loc[is_max_abs].median()
         fx_rate = min(max(preferred_rate, min_fx_rate), max_fx_rate)
+
+        # Confirm fx_rate converts amounts to the expected base currency amount
+        # TODO: Once precision() is implemented, use `round_to_precision()`
+        if any((fx_entries['amount'] * fx_rate).round(2) != fx_entries['base_currency_amount'].round(2)):
+            raise ValueError("Incoherent FX rates in collective booking.")
 
         return currency, fx_rate
 
