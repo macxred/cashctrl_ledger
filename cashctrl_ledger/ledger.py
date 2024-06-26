@@ -297,8 +297,8 @@ class CashCtrlLedger(LedgerEngine):
             new = df.loc[items_to_split].copy()
             new['account'] = new['counter_account']
             new.loc[:, 'counter_account'] = pd.NA
-            new['amount'] = -1 * new['amount']
-            new['base_currency_amount'] = -1 * new['base_currency_amount']
+            for col in ['amount', 'base_currency_amount']:
+                new[col] = np.where(new[col].isna() | (new[col] == 0), new[col], -1 * new[col])
             df.loc[items_to_split, 'counter_account'] = pd.NA
             df = pd.concat([df, new])
 
