@@ -56,6 +56,10 @@ LEDGER_CSV = """
     11, 2024-05-24, 19993,                ,      CHF,       0.00,                     ,              , Collective transaction with zero amount,
     12, 2024-03-02,      ,           19991,      EUR,  600000.00,            599580.00,              , Convert 600k EUR to CHF @ 0.9993,
     12, 2024-03-02, 19993,                ,      CHF,  599580.00,            599580.00,              , Convert 600k EUR to CHF @ 0.9993,
+        # FX gain/loss: transactions in base currency with zero foreign currency amount
+    13, 2024-06-26, 10022,           19993,      CHF,       0.00,               999.00,              , Foreign currency adjustment
+    14, 2024-06-26, 10021,                ,      EUR,       0.00,                 5.55,              , Foreign currency adjustment
+    14, 2024-06-26,      ,           19993,      CHF,       5.55,                     ,              , Foreign currency adjustment
 """
 STRIPPED_CSV = '\n'.join([line.strip() for line in LEDGER_CSV.split("\n")])
 LEDGER_ENTRIES = pd.read_csv(StringIO(STRIPPED_CSV), skipinitialspace=True, comment="#", skip_blank_lines=True)
