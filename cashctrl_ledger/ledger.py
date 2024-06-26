@@ -363,6 +363,13 @@ class CashCtrlLedger(LedgerEngine):
                     except Exception as e:
                         raise Exception(f"Error while adding ledger entry {id}: {e}") from e
 
+        # return number of elements found, targeted, changed:
+        stats = {'pre-existing': int(count['remote'].sum()),
+                 'targeted': int(count['target'].sum()),
+                 'added': count['n_add'].sum(),
+                 'deleted': count['n_delete'].sum() if delete else 0}
+        return stats
+
     def _get_ledger_attachments(self) -> Dict[str, List[str]]:
         """
         Retrieves paths of files attached to CashCtrl ledger entries
