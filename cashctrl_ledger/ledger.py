@@ -288,6 +288,33 @@ class CashCtrlLedger(LedgerEngine):
         # transaction.
         df['document'] = df.groupby('id')['document'].ffill()
         df['document'] = df.groupby('id')['document'].bfill()
+
+        # Split collective transaction line items with both debit and credit into
+        # two items with a single account each
+        is_collective = df['id'].duplicated(keep=False)
+        items_to_split = is_collective & df['account'].notna() & df['counter_account'].notna()
+        if items_to_split.any():
+            new = df.loc[items_to_split].copy()
+            new['account'] = new['counter_account']
+            new.loc[:, 'counter_account'] = pd.NA
+            for col in ['amount', 'base_currency_amount']:
+                new[col] = np.where(new[col].isna() | (new[col] == 0), new[col], -1 * new[col])
+            df.loc[items_to_split, 'counter_account'] = pd.NA
+            df = pd.concat([df, new])
+
+        # TODO: move this code block to parent class
+        # Swap accounts if a counter_account but no account is provided,
+        # or if individual transaction amount is negative
+        swap_accounts = (df['counter_account'].notna() &
+                         ((df['amount'] < 0) | df['account'].isna()))
+        if swap_accounts.any():
+            initiaL_account = df.loc[swap_accounts, 'account']
+            df.loc[swap_accounts, 'account'] = df.loc[swap_accounts, 'counter_account']
+            df.loc[swap_accounts, 'counter_account'] = initiaL_account
+            df.loc[swap_accounts, 'amount'] = -1 * df.loc[swap_accounts, 'amount']
+            df.loc[swap_accounts, 'base_currency_amount'] = (
+                -1 * df.loc[swap_accounts, 'base_currency_amount'])
+
         return df
 
     def mirror_ledger(self, target: pd.DataFrame, delete: bool = True):
@@ -335,6 +362,13 @@ class CashCtrlLedger(LedgerEngine):
                         self.add_ledger_entry(txn)
                     except Exception as e:
                         raise Exception(f"Error while adding ledger entry {id}: {e}") from e
+
+        # return number of elements found, targeted, changed:
+        stats = {'pre-existing': int(count['remote'].sum()),
+                 'targeted': int(count['target'].sum()),
+                 'added': count['n_add'].sum(),
+                 'deleted': count['n_delete'].sum() if delete else 0}
+        return stats
 
     def _get_ledger_attachments(self) -> Dict[str, List[str]]:
         """
@@ -533,8 +567,8 @@ class CashCtrlLedger(LedgerEngine):
         tolerance = (fx_entries['amount'] * fx_rate_precision).clip(lower=precision / 2)
         lower_bound = base_amount - tolerance * np.where(base_amount < 0, -1, 1)
         upper_bound = base_amount + tolerance * np.where(base_amount < 0, -1, 1)
-        min_fx_rate = (lower_bound / fx_entries['amount']).max() + fx_rate_precision
-        max_fx_rate = (upper_bound / fx_entries['amount']).min() - fx_rate_precision
+        min_fx_rate = (lower_bound / fx_entries['amount']).max()
+        max_fx_rate = (upper_bound / fx_entries['amount']).min()
         if min_fx_rate > max_fx_rate:
             raise ValueError("Incoherent FX rates in collective booking.")
 
@@ -545,6 +579,11 @@ class CashCtrlLedger(LedgerEngine):
         fx_rates = fx_entries['base_currency_amount'] / fx_entries['amount']
         preferred_rate = fx_rates.loc[is_max_abs].median()
         fx_rate = min(max(preferred_rate, min_fx_rate), max_fx_rate)
+
+        # Confirm fx_rate converts amounts to the expected base currency amount
+        # TODO: Once precision() is implemented, use `round_to_precision()`
+        if any((fx_entries['amount'] * fx_rate).round(2) != fx_entries['base_currency_amount'].round(2)):
+            raise ValueError("Incoherent FX rates in collective booking.")
 
         return currency, fx_rate
 
@@ -584,14 +623,16 @@ class CashCtrlLedger(LedgerEngine):
                 if row['currency'] == currency:
                     amount = row['amount']
                 elif row['currency'] == base_currency:
-                    amount = row['amount'] / fx_rate
+                    # TODO: Once precision() is implemented, use `round_to_precision()`
+                    # instead of hard-coded rounding
+                    amount = round(row['amount'] / fx_rate, 2)
                 else:
                     raise ValueError("Currencies oder than base or transaction currency "
                                      "are not allowed in CashCtrl collective transactions.")
                 items.append({
                     'accountId': self._client.account_to_id(row['account']),
                     'debit': -amount if amount < 0 else None,
-                    'credit': amount if amount > 0 else None,
+                    'credit': amount if amount >= 0 else None,
                     'taxId': None if pd.isna(row['vat_code']) else self._client.tax_code_to_id(row['vat_code']),
                     'description': row['text'],
                 })
