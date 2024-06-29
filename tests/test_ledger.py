@@ -90,6 +90,16 @@ def txn_to_str(df: pd.DataFrame) -> List[str]:
     result.sort()
     return result
 
+@pytest.mark.parametrize("ledger_id", LEDGER_ENTRIES['id'].unique())
+def test_add_ledger_entry(set_up_vat_and_account, ledger_id):
+    cashctrl = CashCtrlLedger()
+    target = LEDGER_ENTRIES.query('id == @ledger_id')
+    id = cashctrl.add_ledger_entry(target)
+    remote = cashctrl.ledger()
+    created = remote.loc[remote['id'] == str(id)]
+    expected = cashctrl.standardize_ledger(target)
+    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
+
 def test_ledger_accessor_mutators_single_transaction(set_up_vat_and_account):
     cashctrl = CashCtrlLedger()
 
@@ -218,78 +228,6 @@ def test_ledger_accessor_mutators_collective_transaction_without_vat():
     cashctrl.delete_ledger_entry(id)
     remote = cashctrl.ledger()
     assert all(remote['id'] != str(id)), f"Ledger entry {id} was not deleted"
-
-def test_ledger_accessor_mutators_fx_transaction(set_up_vat_and_account):
-    cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 5')
-    id = cashctrl.add_ledger_entry(target)
-    remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
-
-def test_ledger_accessor_mutators_fx_transaction_na_base_currency_amount(set_up_vat_and_account):
-    cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 6')
-    id = cashctrl.add_ledger_entry(target)
-    remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
-
-def test_ledger_accessor_mutators_another_fx_transaction(set_up_vat_and_account):
-    cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 7')
-    id = cashctrl.add_ledger_entry(target)
-    remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
-
-def test_ledger_accessor_mutators_individual_transaction_negative_amount(set_up_vat_and_account):
-    cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 8')
-    id = cashctrl.add_ledger_entry(target)
-    remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
-
-def test_ledger_accessor_mutators_leg_with_credit_and_debit_account(set_up_vat_and_account):
-    cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 9')
-    id = cashctrl.add_ledger_entry(target)
-    remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
-
-def test_ledger_accessor_mutators_transaction_with_zero_amount(set_up_vat_and_account):
-    cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 10')
-    id = cashctrl.add_ledger_entry(target)
-    remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
-
-def test_ledger_accessor_mutators_leg_with_zero_amount(set_up_vat_and_account):
-    cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 11')
-    id = cashctrl.add_ledger_entry(target)
-    remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
-
-def test_adding_large_fx_conversion(set_up_vat_and_account):
-    cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 12')
-    id = cashctrl.add_ledger_entry(target)
-    remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
 def test_add_ledger_with_non_existing_vat():
     # Adding a ledger entry with non existing VAT code should raise an error
