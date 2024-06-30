@@ -124,6 +124,37 @@ class CashCtrlLedger(LedgerEngine):
         return { account_currency: balance, "base_currency": base_currency_balance }
 
 
+    @property
+    def transitory_account(self) -> int:
+        """
+        Transitory account for balancing entries
+
+        Some complex transactions can not be mapped to CashCtrl. We split such transactions
+        into multiple simpler transactions. The balance of each simple transaction is booked
+        onto the transitory account, where the combination of all postings originating from
+        the same complex transactions should sum up to zero.
+
+        Raises:
+            ValueError: If transitory_account is not set or the account does not exist.
+
+        Returns:
+            int: The transitory account number.
+        """
+        if self._transitory_account is None:
+            raise ValueError("transitory_account is not set.")
+        if not self._transitory_account in set(self._client.list_accounts()['number']):
+            raise ValueError(f"The transitory account {self._transitory_account} does not exist.")
+        account_currency = self._client.account_to_currency(self._transitory_account)
+        if account_currency != self.base_currency:
+            raise ValueError(f"The transitory account {self._transitory_account} must be "
+                             f"denominated in {self.base_currency} base currency, not "
+                             f"{account_currency}.")
+        return self._transitory_account
+
+    @transitory_account.setter
+    def transitory_account(self, value: int):
+        self._transitory_account = value
+
     def account_chart(self) -> pd.DataFrame:
         """
         Retrieves the account chart from a remote CashCtrl instance, formatted to the pyledger schema.
@@ -340,6 +371,71 @@ class CashCtrlLedger(LedgerEngine):
                 -1 * df.loc[swap_accounts, 'base_currency_amount'])
 
         return df
+
+    def sanitize_ledger(self, ledger: pd.DataFrame) -> pd.DataFrame:
+        # Number of currencies other than base currency
+        n_currency = ledger[['id', 'currency']][ledger['currency'] != self.base_currency]
+        n_currency = n_currency.groupby('id')['currency'].nunique()
+
+        # Split entries with multiple currencies into separate entries for each currency
+        ids = n_currency.index[n_currency > 1]
+        if len(ids) > 0:
+            multi_currency = self.standardize_ledger(ledger[ledger['id'].isin(ids)])
+            multi_currency = self.split_multi_currency_transactions(multi_currency)
+            others = ledger[~ledger['id'].isin(ids)]
+            df = pd.concat([others, multi_currency], ignore_index=True)
+        else:
+            df = ledger
+
+        # Invoke parent class method
+        return super().sanitize_ledger(df)
+
+
+    def split_multi_currency_transactions(self, ledger: pd.DataFrame, transitory_account: int | None = None) -> pd.DataFrame:
+        """
+        Splits multi-currency transactions into separate transactions for each currency.
+
+        CashCtrl restricts collective transactions to base currency plus a single foreign currency.
+        This method splits multi-currency transactions into several separate transactions with
+        a single currency and base currency compatible with CashCtrl. A residual balance in any currency
+        is booked to the `transitory_account`, the aggregate amount booked to the transitory account
+        across all currencies is zero.
+
+        Parameters:
+        ledger (pd.DataFrame): DataFrame with ledger transactions to split.
+        transitory_account (int | None): The number of the account used for balancing transitory entries.
+
+        Returns:
+        pd.DataFrame: A DataFrame with the split transactions and any necessary balancing entries.
+        """
+        base_currency = self.base_currency
+        is_base_currency = ledger['currency'] == base_currency
+        ledger.loc[is_base_currency, 'base_currency_amount'] = ledger.loc[is_base_currency, 'amount']
+
+        if any(ledger['base_currency_amount'].isna()):
+            raise ValueError("Base currency amount missing for some items.")
+        if transitory_account is None:
+            transitory_account = self.transitory_account
+
+        result = []
+        for (id, currency), group in ledger.groupby(['id', 'currency']):
+            sub_id = f"{id}:{currency}"
+            result.append(group.assign(id=sub_id))
+            balance = round(group['base_currency_amount'].sum(), 2)
+            if balance != 0:
+                clearing_txn = pd.DataFrame({
+                    'id': [sub_id],
+                    'text': [f"Split multi-currency transaction '{id}' "
+                             f"into multiple transactions compatible with CashCtrl."],
+                    'amount': [-1 * balance],
+                    'base_currency_amount': [-1 * balance],
+                    'currency': [base_currency],
+                    'account': [transitory_account],
+                })
+                result.append(clearing_txn)
+
+        result = pd.concat(result, ignore_index=True)
+        return self.standardize_ledger(result)
 
     def mirror_ledger(self, target: pd.DataFrame, delete: bool = True):
         # Standardize data frame schema, discard incoherent entries with a warning
