@@ -40,12 +40,16 @@ LEDGER_CSV = """
     5,  2024-04-04, 19992,                ,      USD,  138138.75,            125000.00,              , Convert -125'000 CHF to USD @ 1.10511,
     6,  2024-04-04, 19993,                ,      CHF, -250000.00,                     ,              , Convert -250'000 CHF to USD @ 1.10511,
     6,  2024-04-04, 19992,                ,      USD,  276277.50,            250000.00,              , Convert -250'000 CHF to USD @ 1.10511,
+        # Transaction raised RequestException: API call failed. Total debit (125,000.00) and total credit (125,000.00) must be equal.
     7,  2024-01-16,      ,           19991,      EUR,  125000.00,            125362.50,              , Convert 125'000 EUR to CHF, /2024/banking/IB/2023-01.pdf
     7,  2024-01-16, 19993,                ,      CHF,  125362.50,            125362.50,              , Convert 125'000 EUR to CHF, /2024/banking/IB/2023-01.pdf
+        # Transactions with negative amount
     8,  2024-05-24, 10021,           19991,      EUR,     -10.00,                -9.00,              , Individual transaction with negative amount,
+        # Collective transaction with credit and debit account in single line item
     9,  2024-05-24, 10023,           19993,      CHF,     100.00,                     ,              , Collective transaction - leg with debit and credit account,
     9,  2024-05-24, 10021,                ,      EUR,      20.00,                19.00,              , Collective transaction - leg with credit account,
     9,  2024-05-24,      ,           19991,      EUR,      20.00,                19.00,              , Collective transaction - leg with debit account,
+        # Transactions with zero base currency
     10, 2024-05-24, 10023,           19993,      CHF,       0.00,                     ,              , Individual transaction with zero amount,
     11, 2024-05-24, 10023,                ,      CHF,     100.00,                     , Test_VAT_code, Collective transaction with zero amount,
     11, 2024-05-24, 19993,                ,      CHF,    -100.00,                     ,              , Collective transaction with zero amount,
@@ -53,7 +57,8 @@ LEDGER_CSV = """
     12, 2024-03-02,      ,           19991,      EUR,  600000.00,            599580.00,              , Convert 600k EUR to CHF @ 0.9993,
     12, 2024-03-02, 19993,                ,      CHF,  599580.00,            599580.00,              , Convert 600k EUR to CHF @ 0.9993,
 """
-LEDGER_ENTRIES = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
+STRIPPED_CSV = '\n'.join([line.strip() for line in LEDGER_CSV.split("\n")])
+LEDGER_ENTRIES = pd.read_csv(StringIO(STRIPPED_CSV), skipinitialspace=True, comment="#", skip_blank_lines=True)
 TEST_ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
 TEST_VAT_CODE = pd.read_csv(StringIO(VAT_CSV), skipinitialspace=True)
 
@@ -84,6 +89,16 @@ def txn_to_str(df: pd.DataFrame) -> List[str]:
     result = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(df['date'], df['txn'])]
     result.sort()
     return result
+
+@pytest.mark.parametrize("ledger_id", LEDGER_ENTRIES['id'].unique())
+def test_add_ledger_entry(set_up_vat_and_account, ledger_id):
+    cashctrl = CashCtrlLedger()
+    target = LEDGER_ENTRIES.query('id == @ledger_id')
+    id = cashctrl.add_ledger_entry(target)
+    remote = cashctrl.ledger()
+    created = remote.loc[remote['id'] == str(id)]
+    expected = cashctrl.standardize_ledger(target)
+    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
 def test_ledger_accessor_mutators_single_transaction(set_up_vat_and_account):
     cashctrl = CashCtrlLedger()
@@ -213,83 +228,6 @@ def test_ledger_accessor_mutators_collective_transaction_without_vat():
     cashctrl.delete_ledger_entry(id)
     remote = cashctrl.ledger()
     assert all(remote['id'] != str(id)), f"Ledger entry {id} was not deleted"
-
-def test_ledger_accessor_mutators_fx_transaction(set_up_vat_and_account):
-    cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 5')
-    id = cashctrl.add_ledger_entry(target)
-    remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
-
-def test_ledger_accessor_mutators_fx_transaction_na_base_currency_amount(set_up_vat_and_account):
-    cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 6')
-    id = cashctrl.add_ledger_entry(target)
-    remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
-
-def test_ledger_accessor_mutators_another_fx_transaction(set_up_vat_and_account):
-    # This transaction raised RequestException on 2024-06-20: API call failed.
-    # Total debit (125 000.00) and total credit (125 000.00) must be equal.
-    cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 7')
-    id = cashctrl.add_ledger_entry(target)
-    remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
-
-def test_ledger_accessor_mutators_individual_transaction_negative_amount(set_up_vat_and_account):
-    cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 8')
-    id = cashctrl.add_ledger_entry(target)
-    remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
-
-def test_ledger_accessor_mutators_leg_with_credit_and_debit_account(set_up_vat_and_account):
-    # Collective transaction with credit and debit account in single line item
-    cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 9')
-    id = cashctrl.add_ledger_entry(target)
-    remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
-
-def test_ledger_accessor_mutators_transaction_with_zero_amount(set_up_vat_and_account):
-    # Individual transaction of zero base currency
-    cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 10')
-    id = cashctrl.add_ledger_entry(target)
-    remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
-
-def test_ledger_accessor_mutators_leg_with_zero_amount(set_up_vat_and_account):
-    # Collective transaction with leg of zero base currency
-    cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 11')
-    id = cashctrl.add_ledger_entry(target)
-    remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
-
-def test_adding_large_fx_conversion(set_up_vat_and_account):
-    cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 12')
-    id = cashctrl.add_ledger_entry(target)
-    remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
-    expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
 
 def test_add_ledger_with_non_existing_vat():
     # Adding a ledger entry with non existing VAT code should raise an error
