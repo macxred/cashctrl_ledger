@@ -58,7 +58,7 @@ LEDGER_CSV = """
     12, 2024-03-02,      ,           19991,      EUR,  600000.00,            599580.00,              , Convert 600k EUR to CHF @ 0.9993,
     12, 2024-03-02, 19993,                ,      CHF,  599580.00,            599580.00,              , Convert 600k EUR to CHF @ 0.9993,
         # FX gain/loss: transactions in base currency with zero foreign currency amount
-    13, 2024-06-26, 10022,           19993,      CHF,       0.00,               999.00,              , Foreign currency adjustment
+    13, 2024-06-26, 10022,           19993,      CHF,     999.00,                     ,              , Foreign currency adjustment
     14, 2024-06-26, 10021,                ,      EUR,       0.00,                 5.55,              , Foreign currency adjustment
     14, 2024-06-26,      ,           19993,      CHF,       5.55,                     ,              , Foreign currency adjustment
         # Transactions with two non-base currencies
@@ -67,6 +67,10 @@ LEDGER_CSV = """
     16, 2024-06-26,      ,           10022,      USD,  200000.00,            180000.00,              , Convert 200k USD to EUR and CHF,
     16, 2024-06-26, 10021,                ,      EUR,   93750.00,             90000.00,              , Convert 200k USD to EUR and CHF,
     16, 2024-06-26, 10023,                ,      CHF,   90000.00,             90000.00,              , Convert 200k USD to EUR and CHF,
+        # Foreign currency transaction exceeding precision for exchange rates in CashCtrl
+    17, 2024-06-26, 10022,           19992,      USD,90000000.00,          81111111.11,              , Value 90 Mio USD @ 0.9012345679 with 10 digits precision,
+    18, 2024-06-26,      ,           19992,      USD, 9500000.00,           7888888.88,              , Convert 9.5 Mio USD to CHF @ 0.830409356 with 9 digits precision,
+    18, 2024-06-26, 10023,                ,      CHF, 7888888.88,                     ,              , Convert 9.5 Mio USD to CHF @ 0.830409356 with 9 digits precision,
 """
 STRIPPED_CSV = '\n'.join([line.strip() for line in LEDGER_CSV.split("\n")])
 LEDGER_ENTRIES = pd.read_csv(StringIO(STRIPPED_CSV), skipinitialspace=True, comment="#", skip_blank_lines=True)
@@ -77,6 +81,7 @@ TEST_VAT_CODE = pd.read_csv(StringIO(VAT_CSV), skipinitialspace=True)
 @pytest.fixture(scope="module")
 def set_up_vat_and_account():
     cashctrl = CashCtrlLedger()
+    cashctrl.transitory_account = 19999
 
     # Fetch original state
     initial_vat_codes = cashctrl.vat_codes().reset_index()
@@ -101,7 +106,7 @@ def txn_to_str(df: pd.DataFrame) -> List[str]:
     result.sort()
     return result
 
-@pytest.mark.parametrize("ledger_id", set(LEDGER_ENTRIES['id'].unique()).difference([15, 16]))
+@pytest.mark.parametrize("ledger_id", set(LEDGER_ENTRIES['id'].unique()).difference([15, 16, 17, 18]))
 def test_add_ledger_entry(set_up_vat_and_account, ledger_id):
     cashctrl = CashCtrlLedger()
     target = LEDGER_ENTRIES.query('id == @ledger_id')
@@ -370,7 +375,7 @@ def test_mirror_ledger(set_up_vat_and_account):
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
     # Mirror with complex transactions and delete=False
-    target = LEDGER_ENTRIES.query('id in [15, 16]')
+    target = LEDGER_ENTRIES.query('id in [15, 16, 17, 18]')
     cashctrl.mirror_ledger(target=target, delete=False)
     expected = cashctrl.standardize_ledger(target)
     expected = cashctrl.sanitize_ledger(expected)
