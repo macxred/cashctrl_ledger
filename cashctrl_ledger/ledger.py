@@ -461,18 +461,34 @@ class CashCtrlLedger(LedgerEngine):
         # Individual ledger entries represent a single transaction and
         # map to a single row in the resulting data frame.
         individual = ledger[ledger['type'] != 'COLLECTIVE']
+
+        # Map to credit and debit account number and account currency
+        cols = {'id': 'creditId', 'currencyCode': 'credit_currency', 'number': 'credit_account'}
+        account_map = self._client.list_accounts()[cols.keys()].rename(columns=cols)
+        individual = pd.merge(individual, account_map, 'left', on='creditId', validate='m:1')
+        cols = {'id': 'debitId', 'currencyCode': 'debit_currency', 'number': 'debit_account'}
+        account_map = self._client.list_accounts()[cols.keys()].rename(columns=cols)
+        individual = pd.merge(individual, account_map, 'left', on='debitId', validate='m:1')
+
+        # Identify foreign currency adjustment transactions
+        currency = individual['currencyCode']
+        base_currency = self.base_currency
+        is_fx_adjustment = ((currency == base_currency) &
+            ((currency != individual['credit_currency']) | (currency != individual['debit_currency'])))
+
         result = pd.DataFrame({
             'id': individual['id'],
             'date': individual['dateAdded'].dt.date,
-            'account': [self._client.account_from_id(id) for id in individual['debitId']],
-            'counter_account': [self._client.account_from_id(id) for id in individual['creditId']],
-            'amount': individual['amount'],
+            'account': individual['debit_account'],
+            'counter_account': individual['credit_account'],
+            'amount': np.where(is_fx_adjustment, 0, individual['amount']),
             'currency': individual['currencyCode'],
             'text': individual['title'],
             'vat_code': individual['taxName'],
-            # TODO: Once precision() is implemented, use `round_to_precision()`
-            # instead of hard-coded rounding
-            'base_currency_amount': round(individual['amount'] * individual['currencyRate'], 2),
+            'base_currency_amount': np.where(is_fx_adjustment, individual['amount'],
+                # TODO: Once precision() is implemented, use `round_to_precision()`
+                # instead of hard-coded rounding
+                round(individual['amount'] * individual['currencyRate'], 2)),
             'document': individual['reference'],
         })
 
@@ -496,25 +512,32 @@ class CashCtrlLedger(LedgerEngine):
             dfs = pd.concat([fetch_journal(id) for id in collective_ids])
             collective = unnest(dfs, 'items')
 
-            # Find currency
+            # Map to account number and account currency
             cols = {'id': 'accountId', 'currencyCode': 'account_currency', 'number': 'account'}
             account_map = self._client.list_accounts()[cols.keys()].rename(columns=cols)
             collective = pd.merge(collective, account_map, 'left', on='accountId', validate='m:1')
+
+            # Identify base currency or foreign currency adjustment transactions
             base_currency = self.base_currency
-            account_in_base_currency = collective['account_currency'] == base_currency
+            is_fx_adjustment = ((collective['account_currency'] != base_currency) &
+                collective['currency'].isna() | (collective['currency'] == base_currency))
+
             amount = collective['debit'].fillna(0) - collective['credit'].fillna(0)
-            base_currency_amount = amount * collective['fx_rate']
-            foreign_amount = np.where(account_in_base_currency, base_currency_amount, amount)
+            currency = collective['account_currency']
+            base_amount = np.where(currency == base_currency, pd.NA,
+                np.where(is_fx_adjustment, amount, amount * collective['fx_rate']))
+            foreign_amount = np.where(currency == base_currency, amount * collective['fx_rate'],
+                                      np.where(is_fx_adjustment, 0, amount))
             mapped_collective = pd.DataFrame({
                 'id': collective['id'],
                 'date': collective['date'],
-                'currency': np.where(account_in_base_currency, base_currency, collective['currency']),
+                'currency': currency,
                 'account': collective['account'],
                 'text': collective['description'],
                 # TODO: Once precision() is implemented, use `round_to_precision()`
                 # instead of hard-coded rounding
-                'amount': pd.Series(foreign_amount).round(2),
-                'base_currency_amount': base_currency_amount.round(2),
+                'amount': pd.Series(foreign_amount).astype(pd.Float64Dtype()).round(2),
+                'base_currency_amount': pd.Series(base_amount).astype(pd.Float64Dtype()).round(2),
                 'vat_code': collective['taxName'],
                 'document': collective['document'],
             })
@@ -571,11 +594,14 @@ class CashCtrlLedger(LedgerEngine):
 
         # Check if all entries are denominated in base currency
         base_currency = self.base_currency
-        if all(entry['currency'].isna() | (entry['currency'] == base_currency)):
+        is_base_txn = (entry['currency'].isna()
+                       | (entry['currency'] == base_currency)
+                       | (entry['amount'] == 0))
+        if all(is_base_txn):
             return base_currency, 1.0
 
         # Extract the sole non-base currency
-        fx_entries = entry.loc[entry['currency'].notna() & (entry['currency'] != base_currency)]
+        fx_entries = entry.loc[~ is_base_txn]
         if fx_entries['currency'].nunique() != 1:
             raise ValueError("CashCtrl allows only the base currency plus a "
                              f"single foreign currency in a collective booking: {id}.")
@@ -622,18 +648,33 @@ class CashCtrlLedger(LedgerEngine):
             dict: A data structure to post as json to the CashCtrl REST API.
         """
         entry = self.standardize_ledger(entry)
+        base_currency = self.base_currency
 
         # Individual ledger entry
         if len(entry) == 1:
+            amount = entry['amount'].iat[0]
+            base_amount = entry['base_currency_amount'].iat[0]
+            currency = entry['currency'].iat[0]
+            if (amount == 0 and not pd.isna(base_amount) and base_amount != 0):
+                # Foreign currency adjustment: Solely changes in base currency amount
+                currency = base_currency
+                amount = base_amount
+                fx_rate = 1
+            else:
+                amount = entry['amount'].iat[0]
+                if currency == self.base_currency or amount == 0:
+                    fx_rate = 1
+                else:
+                    fx_rate = base_amount / amount
             payload = {
                 'dateAdded': entry['date'].iat[0],
-                'amount': entry['amount'].iat[0],
+                'amount': amount,
                 'debitId': self._client.account_to_id(entry['account'].iat[0]),
                 'creditId': self._client.account_to_id(entry['counter_account'].iat[0]),
-                'currencyId': None if pd.isna(entry['currency'].iat[0]) else self._client.currency_to_id(entry['currency'].iat[0]),
+                'currencyId': None if pd.isna(currency) else self._client.currency_to_id(currency),
                 'title': entry['text'].iat[0],
                 'taxId': None if pd.isna(entry['vat_code'].iat[0]) else self._client.tax_code_to_id(entry['vat_code'].iat[0]),
-                'currencyRate': entry['base_currency_amount'].iat[0] / entry['amount'].iat[0],
+                'currencyRate': fx_rate,
                 'reference': None if pd.isna(entry['document'].iat[0]) else entry['document'].iat[0],
             }
 
@@ -641,10 +682,11 @@ class CashCtrlLedger(LedgerEngine):
         elif len(entry) > 1:
             # Individual transaction entries (line items)
             items = []
-            base_currency = self.base_currency
             currency, fx_rate = self._collective_transaction_currency_and_rate(entry)
             for _, row in entry.iterrows():
-                if row['currency'] == currency:
+                if currency == base_currency and row['currency'] != currency:
+                    amount = row['base_currency_amount']
+                elif row['currency'] == currency:
                     amount = row['amount']
                 elif row['currency'] == base_currency:
                     # TODO: Once precision() is implemented, use `round_to_precision()`
