@@ -57,8 +57,8 @@ LEDGER_CSV = """
     12, 2024-03-02,      ,           19991,      EUR,  600000.00,            599580.00,              , Convert 600k EUR to CHF @ 0.9993,
     12, 2024-03-02, 19993,                ,      CHF,  599580.00,            599580.00,              , Convert 600k EUR to CHF @ 0.9993,
 """
-stripped_csv = '\n'.join([line.strip() for line in LEDGER_CSV.split("\n")])
-LEDGER_ENTRIES = pd.read_csv(StringIO(stripped_csv), skipinitialspace=True, comment="#", skip_blank_lines=True)
+STRIPPED_CSV = '\n'.join([line.strip() for line in LEDGER_CSV.split("\n")])
+LEDGER_ENTRIES = pd.read_csv(StringIO(STRIPPED_CSV), skipinitialspace=True, comment="#", skip_blank_lines=True)
 TEST_ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
 TEST_VAT_CODE = pd.read_csv(StringIO(VAT_CSV), skipinitialspace=True)
 
