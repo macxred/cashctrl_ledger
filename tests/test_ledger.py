@@ -381,6 +381,8 @@ def test_mirror_ledger(set_up_vat_and_account):
     expected = cashctrl.sanitize_ledger(expected)
     expected = pd.concat([mirrored, expected])
     mirrored = cashctrl.ledger()
+    # set(txn_to_str(mirrored)).difference(txn_to_str(expected))
+    # set(txn_to_str(expected)).difference(txn_to_str(mirrored))
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
     # Mirror existing transactions with delete=False has no impact
