@@ -109,7 +109,7 @@ def test_add_ledger_entry(set_up_vat_and_account, ledger_id):
     remote = cashctrl.ledger()
     created = remote.loc[remote['id'] == str(id)]
     expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
+    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'], check_exact=True)
 
 def test_ledger_accessor_mutators_single_transaction(set_up_vat_and_account):
     cashctrl = CashCtrlLedger()
