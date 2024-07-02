@@ -395,7 +395,7 @@ class CashCtrlLedger(LedgerEngine):
         result = []
         for _, txn in df.groupby('id'):
             new_txn = self._add_fx_adjustment(txn, transitory_account=transitory_account,
-                                    base_currency=base_currency)
+                                              base_currency=base_currency)
             result.append(new_txn)
         if len(result) > 0:
             result = pd.concat(result)
@@ -481,7 +481,7 @@ class CashCtrlLedger(LedgerEngine):
 
         elif len(entry) > 1:
             # Collective transaction: multiple row in the ledger data frame
-            currency, fx_rate = self._collective_transaction_currency_and_rate(entry)
+            currency, fx_rate = self._collective_transaction_currency_and_rate(entry, suppress_error=True)
             fx_rate = round(fx_rate, 8)
             if currency == base_currency:
                 return entry
@@ -737,7 +737,7 @@ class CashCtrlLedger(LedgerEngine):
 
         return self.standardize_ledger(result)
 
-    def _collective_transaction_currency_and_rate(self, entry: pd.DataFrame) -> Tuple[str, float]:
+    def _collective_transaction_currency_and_rate(self, entry: pd.DataFrame, suppress_error: bool = False) -> Tuple[str, float]:
         """
         Extract a single currency and exchange rate from a collective transaction in pyledger
         format:
@@ -811,8 +811,6 @@ class CashCtrlLedger(LedgerEngine):
         upper_bound = base_amount + tolerance * np.where(base_amount < 0, -1, 1)
         min_fx_rate = (lower_bound / fx_entries['amount']).max()
         max_fx_rate = (upper_bound / fx_entries['amount']).min()
-        if min_fx_rate > max_fx_rate:
-            raise ValueError("Incoherent FX rates in collective booking.")
 
         # Select the exchange rate within the acceptable range closest to the preferred rate
         # derived from the largest absolute amount
@@ -820,12 +818,19 @@ class CashCtrlLedger(LedgerEngine):
         is_max_abs = fx_entries['amount'].abs() == max_abs_amount
         fx_rates = fx_entries['base_currency_amount'] / fx_entries['amount']
         preferred_rate = fx_rates.loc[is_max_abs].median()
-        fx_rate = min(max(preferred_rate, min_fx_rate), max_fx_rate)
+        if min_fx_rate <= max_fx_rate:
+            fx_rate = min(max(preferred_rate, min_fx_rate), max_fx_rate)
+        elif suppress_error:
+            fx_rate = round(preferred_rate, 8)
+        else:
+            raise ValueError("Incoherent FX rates in collective booking.")
 
-        # # Confirm fx_rate converts amounts to the expected base currency amount
-        # # TODO: Once precision() is implemented, use `round_to_precision()`
-        # if any((fx_entries['amount'] * fx_rate).round(2) != fx_entries['base_currency_amount'].round(2)):
-        #     raise ValueError("Incoherent FX rates in collective booking.")
+
+        # Confirm fx_rate converts amounts to the expected base currency amount
+        if not suppress_error:
+            # TODO: Once precision() is implemented, use `round_to_precision()`
+            if any((fx_entries['amount'] * fx_rate).round(2) != fx_entries['base_currency_amount'].round(2)):
+                raise ValueError("Incoherent FX rates in collective booking.")
 
         return currency, fx_rate
 
@@ -887,6 +892,9 @@ class CashCtrlLedger(LedgerEngine):
                 else:
                     raise ValueError("Currencies oder than base or transaction currency "
                                      "are not allowed in CashCtrl collective transactions.")
+                # TODO: Once precision() is implemented, use `round_to_precision()`
+                # instead of hard-coded rounding
+                amount = round(amount, 2)
                 items.append({
                     'accountId': self._client.account_to_id(row['account']),
                     'credit': -amount if amount < 0 else None,
