@@ -440,8 +440,8 @@ class CashCtrlLedger(LedgerEngine):
         result = pd.DataFrame({
             'id': individual['id'],
             'date': individual['dateAdded'].dt.date,
-            'account': [self._client.account_from_id(id) for id in individual['creditId']],
-            'counter_account': [self._client.account_from_id(id) for id in individual['debitId']],
+            'account': [self._client.account_from_id(id) for id in individual['debitId']],
+            'counter_account': [self._client.account_from_id(id) for id in individual['creditId']],
             'amount': individual['amount'],
             'currency': individual['currencyCode'],
             'text': individual['title'],
@@ -478,7 +478,7 @@ class CashCtrlLedger(LedgerEngine):
             collective = pd.merge(collective, account_map, 'left', on='accountId', validate='m:1')
             base_currency = self.base_currency
             account_in_base_currency = collective['account_currency'] == base_currency
-            amount = collective['credit'].fillna(0) - collective['debit'].fillna(0)
+            amount = collective['debit'].fillna(0) - collective['credit'].fillna(0)
             base_currency_amount = amount * collective['fx_rate']
             foreign_amount = np.where(account_in_base_currency, base_currency_amount, amount)
             mapped_collective = pd.DataFrame({
@@ -604,8 +604,8 @@ class CashCtrlLedger(LedgerEngine):
             payload = {
                 'dateAdded': entry['date'].iat[0],
                 'amount': entry['amount'].iat[0],
-                'creditId': self._client.account_to_id(entry['account'].iat[0]),
-                'debitId': self._client.account_to_id(entry['counter_account'].iat[0]),
+                'debitId': self._client.account_to_id(entry['account'].iat[0]),
+                'creditId': self._client.account_to_id(entry['counter_account'].iat[0]),
                 'currencyId': None if pd.isna(entry['currency'].iat[0]) else self._client.currency_to_id(entry['currency'].iat[0]),
                 'title': entry['text'].iat[0],
                 'taxId': None if pd.isna(entry['vat_code'].iat[0]) else self._client.tax_code_to_id(entry['vat_code'].iat[0]),
@@ -631,8 +631,8 @@ class CashCtrlLedger(LedgerEngine):
                                      "are not allowed in CashCtrl collective transactions.")
                 items.append({
                     'accountId': self._client.account_to_id(row['account']),
-                    'debit': -amount if amount < 0 else None,
-                    'credit': amount if amount >= 0 else None,
+                    'credit': -amount if amount < 0 else None,
+                    'debit': amount if amount >= 0 else None,
                     'taxId': None if pd.isna(row['vat_code']) else self._client.tax_code_to_id(row['vat_code']),
                     'description': row['text'],
                 })
