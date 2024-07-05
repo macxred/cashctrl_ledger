@@ -81,10 +81,10 @@ def add_and_delete_vat_code():
 @pytest.mark.parametrize(
     "account, date, expected",
     [
-        (10022, None, {'USD': 196.08, 'base_currency': 177.31}),
+        (10022, None, {'USD': 196.08, 'base_currency': 370.36}),
         (10022, '2024-05-22', {'USD': 0.0, 'base_currency': 0.0}),
-        (10022, '2024-05-24', {'USD': 98.04, 'base_currency': 89.68}),
-        (10022, '2024-05-26', {'USD': 196.08, 'base_currency': 180.74}),
+        (10022, '2024-05-24', {'USD': 98.04, 'base_currency': 185.18}),
+        (10022, '2024-05-26', {'USD': 196.08, 'base_currency': 370.36}),
         (19993, None, {'CHF': -377.76, 'base_currency': -377.76}),
         (19993, '2024-05-22', {'CHF': 0.0, 'base_currency': 0.0}),
         (19993, '2024-05-24', {'CHF': -188.88, 'base_currency': -188.88}),
@@ -93,10 +93,10 @@ def add_and_delete_vat_code():
         (10023, '2024-05-22', {'CHF': 0.0, 'base_currency': 0.0}),
         (10023, '2024-05-24', {'CHF': 185.18, 'base_currency': 185.18}),
         (10023, '2024-05-26', {'CHF': 370.36, 'base_currency': 370.36}),
-        (19992, None, {'USD': -200.0, 'base_currency': -180.85}),
+        (19992, None, {'USD': -200.0, 'base_currency': -377.76}),
         (19992, '2024-05-22', {'USD': 0.0, 'base_currency': 0.0}),
-        (19992, '2024-05-24', {'USD': -100.0, 'base_currency': -91.47}),
-        (19992, '2024-05-26', {'USD': -200.0, 'base_currency': -184.36}),
+        (19992, '2024-05-24', {'USD': -100.0, 'base_currency': -188.88}),
+        (19992, '2024-05-26', {'USD': -200.0, 'base_currency': -377.76}),
     ]
 )
 def test_account_single_balance(set_up_vat_account_and_ledger, account, date, expected):

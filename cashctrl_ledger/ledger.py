@@ -117,15 +117,10 @@ class CashCtrlLedger(LedgerEngine):
         )
 
         if self.base_currency != account_currency:
-            fx_rate = self._client.request(
-                "GET",
-                "currency/exchangerate",
-                params={"from": account_currency, "to": self.base_currency, "date": date},
-            ).text
-
-            # TODO: Once precision() is implemented, use `round_to_precision()`
-            # instead of hard-coded rounding
-            base_currency = round(base_currency * float(fx_rate), 2)
+            exchange_diff = pd.DataFrame(
+                self._client.get("fiscalperiod/exchangediff.json",params={"date": date})['data']
+            )
+            base_currency = exchange_diff.loc[exchange_diff['accountId'] == account_id]['dcBalance'].item()
 
         return { account_currency: balance, "base_currency": base_currency }
 
