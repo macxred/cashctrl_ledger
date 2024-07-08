@@ -14,49 +14,39 @@ ACCOUNT_CSV = """
     /Assets, 10023,      CHF,         , Test CHF Bank Account
     /Assets, 19992,      USD,         , Transitory Account USD
     /Assets, 19993,      CHF,         , Transitory Account CHF
-    /Assets, 22000,      CHF,         , Input Tax
-"""
-
-VAT_CSV = """
-    id,             rate, account, inclusive, text
-    Test_VAT_code,  0.02,   22000,      True, Input Tax 2%
 """
 
 LEDGER_CSV = """
-    id,     date, account, counter_account, currency,     amount, base_currency_amount,      vat_code, text,                        document
-    1,  2024-05-24, 10022,           19993,      CHF,     100.00,                     , Test_VAT_code, pytest single transaction 1,
-    2,  2024-05-24, 10023,           19992,      CHF,     100.00,                     , Test_VAT_code, pytest single transaction 2,
-    3,  2024-05-24, 10022,           19993,      USD,     100.00,                88.88, Test_VAT_code, pytest single transaction 3,
-    4,  2024-05-24, 10023,           19992,      USD,     100.00,                88.88, Test_VAT_code, pytest single transaction 4,
-    5,  2024-05-26, 10022,           19993,      CHF,     100.00,                     , Test_VAT_code, pytest single transaction 5,
-    6,  2024-05-26, 10023,           19992,      CHF,     100.00,                     , Test_VAT_code, pytest single transaction 6,
-    7,  2024-05-26, 10022,           19993,      USD,     100.00,                88.88, Test_VAT_code, pytest single transaction 7,
-    8,  2024-05-26, 10023,           19992,      USD,     100.00,                88.88, Test_VAT_code, pytest single transaction 8,
+    id,     date, account, counter_account, currency,     amount, base_currency_amount, text,                        document
+    1,  2024-01-21, 10023,           19993,      CHF,     100.00,                     , pytest transaction 1,
+    2,  2024-02-22, 10022,           19992,      USD,     100.00,                88.88, pytest transaction 2,
+    3,  2024-03-23, 10022,                ,      USD,     100.00,                85.55, pytest transaction 3,
+    3,  2024-03-23,      ,           19993,      CHF,      85.55,                     , pytest transaction 3,
+    4,  2024-04-24, 19992,           10022,      USD,     100.00,                77.77, pytest transaction 4,
+    5,  2024-05-25, 10023,           19993,      CHF,      10.00,                     , pytest transaction 5,
+    6,  2024-06-26, 19993,                ,      CHF,      95.55,                     , pytest transaction 6,
+    6,  2024-06-26,      ,           10022,      USD,     100.00,                95.55, pytest transaction 6,
 """
 STRIPPED_CSV = '\n'.join([line.strip() for line in LEDGER_CSV.split("\n")])
 LEDGER_ENTRIES = pd.read_csv(StringIO(STRIPPED_CSV), skipinitialspace=True, comment="#", skip_blank_lines=True)
 TEST_ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
-TEST_VAT_CODE = pd.read_csv(StringIO(VAT_CSV), skipinitialspace=True)
 
 @pytest.fixture(scope="module")
 def set_up_vat_account_and_ledger():
     cashctrl = CashCtrlLedger()
 
     # Fetch original state
-    initial_vat_codes = cashctrl.vat_codes().reset_index()
     initial_account_chart = cashctrl.account_chart().reset_index()
     initial_ledger = cashctrl.ledger()
 
     # Create test accounts and VAT code
     cashctrl.mirror_account_chart(TEST_ACCOUNTS, delete=False)
-    cashctrl.mirror_vat_codes(TEST_VAT_CODE, delete=False)
     cashctrl.mirror_ledger(LEDGER_ENTRIES, delete=False)
 
     yield
 
     # Restore initial state
     cashctrl.mirror_ledger(initial_ledger, delete=True)
-    cashctrl.mirror_vat_codes(initial_vat_codes, delete=True)
     cashctrl.mirror_account_chart(initial_account_chart, delete=True)
 
 # Fixture that creates VAT code with expected code on the start
@@ -81,22 +71,26 @@ def add_and_delete_vat_code():
 @pytest.mark.parametrize(
     "account, date, expected",
     [
-        (10022, None, {'USD': 196.08, 'base_currency': 370.36}),
-        (10022, '2024-05-22', {'USD': 0.0, 'base_currency': 0.0}),
-        (10022, '2024-05-24', {'USD': 98.04, 'base_currency': 185.18}),
-        (10022, '2024-05-26', {'USD': 196.08, 'base_currency': 370.36}),
-        (19993, None, {'CHF': -377.76, 'base_currency': -377.76}),
-        (19993, '2024-05-22', {'CHF': 0.0, 'base_currency': 0.0}),
-        (19993, '2024-05-24', {'CHF': -188.88, 'base_currency': -188.88}),
-        (19993, '2024-05-26', {'CHF': -377.76, 'base_currency': -377.76}),
-        (10023, None, {'CHF': 370.36, 'base_currency': 370.36}),
-        (10023, '2024-05-22', {'CHF': 0.0, 'base_currency': 0.0}),
-        (10023, '2024-05-24', {'CHF': 185.18, 'base_currency': 185.18}),
-        (10023, '2024-05-26', {'CHF': 370.36, 'base_currency': 370.36}),
-        (19992, None, {'USD': -200.0, 'base_currency': -377.76}),
-        (19992, '2024-05-22', {'USD': 0.0, 'base_currency': 0.0}),
-        (19992, '2024-05-24', {'USD': -100.0, 'base_currency': -188.88}),
-        (19992, '2024-05-26', {'USD': -200.0, 'base_currency': -377.76}),
+        (10022, '2024-02-21', {'USD':    0.00, 'base_currency':    0.00}),
+        (10022, '2024-02-22', {'USD':  100.00, 'base_currency':   88.88}),
+        (10022, '2024-03-23', {'USD':  200.00, 'base_currency':  174.43}),
+        (10022, '2024-04-24', {'USD':  100.00, 'base_currency':   96.66}),
+        (10022, '2024-06-26', {'USD':    0.00, 'base_currency':    1.11}),
+        (10022,         None, {'USD':    0.00, 'base_currency':    1.11}),
+        (10023, '2024-01-20', {'CHF':    0.00, 'base_currency':    0.00}),
+        (10023, '2024-01-21', {'CHF':  100.00, 'base_currency':  100.00}),
+        (10023, '2024-05-25', {'CHF':  110.00, 'base_currency':  110.00}),
+        (10023,         None, {'CHF':  110.00, 'base_currency':  110.00}),
+        (19992, '2024-02-21', {'USD':    0.00, 'base_currency':    0.00}),
+        (19992, '2024-02-22', {'USD': -100.00, 'base_currency':  -88.88}),
+        (19992, '2024-04-24', {'USD':    0.00, 'base_currency':  -11.11}),
+        (19992,         None, {'USD':    0.00, 'base_currency':  -11.11}),
+        (19993, '2024-01-20', {'CHF':    0.00, 'base_currency':    0.00}),
+        (19993, '2024-01-21', {'CHF': -100.00, 'base_currency': -100.00}),
+        (19993, '2024-03-23', {'CHF': -185.55, 'base_currency': -185.55}),
+        (19993, '2024-05-25', {'CHF': -195.55, 'base_currency': -195.55}),
+        (19993, '2024-06-26', {'CHF': -100.00, 'base_currency': -100.00}),
+        (19993,         None, {'CHF': -100.00, 'base_currency': -100.00}),
     ]
 )
 def test_account_single_balance(set_up_vat_account_and_ledger, account, date, expected):
