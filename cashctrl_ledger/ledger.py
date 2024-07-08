@@ -2,6 +2,7 @@
 Module to sync ledger system onto CashCtrl.
 """
 
+from datetime import datetime
 import pandas as pd
 import numpy as np
 from typing import Dict, Tuple, Union, List
@@ -94,11 +95,34 @@ class CashCtrlLedger(LedgerEngine):
                 inclusive=row['inclusive'],
             )
 
-    def _single_account_balance():
+
+    def _single_account_balance(self, account: int, date: datetime.date = None) -> dict:
+        """Calculate the balance of a single account in both account currency and base currency.
+
+        Args:
+            account (int): The account number.
+            date (datetime.date, optional): The date for the balance. Defaults to None,
+                in which case the balance on the last day of the current fiscal period is returned.
+
+        Returns:
+            dict: A dictionary with the balance in the account currency and the base currency.
         """
-        Not implemented yet
-        """
-        raise NotImplementedError
+        account_id = self._client.account_to_id(account)
+        params = {"id": account_id, "date": date}
+        response = self._client.request("GET", "account/balance", params=params)
+        balance = float(response.text)
+
+        account_currency = self._client.account_to_currency(account)
+        if self.base_currency == account_currency:
+            base_currency_balance = balance
+        else:
+            response = self._client.get("fiscalperiod/exchangediff.json",params={"date": date})
+            exchange_diff = pd.DataFrame(response['data'])
+            base_currency_balance = exchange_diff.loc[
+                exchange_diff['accountId'] == account_id, 'dcBalance'].item()
+
+        return { account_currency: balance, "base_currency": base_currency_balance }
+
 
     def account_chart(self) -> pd.DataFrame:
         """
@@ -741,11 +765,10 @@ class CashCtrlLedger(LedgerEngine):
         """
         raise NotImplementedError
 
-    def precision():
-        """
-        Not implemented yet
-        """
-        raise NotImplementedError
+    def precision(*args, **kwargs):
+        # TODO: retuning precision for USD, CHF, EUR for now.
+        # Needs to be implemented for other tickers
+        return 0.01
 
     def price():
         """

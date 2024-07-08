@@ -5,7 +5,49 @@ Unit tests for account chart accessor and mutator methods.
 import pytest
 import requests
 import pandas as pd
+from io import StringIO
 from cashctrl_ledger import CashCtrlLedger
+
+ACCOUNT_CSV = """
+    group, account, currency, vat_code, text
+    /Assets, 10022,      USD,         , Test USD Bank Account
+    /Assets, 10023,      CHF,         , Test CHF Bank Account
+    /Assets, 19992,      USD,         , Transitory Account USD
+    /Assets, 19993,      CHF,         , Transitory Account CHF
+"""
+
+LEDGER_CSV = """
+    id,     date, account, counter_account, currency,     amount, base_currency_amount, text,                        document
+    1,  2024-01-21, 10023,           19993,      CHF,     100.00,                     , pytest transaction 1,
+    2,  2024-02-22, 10022,           19992,      USD,     100.00,                88.88, pytest transaction 2,
+    3,  2024-03-23, 10022,                ,      USD,     100.00,                85.55, pytest transaction 3,
+    3,  2024-03-23,      ,           19993,      CHF,      85.55,                     , pytest transaction 3,
+    4,  2024-04-24, 19992,           10022,      USD,     100.00,                77.77, pytest transaction 4,
+    5,  2024-05-25, 10023,           19993,      CHF,      10.00,                     , pytest transaction 5,
+    6,  2024-06-26, 19993,                ,      CHF,      95.55,                     , pytest transaction 6,
+    6,  2024-06-26,      ,           10022,      USD,     100.00,                95.55, pytest transaction 6,
+"""
+STRIPPED_CSV = '\n'.join([line.strip() for line in LEDGER_CSV.split("\n")])
+LEDGER_ENTRIES = pd.read_csv(StringIO(STRIPPED_CSV), skipinitialspace=True, comment="#", skip_blank_lines=True)
+TEST_ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
+
+@pytest.fixture(scope="module")
+def set_up_vat_account_and_ledger():
+    cashctrl = CashCtrlLedger()
+
+    # Fetch original state
+    initial_account_chart = cashctrl.account_chart().reset_index()
+    initial_ledger = cashctrl.ledger()
+
+    # Create test accounts and VAT code
+    cashctrl.mirror_account_chart(TEST_ACCOUNTS, delete=False)
+    cashctrl.mirror_ledger(LEDGER_ENTRIES, delete=False)
+
+    yield
+
+    # Restore initial state
+    cashctrl.mirror_ledger(initial_ledger, delete=True)
+    cashctrl.mirror_account_chart(initial_account_chart, delete=True)
 
 # Fixture that creates VAT code with expected code on the start
 # of the test and deletes that VAT code at the end of test
@@ -25,6 +67,36 @@ def add_and_delete_vat_code():
 
     # Deletes VAT code
     cashctrl_ledger.delete_vat_code(code="TestCodeAccounts")
+
+@pytest.mark.parametrize(
+    "account, date, expected",
+    [
+        (10022, '2024-02-21', {'USD':    0.00, 'base_currency':    0.00}),
+        (10022, '2024-02-22', {'USD':  100.00, 'base_currency':   88.88}),
+        (10022, '2024-03-23', {'USD':  200.00, 'base_currency':  174.43}),
+        (10022, '2024-04-24', {'USD':  100.00, 'base_currency':   96.66}),
+        (10022, '2024-06-26', {'USD':    0.00, 'base_currency':    1.11}),
+        (10022,         None, {'USD':    0.00, 'base_currency':    1.11}),
+        (10023, '2024-01-20', {'CHF':    0.00, 'base_currency':    0.00}),
+        (10023, '2024-01-21', {'CHF':  100.00, 'base_currency':  100.00}),
+        (10023, '2024-05-25', {'CHF':  110.00, 'base_currency':  110.00}),
+        (10023,         None, {'CHF':  110.00, 'base_currency':  110.00}),
+        (19992, '2024-02-21', {'USD':    0.00, 'base_currency':    0.00}),
+        (19992, '2024-02-22', {'USD': -100.00, 'base_currency':  -88.88}),
+        (19992, '2024-04-24', {'USD':    0.00, 'base_currency':  -11.11}),
+        (19992,         None, {'USD':    0.00, 'base_currency':  -11.11}),
+        (19993, '2024-01-20', {'CHF':    0.00, 'base_currency':    0.00}),
+        (19993, '2024-01-21', {'CHF': -100.00, 'base_currency': -100.00}),
+        (19993, '2024-03-23', {'CHF': -185.55, 'base_currency': -185.55}),
+        (19993, '2024-05-25', {'CHF': -195.55, 'base_currency': -195.55}),
+        (19993, '2024-06-26', {'CHF': -100.00, 'base_currency': -100.00}),
+        (19993,         None, {'CHF': -100.00, 'base_currency': -100.00}),
+    ]
+)
+def test_account_single_balance(set_up_vat_account_and_ledger, account, date, expected):
+    cashctrl_ledger = CashCtrlLedger()
+    balance = cashctrl_ledger._single_account_balance(account=account, date=date)
+    assert balance == expected
 
 def test_account_mutators(add_and_delete_vat_code):
     cashctrl_ledger = CashCtrlLedger()
