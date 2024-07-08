@@ -585,9 +585,13 @@ class CashCtrlLedger(LedgerEngine):
                  'deleted': count['n_delete'].sum() if delete else 0}
         return stats
 
-    def _get_ledger_attachments(self) -> Dict[str, List[str]]:
+    def _get_ledger_attachments(self, allow_missing=True) -> Dict[str, List[str]]:
         """
         Retrieves paths of files attached to CashCtrl ledger entries
+
+        Parameters:
+            allow_missing (boolean): If True, return None if the file has no path,
+                e.g. for files in the recylce bin. Otherwise raise a ValueError.
 
         Returns:
             Dict[str, List[str]]: A Dict that contains ledger ids with attached
@@ -597,8 +601,9 @@ class CashCtrlLedger(LedgerEngine):
         result = {}
         for id in ledger.loc[ledger['attachmentCount'] > 0, 'id']:
             res = self._client.get("journal/read.json", params={'id': id})['data']
-            paths = [self._client.file_id_to_path(attachment['fileId'])
-                     for attachment in res['attachments']]
+            paths = [
+                self._client.file_id_to_path(attachment['fileId'], allow_missing=allow_missing)
+                for attachment in res['attachments']]
             if len(paths):
                 result[id] = paths
         return result
