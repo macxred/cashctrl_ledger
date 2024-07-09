@@ -34,6 +34,7 @@ TEST_ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
 @pytest.fixture(scope="module")
 def set_up_vat_account_and_ledger():
     cashctrl = CashCtrlLedger()
+    cashctrl.transitory_account = 19993
 
     # Fetch original state
     initial_account_chart = cashctrl.account_chart().reset_index()
