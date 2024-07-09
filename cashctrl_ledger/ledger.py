@@ -20,7 +20,7 @@ class CashCtrlLedger(LedgerEngine):
     usage examples.
     """
 
-    _transitory_account =  None
+    _transitory_account = None
 
     def __init__(self, client: CachedCashCtrlClient | None = None):
         super().__init__()
@@ -453,6 +453,28 @@ class CashCtrlLedger(LedgerEngine):
         return self.standardize_ledger(result)
 
     def _add_fx_adjustment(self, entry: pd.DataFrame, transitory_account: int, base_currency: str) -> pd.DataFrame:
+        """
+        Adds foreign exchange (FX) adjustments to ledger entries to ensure
+        accurate currency conversion based on the base currency.
+
+        This method adjusts the ledger entries to account for discrepancies
+        in currency conversion, ensuring that the base currency amounts are
+        accurately represented. It handles both individual and collective
+        transactions by either adjusting the existing entry or adding a
+        balancing transaction.
+
+        Args:
+            entry (pd.DataFrame): Individual or collective ledger entry or entries to adjust.
+            transitory_account (int): The account used for the balancing
+                                    transaction in collective transactions.
+            base_currency (str): The base currency used for adjustments.
+
+        Returns:
+            pd.DataFrame: The adjusted ledger entries with FX adjustments included.
+
+        Raises:
+            ValueError: If the `entry` DataFrame is empty.
+        """
         if len(entry) == 1:
             # Individual transaction: one row in the ledger data frame
             if entry['amount'].item() == 0 or entry['currency'].item() == base_currency:
@@ -529,8 +551,6 @@ class CashCtrlLedger(LedgerEngine):
 
         else:
             raise ValueError("Expecting at least one `entry` row.")
-
-
 
     def mirror_ledger(self, target: pd.DataFrame, delete: bool = True):
         # Standardize data frame schema, discard incoherent entries with a warning
@@ -757,7 +777,7 @@ class CashCtrlLedger(LedgerEngine):
         currency and at most one additional foreign currency. This additional currency, if any,
         and a unique exchange rate to the base currency are recorded with the transaction.
         If all individual entries are denominated in the base currency, the base currency is
-        set as transaction currency.
+        set as the transaction currency.
 
         Individual entries can be linked to accounts denominated in the transaction's currency
         or the base currency. If in the base currency, the entry's amount is multiplied by the
@@ -768,15 +788,18 @@ class CashCtrlLedger(LedgerEngine):
         format.
 
         Parameters:
-        - entry (pd.DataFrame): The DataFrame representing individual entries of a collective
-            transaction with columns 'currency', 'amount', and 'base_currency_amount'.
+            entry (pd.DataFrame): The DataFrame representing individual entries of a collective
+                transaction with columns 'currency', 'amount', and 'base_currency_amount'.
+            suppress_error (bool): If True, suppresses ValueError when incoherent FX rates are found,
+                otherwise raises ValueError.
 
         Returns:
-        - Tuple[str, float]: The single currency and the corresponding exchange rate.
+            Tuple[str, float]: The single currency and the corresponding exchange rate.
 
         Raises:
-        - ValueError: If more than one non-base currency is present or if no
-            coherent exchange rate is found.
+            ValueError: If more than one non-base currency is present or if no
+                coherent exchange rate is found.
+            ValueError: If there are incoherent FX rates in the collective booking and suppress_error is False.
         """
         if not isinstance(entry, pd.DataFrame) or entry.empty:
             raise ValueError("`entry` must be a pd.DataFrame with at least one row.")
