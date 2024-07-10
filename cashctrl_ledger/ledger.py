@@ -20,6 +20,8 @@ class CashCtrlLedger(LedgerEngine):
     usage examples.
     """
 
+    _transitory_account = None
+
     def __init__(self, client: CachedCashCtrlClient | None = None):
         super().__init__()
         self._client = CachedCashCtrlClient() if client is None else client
@@ -123,6 +125,37 @@ class CashCtrlLedger(LedgerEngine):
 
         return { account_currency: balance, "base_currency": base_currency_balance }
 
+
+    @property
+    def transitory_account(self) -> int:
+        """
+        Transitory account for balancing entries
+
+        Some complex transactions can not be mapped to CashCtrl. We split such transactions
+        into multiple simpler transactions. The balance of each simple transaction is booked
+        onto the transitory account, where the combination of all postings originating from
+        the same complex transactions should sum up to zero.
+
+        Raises:
+            ValueError: If transitory_account is not set or the account does not exist.
+
+        Returns:
+            int: The transitory account number.
+        """
+        if self._transitory_account is None:
+            raise ValueError("transitory_account is not set.")
+        if not self._transitory_account in set(self._client.list_accounts()['number']):
+            raise ValueError(f"The transitory account {self._transitory_account} does not exist.")
+        account_currency = self._client.account_to_currency(self._transitory_account)
+        if account_currency != self.base_currency:
+            raise ValueError(f"The transitory account {self._transitory_account} must be "
+                             f"denominated in {self.base_currency} base currency, not "
+                             f"{account_currency}.")
+        return self._transitory_account
+
+    @transitory_account.setter
+    def transitory_account(self, value: int):
+        self._transitory_account = value
 
     def account_chart(self) -> pd.DataFrame:
         """
@@ -341,6 +374,170 @@ class CashCtrlLedger(LedgerEngine):
 
         return df
 
+    def sanitize_ledger(self, ledger: pd.DataFrame) -> pd.DataFrame:
+        # Number of currencies other than base currency
+        base_currency = self.base_currency
+        n_currency = ledger[['id', 'currency']][ledger['currency'] != base_currency]
+        n_currency = n_currency.groupby('id')['currency'].nunique()
+
+        # Split entries with multiple currencies into separate entries for each currency
+        ids = n_currency.index[n_currency > 1]
+        if len(ids) > 0:
+            multi_currency = self.standardize_ledger(ledger[ledger['id'].isin(ids)])
+            multi_currency = self.split_multi_currency_transactions(multi_currency)
+            others = ledger[~ledger['id'].isin(ids)]
+            df = pd.concat([others, multi_currency], ignore_index=True)
+        else:
+            df = ledger
+
+        # Ensure foreign currencies can be mapped, correct with FX adjustments otherwise
+        transitory_account = self.transitory_account
+        result = []
+        for _, txn in df.groupby('id'):
+            new_txn = self._add_fx_adjustment(txn, transitory_account=transitory_account,
+                                              base_currency=base_currency)
+            result.append(new_txn)
+        if len(result) > 0:
+            result = pd.concat(result)
+        else:
+            result = df
+
+        # Invoke parent class method
+        return super().sanitize_ledger(result)
+
+
+    def split_multi_currency_transactions(self, ledger: pd.DataFrame, transitory_account: int | None = None) -> pd.DataFrame:
+        """
+        Splits multi-currency transactions into separate transactions for each currency.
+
+        CashCtrl restricts collective transactions to base currency plus a single foreign currency.
+        This method splits multi-currency transactions into several separate transactions with
+        a single currency and base currency compatible with CashCtrl. A residual balance in any currency
+        is booked to the `transitory_account`, the aggregate amount booked to the transitory account
+        across all currencies is zero.
+
+        Parameters:
+        ledger (pd.DataFrame): DataFrame with ledger transactions to split.
+        transitory_account (int | None): The number of the account used for balancing transitory entries.
+
+        Returns:
+        pd.DataFrame: A DataFrame with the split transactions and any necessary balancing entries.
+        """
+        base_currency = self.base_currency
+        is_base_currency = ledger['currency'] == base_currency
+        ledger.loc[is_base_currency, 'base_currency_amount'] = ledger.loc[is_base_currency, 'amount']
+
+        if any(ledger['base_currency_amount'].isna()):
+            raise ValueError("Base currency amount missing for some items.")
+        if transitory_account is None:
+            transitory_account = self.transitory_account
+
+        result = []
+        for (id, currency), group in ledger.groupby(['id', 'currency']):
+            sub_id = f"{id}:{currency}"
+            result.append(group.assign(id=sub_id))
+            balance = round(group['base_currency_amount'].sum(), 2)
+            if balance != 0:
+                clearing_txn = pd.DataFrame({
+                    'id': [sub_id],
+                    'text': ["Split multi-currency transaction "
+                             "into multiple transactions compatible with CashCtrl."],
+                    'amount': [-1 * balance],
+                    'base_currency_amount': [-1 * balance],
+                    'currency': [base_currency],
+                    'account': [transitory_account],
+                })
+                result.append(clearing_txn)
+
+        result = pd.concat(result, ignore_index=True)
+        return self.standardize_ledger(result)
+
+    def _add_fx_adjustment(self, entry: pd.DataFrame, transitory_account: int, base_currency: str) -> pd.DataFrame:
+        """
+        Ensure amounts conform to CashCtrl's eight-digit FX rate precision.
+
+        Adjusts the base currency amounts of a ledger entry to match CashCtrl's
+        eight-digit precision for exchange rates. Adds balancing ledger entries
+        if adjusted amounts differ from the original, ensuring the sum of all
+        entries remains consistent with the original entry.
+
+        Args:
+            entry (pd.DataFrame): Ledger entry data.
+            transitory_account (int): Account for balancing transactions.
+            base_currency (str): Base currency for adjustments.
+
+        Returns:
+            pd.DataFrame: Adjusted ledger entries with FX adjustments.
+        """
+        if len(entry) == 1:
+            # Individual transaction: one row in the ledger data frame
+            if entry['amount'].item() == 0 or entry['currency'].item() == base_currency:
+                return entry
+            else:
+                # TODO: Once precision() is implemented, use `round_to_precision()`
+                amount = round(entry['amount'].item(), 2)
+                base_amount = round(entry['base_currency_amount'].item(), 2)
+                fx_rate = round(base_amount / amount, 8)
+                balance = base_amount - round(amount * fx_rate, 2)
+                if balance == 0.0:
+                    return entry
+                else:
+                    balancing_txn = entry.copy()
+                    balancing_txn['id'] = balancing_txn['id'] + ":fx"
+                    balancing_txn['currency'] = base_currency
+                    balancing_txn['amount'] = balance
+                    balancing_txn['base_currency_amount'] = pd.NA
+                    entry['base_currency_amount'] = entry['base_currency_amount'] - balance
+                    result = pd.concat([self.standardize_ledger_columns(entry),
+                                        self.standardize_ledger_columns(balancing_txn)])
+                    # TODO: Once precision() is implemented, use `round_to_precision()`
+                    result['amount'] = result['amount'].round(2)
+                    result['base_currency_amount'] = result['base_currency_amount'].round(2)
+                    return self.standardize_ledger(result)
+
+        elif len(entry) > 1:
+            # Collective transaction: multiple row in the ledger data frame
+            currency, fx_rate = self._collective_transaction_currency_and_rate(entry, suppress_error=True)
+            fx_rate = round(fx_rate, 8)
+            if currency == base_currency:
+                return entry
+            else:
+                amount = entry['amount'].round(2)
+                base_amount = entry['base_currency_amount'].round(2)
+                balance = np.where(entry['currency'] == base_currency,
+                    amount - ((amount / fx_rate).round(2) * fx_rate).round(2),
+                    base_amount - (amount * fx_rate).round(2))
+                if all(balance == 0.0):
+                    return entry
+                else:
+                    is_base_currency = entry['currency'] == base_currency
+                    balancing_txn = entry.head(1).copy()
+                    balancing_txn['currency'] = base_currency
+                    balancing_txn['amount'] = balance.sum()
+                    balancing_txn['account'] = transitory_account
+                    balancing_txn['base_currency_amount'] = pd.NA
+                    balancing_txn['text'] = "Currency adjustments to match CashCtrl FX rate precision",
+                    entry['amount'] = entry['amount'] - np.where(is_base_currency, balance, 0)
+                    entry['base_currency_amount'] = entry['base_currency_amount'] - balance
+                    entry = pd.concat([self.standardize_ledger_columns(entry),
+                                       self.standardize_ledger_columns(balancing_txn)])
+                    balance = np.append(balance, -1 * balance.sum())
+                    fx_adjust = entry.copy()
+                    is_base_currency = fx_adjust['currency'] == base_currency
+                    fx_adjust['amount'] = np.where(is_base_currency, balance, 0.0)
+                    fx_adjust['base_currency_amount'] = np.where(is_base_currency, pd.NA, balance)
+                    fx_adjust['id'] = fx_adjust['id'] + ":fx"
+                    fx_adjust['text'] = "Currency adjustments: " + fx_adjust['text']
+                    fx_adjust = fx_adjust[balance != 0]
+                    result = pd.concat([entry, fx_adjust])
+                    # TODO: Once precision() is implemented, use `round_to_precision()`
+                    result['amount'] = result['amount'].astype(pd.Float64Dtype()).round(2)
+                    result['base_currency_amount'] = result['base_currency_amount'].astype(pd.Float64Dtype()).round(2)
+                    return self.standardize_ledger(result)
+
+        else:
+            raise ValueError("Expecting at least one `entry` row.")
+
     def mirror_ledger(self, target: pd.DataFrame, delete: bool = True):
         # Standardize data frame schema, discard incoherent entries with a warning
         target = self.standardize_ledger(target)
@@ -394,9 +591,13 @@ class CashCtrlLedger(LedgerEngine):
                  'deleted': count['n_delete'].sum() if delete else 0}
         return stats
 
-    def _get_ledger_attachments(self) -> Dict[str, List[str]]:
+    def _get_ledger_attachments(self, allow_missing=True) -> Dict[str, List[str]]:
         """
         Retrieves paths of files attached to CashCtrl ledger entries
+
+        Parameters:
+            allow_missing (boolean): If True, return None if the file has no path,
+                e.g. for files in the recylce bin. Otherwise raise a ValueError.
 
         Returns:
             Dict[str, List[str]]: A Dict that contains ledger ids with attached
@@ -406,8 +607,9 @@ class CashCtrlLedger(LedgerEngine):
         result = {}
         for id in ledger.loc[ledger['attachmentCount'] > 0, 'id']:
             res = self._client.get("journal/read.json", params={'id': id})['data']
-            paths = [self._client.file_id_to_path(attachment['fileId'])
-                     for attachment in res['attachments']]
+            paths = [
+                self._client.file_id_to_path(attachment['fileId'], allow_missing=allow_missing)
+                for attachment in res['attachments']]
             if len(paths):
                 result[id] = paths
         return result
@@ -461,18 +663,34 @@ class CashCtrlLedger(LedgerEngine):
         # Individual ledger entries represent a single transaction and
         # map to a single row in the resulting data frame.
         individual = ledger[ledger['type'] != 'COLLECTIVE']
+
+        # Map to credit and debit account number and account currency
+        cols = {'id': 'creditId', 'currencyCode': 'credit_currency', 'number': 'credit_account'}
+        account_map = self._client.list_accounts()[cols.keys()].rename(columns=cols)
+        individual = pd.merge(individual, account_map, 'left', on='creditId', validate='m:1')
+        cols = {'id': 'debitId', 'currencyCode': 'debit_currency', 'number': 'debit_account'}
+        account_map = self._client.list_accounts()[cols.keys()].rename(columns=cols)
+        individual = pd.merge(individual, account_map, 'left', on='debitId', validate='m:1')
+
+        # Identify foreign currency adjustment transactions
+        currency = individual['currencyCode']
+        base_currency = self.base_currency
+        is_fx_adjustment = ((currency == base_currency) &
+            ((currency != individual['credit_currency']) | (currency != individual['debit_currency'])))
+
         result = pd.DataFrame({
             'id': individual['id'],
             'date': individual['dateAdded'].dt.date,
-            'account': [self._client.account_from_id(id) for id in individual['debitId']],
-            'counter_account': [self._client.account_from_id(id) for id in individual['creditId']],
+            'account': individual['debit_account'],
+            'counter_account': individual['credit_account'],
             'amount': individual['amount'],
             'currency': individual['currencyCode'],
             'text': individual['title'],
             'vat_code': individual['taxName'],
-            # TODO: Once precision() is implemented, use `round_to_precision()`
-            # instead of hard-coded rounding
-            'base_currency_amount': round(individual['amount'] * individual['currencyRate'], 2),
+            'base_currency_amount': np.where(is_fx_adjustment, pd.NA,
+                # TODO: Once precision() is implemented, use `round_to_precision()`
+                # instead of hard-coded rounding
+                round(individual['amount'] * individual['currencyRate'], 2)),
             'document': individual['reference'],
         })
 
@@ -496,33 +714,41 @@ class CashCtrlLedger(LedgerEngine):
             dfs = pd.concat([fetch_journal(id) for id in collective_ids])
             collective = unnest(dfs, 'items')
 
-            # Find currency
+            # Map to account number and account currency
             cols = {'id': 'accountId', 'currencyCode': 'account_currency', 'number': 'account'}
             account_map = self._client.list_accounts()[cols.keys()].rename(columns=cols)
             collective = pd.merge(collective, account_map, 'left', on='accountId', validate='m:1')
+
+            # Identify base currency or foreign currency adjustment transactions
             base_currency = self.base_currency
-            account_in_base_currency = collective['account_currency'] == base_currency
+            is_fx_adjustment = ((collective['account_currency'] != base_currency) &
+                collective['currency'].isna() | (collective['currency'] == base_currency))
+
             amount = collective['debit'].fillna(0) - collective['credit'].fillna(0)
-            base_currency_amount = amount * collective['fx_rate']
-            foreign_amount = np.where(account_in_base_currency, base_currency_amount, amount)
+            currency = collective['account_currency']
+            base_amount = np.where(currency == base_currency, pd.NA,
+                np.where(is_fx_adjustment, amount, amount * collective['fx_rate']))
+            foreign_amount = np.where(currency == base_currency, amount * collective['fx_rate'],
+                                      np.where(is_fx_adjustment, 0, amount))
             mapped_collective = pd.DataFrame({
                 'id': collective['id'],
                 'date': collective['date'],
-                'currency': np.where(account_in_base_currency, base_currency, collective['currency']),
+                'currency': currency,
                 'account': collective['account'],
                 'text': collective['description'],
                 # TODO: Once precision() is implemented, use `round_to_precision()`
                 # instead of hard-coded rounding
-                'amount': pd.Series(foreign_amount).round(2),
-                'base_currency_amount': base_currency_amount.round(2),
+                'amount': pd.Series(foreign_amount).astype(pd.Float64Dtype()).round(2),
+                'base_currency_amount': pd.Series(base_amount).astype(pd.Float64Dtype()).round(2),
                 'vat_code': collective['taxName'],
                 'document': collective['document'],
             })
-            result = pd.concat([result, mapped_collective])
+            result = pd.concat([self.standardize_ledger_columns(result),
+                                self.standardize_ledger_columns(mapped_collective)])
 
         return self.standardize_ledger(result)
 
-    def _collective_transaction_currency_and_rate(self, entry: pd.DataFrame) -> Tuple[str, float]:
+    def _collective_transaction_currency_and_rate(self, entry: pd.DataFrame, suppress_error: bool = False) -> Tuple[str, float]:
         """
         Extract a single currency and exchange rate from a collective transaction in pyledger
         format:
@@ -537,7 +763,7 @@ class CashCtrlLedger(LedgerEngine):
         currency and at most one additional foreign currency. This additional currency, if any,
         and a unique exchange rate to the base currency are recorded with the transaction.
         If all individual entries are denominated in the base currency, the base currency is
-        set as transaction currency.
+        set as the transaction currency.
 
         Individual entries can be linked to accounts denominated in the transaction's currency
         or the base currency. If in the base currency, the entry's amount is multiplied by the
@@ -548,15 +774,18 @@ class CashCtrlLedger(LedgerEngine):
         format.
 
         Parameters:
-        - entry (pd.DataFrame): The DataFrame representing individual entries of a collective
-            transaction with columns 'currency', 'amount', and 'base_currency_amount'.
+            entry (pd.DataFrame): The DataFrame representing individual entries of a collective
+                transaction with columns 'currency', 'amount', and 'base_currency_amount'.
+            suppress_error (bool): If True, suppresses ValueError when incoherent FX rates are found,
+                otherwise raises ValueError.
 
         Returns:
-        - Tuple[str, float]: The single currency and the corresponding exchange rate.
+            Tuple[str, float]: The single currency and the corresponding exchange rate.
 
         Raises:
-        - ValueError: If more than one non-base currency is present or if no
-            coherent exchange rate is found.
+            ValueError: If more than one non-base currency is present or if no
+                coherent exchange rate is found.
+            ValueError: If there are incoherent FX rates in the collective booking and suppress_error is False.
         """
         if not isinstance(entry, pd.DataFrame) or entry.empty:
             raise ValueError("`entry` must be a pd.DataFrame with at least one row.")
@@ -571,11 +800,14 @@ class CashCtrlLedger(LedgerEngine):
 
         # Check if all entries are denominated in base currency
         base_currency = self.base_currency
-        if all(entry['currency'].isna() | (entry['currency'] == base_currency)):
+        is_base_txn = (entry['currency'].isna()
+                       | (entry['currency'] == base_currency)
+                       | (entry['amount'] == 0))
+        if all(is_base_txn):
             return base_currency, 1.0
 
         # Extract the sole non-base currency
-        fx_entries = entry.loc[entry['currency'].notna() & (entry['currency'] != base_currency)]
+        fx_entries = entry.loc[~ is_base_txn]
         if fx_entries['currency'].nunique() != 1:
             raise ValueError("CashCtrl allows only the base currency plus a "
                              f"single foreign currency in a collective booking: {id}.")
@@ -593,8 +825,6 @@ class CashCtrlLedger(LedgerEngine):
         upper_bound = base_amount + tolerance * np.where(base_amount < 0, -1, 1)
         min_fx_rate = (lower_bound / fx_entries['amount']).max()
         max_fx_rate = (upper_bound / fx_entries['amount']).min()
-        if min_fx_rate > max_fx_rate:
-            raise ValueError("Incoherent FX rates in collective booking.")
 
         # Select the exchange rate within the acceptable range closest to the preferred rate
         # derived from the largest absolute amount
@@ -602,12 +832,19 @@ class CashCtrlLedger(LedgerEngine):
         is_max_abs = fx_entries['amount'].abs() == max_abs_amount
         fx_rates = fx_entries['base_currency_amount'] / fx_entries['amount']
         preferred_rate = fx_rates.loc[is_max_abs].median()
-        fx_rate = min(max(preferred_rate, min_fx_rate), max_fx_rate)
+        if min_fx_rate <= max_fx_rate:
+            fx_rate = min(max(preferred_rate, min_fx_rate), max_fx_rate)
+        elif suppress_error:
+            fx_rate = round(preferred_rate, 8)
+        else:
+            raise ValueError("Incoherent FX rates in collective booking.")
+
 
         # Confirm fx_rate converts amounts to the expected base currency amount
-        # TODO: Once precision() is implemented, use `round_to_precision()`
-        if any((fx_entries['amount'] * fx_rate).round(2) != fx_entries['base_currency_amount'].round(2)):
-            raise ValueError("Incoherent FX rates in collective booking.")
+        if not suppress_error:
+            # TODO: Once precision() is implemented, use `round_to_precision()`
+            if any((fx_entries['amount'] * fx_rate).round(2) != fx_entries['base_currency_amount'].round(2)):
+                raise ValueError("Incoherent FX rates in collective booking.")
 
         return currency, fx_rate
 
@@ -622,18 +859,33 @@ class CashCtrlLedger(LedgerEngine):
             dict: A data structure to post as json to the CashCtrl REST API.
         """
         entry = self.standardize_ledger(entry)
+        base_currency = self.base_currency
 
         # Individual ledger entry
         if len(entry) == 1:
+            amount = entry['amount'].iat[0]
+            base_amount = entry['base_currency_amount'].iat[0]
+            currency = entry['currency'].iat[0]
+            if (amount == 0 and not pd.isna(base_amount) and base_amount != 0):
+                # Foreign currency adjustment: Solely changes in base currency amount
+                currency = base_currency
+                amount = base_amount
+                fx_rate = 1
+            else:
+                amount = entry['amount'].iat[0]
+                if currency == self.base_currency or amount == 0:
+                    fx_rate = 1
+                else:
+                    fx_rate = base_amount / amount
             payload = {
                 'dateAdded': entry['date'].iat[0],
-                'amount': entry['amount'].iat[0],
+                'amount': amount,
                 'debitId': self._client.account_to_id(entry['account'].iat[0]),
                 'creditId': self._client.account_to_id(entry['counter_account'].iat[0]),
-                'currencyId': None if pd.isna(entry['currency'].iat[0]) else self._client.currency_to_id(entry['currency'].iat[0]),
+                'currencyId': None if pd.isna(currency) else self._client.currency_to_id(currency),
                 'title': entry['text'].iat[0],
                 'taxId': None if pd.isna(entry['vat_code'].iat[0]) else self._client.tax_code_to_id(entry['vat_code'].iat[0]),
-                'currencyRate': entry['base_currency_amount'].iat[0] / entry['amount'].iat[0],
+                'currencyRate': fx_rate,
                 'reference': None if pd.isna(entry['document'].iat[0]) else entry['document'].iat[0],
             }
 
@@ -641,10 +893,11 @@ class CashCtrlLedger(LedgerEngine):
         elif len(entry) > 1:
             # Individual transaction entries (line items)
             items = []
-            base_currency = self.base_currency
             currency, fx_rate = self._collective_transaction_currency_and_rate(entry)
             for _, row in entry.iterrows():
-                if row['currency'] == currency:
+                if currency == base_currency and row['currency'] != currency:
+                    amount = row['base_currency_amount']
+                elif row['currency'] == currency:
                     amount = row['amount']
                 elif row['currency'] == base_currency:
                     # TODO: Once precision() is implemented, use `round_to_precision()`
@@ -653,6 +906,9 @@ class CashCtrlLedger(LedgerEngine):
                 else:
                     raise ValueError("Currencies oder than base or transaction currency "
                                      "are not allowed in CashCtrl collective transactions.")
+                # TODO: Once precision() is implemented, use `round_to_precision()`
+                # instead of hard-coded rounding
+                amount = round(amount, 2)
                 items.append({
                     'accountId': self._client.account_to_id(row['account']),
                     'credit': -amount if amount < 0 else None,
