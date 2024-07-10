@@ -454,26 +454,20 @@ class CashCtrlLedger(LedgerEngine):
 
     def _add_fx_adjustment(self, entry: pd.DataFrame, transitory_account: int, base_currency: str) -> pd.DataFrame:
         """
-        Adds foreign exchange (FX) adjustments to ledger entries to ensure
-        accurate currency conversion based on the base currency.
+        Ensure amounts conform to CashCtrl's eight-digit FX rate precision.
 
-        This method adjusts the ledger entries to account for discrepancies
-        in currency conversion, ensuring that the base currency amounts are
-        accurately represented. It handles both individual and collective
-        transactions by either adjusting the existing entry or adding a
-        balancing transaction.
+        Adjusts the base currency amounts of a ledger entry to match CashCtrl's
+        eight-digit precision for exchange rates. Adds balancing ledger entries
+        if adjusted amounts differ from the original, ensuring the sum of all
+        entries remains consistent with the original entry.
 
         Args:
-            entry (pd.DataFrame): Individual or collective ledger entry or entries to adjust.
-            transitory_account (int): The account used for the balancing
-                                    transaction in collective transactions.
-            base_currency (str): The base currency used for adjustments.
+            entry (pd.DataFrame): Ledger entry data.
+            transitory_account (int): Account for balancing transactions.
+            base_currency (str): Base currency for adjustments.
 
         Returns:
-            pd.DataFrame: The adjusted ledger entries with FX adjustments included.
-
-        Raises:
-            ValueError: If the `entry` DataFrame is empty.
+            pd.DataFrame: Adjusted ledger entries with FX adjustments.
         """
         if len(entry) == 1:
             # Individual transaction: one row in the ledger data frame
@@ -516,14 +510,6 @@ class CashCtrlLedger(LedgerEngine):
                 if all(balance == 0.0):
                     return entry
                 else:
-                    # # Override with exchange rate derived from the largest absolute amount
-                    # fx = entry.loc[entry['currency'] != base_currency]
-                    # is_max_abs = fx['amount'].abs() == fx['amount'].abs().max()
-                    # fx_rate = (fx['base_currency_amount'] / fx['amount']).loc[is_max_abs].iat[0]
-                    # fx_rate = round(fx_rate, 8)
-                    # balance = np.where(entry['currency'] == base_currency,
-                    #     amount - ((amount / fx_rate).round(2) * fx_rate).round(2),
-                    #     base_amount - (amount * fx_rate).round(2))
                     is_base_currency = entry['currency'] == base_currency
                     balancing_txn = entry.head(1).copy()
                     balancing_txn['currency'] = base_currency
