@@ -6,17 +6,17 @@ setup(
     description=(
         "Python package that implements the pyledger.LedgerEngine and integrates with cashctrl"
     ),
-    url="https://github.com/macxred/cashctrl_ledger",
+    url='https://github.com/macxred/cashctrl_ledger',
     author="Lukas Elmiger, Oleksandr Stepanenko",
-    python_requires=">3.9",
+    python_requires='>3.9',
     install_requires=[
-        "pandas",
-        "pyledger @ https://github.com/macxred/pyledger/tarball/main",
-        "cashctrl_api @ https://github.com/macxred/cashctrl_api/tarball/main"
+        'pandas',
+        'pyledger @ https://github.com/macxred/pyledger/tarball/main',
+        'cashctrl_api @ https://github.com/macxred/cashctrl_api/tarball/main'
     ],
-    packages=find_packages(exclude=("tests", "examples", "scripts")),
+    packages=find_packages(exclude=('tests', 'examples', 'scripts')),
     scripts=[
-        "scripts/restore_initial_state.py",
+        'scripts/restore_initial_state.py',
     ],
     extras_require={
         "dev": [
@@ -24,6 +24,8 @@ setup(
             "flake8-import-order",
             "flake8-docstrings",
             "flake8-bugbear",
+            "bandit",
+            "safety",
         ]
     }
 )

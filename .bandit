@@ -1,0 +1,10 @@
+# .bandit
+exclude:
+  - .git
+  - __pycache__
+  - .pytest_cache
+  - *.egg-info
+  - ./venv
+  - tests/
+skips:
+  - B101  # Skip Use of assert detected.
