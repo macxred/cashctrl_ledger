@@ -161,7 +161,7 @@ def test_account_mutators(add_and_delete_vat_code):
         "vat_code": "TestCodeAccounts",
         "group": "/Assets/Anlagevermögen",
     }
-    cashctrl_ledger.update_account(**new_account)
+    cashctrl_ledger.modify_account(**new_account)
     updated_accounts = cashctrl_ledger.account_chart().reset_index()
     outer_join = pd.merge(initial_accounts, updated_accounts, how="outer", indicator=True)
     modified_accounts = outer_join[outer_join["_merge"] == "right_only"].drop("_merge", axis=1)
@@ -182,7 +182,7 @@ def test_account_mutators(add_and_delete_vat_code):
         "vat_code": None,
         "group": "/Assets/Anlagevermögen",
     }
-    cashctrl_ledger.update_account(**new_account)
+    cashctrl_ledger.modify_account(**new_account)
     updated_accounts = cashctrl_ledger.account_chart().reset_index()
     outer_join = pd.merge(initial_accounts, updated_accounts, how="outer", indicator=True)
     created_accounts = outer_join[outer_join["_merge"] == "right_only"].drop("_merge", axis=1)
@@ -238,7 +238,7 @@ def test_add_account_with_invalid_currency_error():
 def test_add_account_with_invalid_vat_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_account(
+        cashctrl_ledger.modify_account(
             account=1143,
             currency="USD",
             text="test account",
@@ -262,7 +262,7 @@ def test_add_account_with_invalid_group_raise_error():
 def test_update_non_existing_account_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_account(
+        cashctrl_ledger.modify_account(
             account=1147,
             currency="CHF",
             text="test account",
@@ -271,10 +271,10 @@ def test_update_non_existing_account_raise_error():
         )
 
 
-def test_update_account_with_invalid_currency_error():
+def test_modify_account_with_invalid_currency_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_account(
+        cashctrl_ledger.modify_account(
             account=1148,
             currency="not-existing-currency",
             text="test account",
@@ -283,10 +283,10 @@ def test_update_account_with_invalid_currency_error():
         )
 
 
-def test_update_account_with_invalid_vat_raise_error():
+def test_modify_account_with_invalid_vat_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_account(
+        cashctrl_ledger.modify_account(
             account=1149,
             currency="USD",
             text="test create account",
@@ -295,10 +295,10 @@ def test_update_account_with_invalid_vat_raise_error():
         )
 
 
-def test_update_account_with_invalid_group_raise_error():
+def test_modify_account_with_invalid_group_raise_error():
     cashctrl_ledger = CashCtrlLedger()
     with pytest.raises(ValueError):
-        cashctrl_ledger.update_account(
+        cashctrl_ledger.modify_account(
             account=1149,
             currency="USD",
             text="test create account",

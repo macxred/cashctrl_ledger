@@ -263,7 +263,7 @@ class CashCtrlLedger(LedgerEngine):
         self._client.post("account/create.json", data=payload)
         self._client.invalidate_accounts_cache()
 
-    def update_account(
+    def modify_account(
         self,
         account: str,
         currency: str,
@@ -367,7 +367,7 @@ class CashCtrlLedger(LedgerEngine):
         to_update = merged[merged["_merge"] == "left_only"]
 
         for row in to_update.to_dict("records"):
-            self.update_account(
+            self.modify_account(
                 account=row["account"],
                 currency=row["currency"],
                 text=row["text"],
@@ -528,6 +528,10 @@ class CashCtrlLedger(LedgerEngine):
 
         return self.standardize_ledger(result)
 
+    def ledger_entry(self):
+        """Not implemented yet."""
+        raise NotImplementedError
+
     def add_ledger_entry(self, entry: pd.DataFrame) -> int:
         """Adds a new ledger entry to the remote CashCtrl instance.
 
@@ -542,7 +546,7 @@ class CashCtrlLedger(LedgerEngine):
         self._client.invalidate_journal_cache()
         return res["insertId"]
 
-    def update_ledger_entry(self, entry: pd.DataFrame):
+    def modify_ledger_entry(self, entry: pd.DataFrame):
         """Adds a new ledger entry to the remote CashCtrl instance.
 
         Args:
@@ -1238,17 +1242,5 @@ class CashCtrlLedger(LedgerEngine):
         raise NotImplementedError
 
     def delete_price(self):
-        """Not implemented yet."""
-        raise NotImplementedError
-
-    def ledger_entry(self):
-        """Not implemented yet."""
-        raise NotImplementedError
-
-    def modify_account(self):
-        """Not implemented yet."""
-        raise NotImplementedError
-
-    def modify_ledger_entry(self):
         """Not implemented yet."""
         raise NotImplementedError

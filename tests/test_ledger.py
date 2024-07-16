@@ -143,7 +143,7 @@ def test_ledger_accessor_mutators_single_transaction(set_up_vat_and_account):
     # Test update the ledger entry
     target = LEDGER_ENTRIES.query("id == 4").copy()
     target["id"] = id
-    cashctrl.update_ledger_entry(target)
+    cashctrl.modify_ledger_entry(target)
     remote = cashctrl.ledger()
     updated = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
@@ -153,12 +153,12 @@ def test_ledger_accessor_mutators_single_transaction(set_up_vat_and_account):
     # transaction if the single transaction has a taxId assigned. See cashctrl#27.
     # As a workaround, we reset the taxId manually before update with a collective transaction
     target["vat_code"] = None
-    cashctrl.update_ledger_entry(target)
+    cashctrl.modify_ledger_entry(target)
 
     # Test replace with an collective ledger entry
     target = LEDGER_ENTRIES.query("id == 2").copy()
     target["id"] = id
-    cashctrl.update_ledger_entry(target)
+    cashctrl.modify_ledger_entry(target)
     remote = cashctrl.ledger()
     updated = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
@@ -186,7 +186,7 @@ def test_ledger_accessor_mutators_single_transaction_without_VAT():
     target = LEDGER_ENTRIES.query("id == 1").copy()
     target["id"] = id
     target["vat_code"] = None
-    cashctrl.update_ledger_entry(target)
+    cashctrl.modify_ledger_entry(target)
     remote = cashctrl.ledger()
     updated = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
@@ -212,7 +212,7 @@ def test_ledger_accessor_mutators_collective_transaction(set_up_vat_and_account)
     # Test update the ledger entry
     target = LEDGER_ENTRIES.query("id == 3").copy()
     target["id"] = id
-    cashctrl.update_ledger_entry(target)
+    cashctrl.modify_ledger_entry(target)
     remote = cashctrl.ledger()
     updated = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
@@ -222,7 +222,7 @@ def test_ledger_accessor_mutators_collective_transaction(set_up_vat_and_account)
     target = LEDGER_ENTRIES.iloc[[0]].copy()
     target["id"] = id
     target["vat_code"] = None
-    cashctrl.update_ledger_entry(target)
+    cashctrl.modify_ledger_entry(target)
     remote = cashctrl.ledger()
     updated = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
@@ -250,7 +250,7 @@ def test_ledger_accessor_mutators_collective_transaction_without_vat():
     target = LEDGER_ENTRIES.query("id == 3").copy()
     target["id"] = id
     target["vat_code"] = None
-    cashctrl.update_ledger_entry(target)
+    cashctrl.modify_ledger_entry(target)
     remote = cashctrl.ledger()
     updated = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
@@ -309,21 +309,21 @@ def test_update_ledger_with_illegal_attributes(set_up_vat_and_account):
     target["id"] = id
     target["vat_code"] = "Test_Non_Existent_VAT_code"
     with pytest.raises(ValueError, match="No id found for tax code"):
-        cashctrl.update_ledger_entry(target)
+        cashctrl.modify_ledger_entry(target)
 
     # Updating a ledger with non existent account code should raise an error
     target = LEDGER_ENTRIES.query("id == 1").copy()
     target["id"] = id
     target["account"].iat[0] = 333333
     with pytest.raises(ValueError, match="No id found for account"):
-        cashctrl.update_ledger_entry(target)
+        cashctrl.modify_ledger_entry(target)
 
     # Updating a ledger with non existent currency code should raise an error
     target = LEDGER_ENTRIES.query("id == 1").copy()
     target["id"] = id
     target["currency"].iat[0] = "Non_Existent_Currency"
     with pytest.raises(ValueError, match="No id found for currency"):
-        cashctrl.update_ledger_entry(target)
+        cashctrl.modify_ledger_entry(target)
 
     # Delete the ledger entry created above
     cashctrl.delete_ledger_entry(id)
@@ -334,7 +334,7 @@ def test_update_non_existent_ledger():
     target = LEDGER_ENTRIES.query("id == 1").copy()
     target["id"] = 999999
     with pytest.raises(RequestException):
-        cashctrl.update_ledger_entry(target)
+        cashctrl.modify_ledger_entry(target)
 
 
 def test_delete_non_existent_ledger():
