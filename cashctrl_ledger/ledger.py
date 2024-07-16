@@ -131,17 +131,17 @@ class CashCtrlLedger(LedgerEngine):
             self._client.post("tax/delete.json", {"ids": delete_id})
             self._client.invalidate_tax_rates_cache()
 
-    def mirror_vat_codes(self, target_state: pd.DataFrame, delete: bool = True):
+    def mirror_vat_codes(self, target: pd.DataFrame, delete: bool = False):
         """Aligns VAT rates on the remote CashCtrl account with
         the desired state provided as a DataFrame.
 
         Args:
-            target_state (pd.DataFrame): DataFrame containing VAT rates in
+            target (pd.DataFrame): DataFrame containing VAT rates in
                                          the pyledger.vat_codes format.
             delete (bool, optional): If True, deletes VAT codes on the remote account
                                      that are not present in target_state.
         """
-        target_df = StandaloneLedger.standardize_vat_codes(target_state).reset_index()
+        target_df = StandaloneLedger.standardize_vat_codes(target).reset_index()
         current_state = self.vat_codes().reset_index()
 
         # Delete superfluous VAT codes on remote
@@ -306,7 +306,7 @@ class CashCtrlLedger(LedgerEngine):
             self._client.post("account/delete.json", {"ids": delete_id})
             self._client.invalidate_accounts_cache()
 
-    def mirror_account_chart(self, target: pd.DataFrame, delete: bool = True):
+    def mirror_account_chart(self, target: pd.DataFrame, delete: bool = False):
         """Synchronizes remote CashCtrl accounts with a desired target state
         provided as a DataFrame.
 
@@ -566,7 +566,7 @@ class CashCtrlLedger(LedgerEngine):
         self._client.post("journal/delete.json", {"ids": ids})
         self._client.invalidate_journal_cache()
 
-    def mirror_ledger(self, target: pd.DataFrame, delete: bool = True):
+    def mirror_ledger(self, target: pd.DataFrame, delete: bool = False):
         """Mirrors the ledger data to the remote CashCtrl instance.
 
         Args:

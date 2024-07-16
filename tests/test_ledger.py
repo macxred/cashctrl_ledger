@@ -412,7 +412,7 @@ def test_mirror_ledger(set_up_vat_and_account):
             LEDGER_ENTRIES.query("id == 2"),
         ]
     )
-    cashctrl.mirror_ledger(target=target)
+    cashctrl.mirror_ledger(target=target, delete=True)
     expected = cashctrl.standardize_ledger(target)
     mirrored = cashctrl.ledger()
     assert txn_to_str(mirrored) == txn_to_str(expected)
@@ -436,7 +436,7 @@ def test_mirror_ledger(set_up_vat_and_account):
 
     # Mirror with delete=True
     target = LEDGER_ENTRIES.query("id in [1, 2]")
-    cashctrl.mirror_ledger(target=target)
+    cashctrl.mirror_ledger(target=target, delete=True)
     mirrored = cashctrl.ledger()
     expected = cashctrl.standardize_ledger(target)
     assert txn_to_str(mirrored) == txn_to_str(expected)

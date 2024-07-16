@@ -170,7 +170,7 @@ def main():
 
     # Restore default VAT
     vat = pd.read_csv(StringIO(VAT_CODES), skipinitialspace=True)
-    cashctrl_ledger.mirror_vat_codes(target_state=vat, delete=True)
+    cashctrl_ledger.mirror_vat_codes(target=vat, delete=True)
 
     # Restore default accounts
     accounts = pd.read_csv(StringIO(ACCOUNTS), skipinitialspace=True)
