@@ -1,5 +1,7 @@
 # Pyledger CashCtrl Integration
 
+[![codecov](https://codecov.io/gh/macxred/cashctrl_ledger/branch/main/graph/badge.svg)](https://codecov.io/gh/macxred/cashctrl_ledger)
+
 `cashctrl_ledger` is a Python package that implements the `pyledger.LedgerEngine` interface, enabling seamless integration with the CashCtrl accounting service. With this package, users can perform various accounting operations programmatically, directly from Python.
 
 ## Key Features:

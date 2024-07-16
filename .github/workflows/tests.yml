@@ -56,4 +56,12 @@ jobs:
         run: python setup.py develop
 
       - name: Run tests
-        run: pytest -W error
+        run: coverage run -m pytest -W error
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-upload

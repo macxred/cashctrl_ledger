@@ -26,6 +26,7 @@ setup(
             "flake8-bugbear",
             "bandit",
             "safety",
+            "pytest-cov"
         ]
     }
 )

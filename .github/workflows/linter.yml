@@ -44,7 +44,7 @@ jobs:
           . venv/bin/activate
 
       - name: Install dependencies
-        run: pip install coverage pytest pandas flake8 .
+        run: pip install pytest pandas flake8 .
 
       - name: Install package
         run: python setup.py develop
