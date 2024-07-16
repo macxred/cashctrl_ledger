@@ -1,13 +1,10 @@
-"""
-Unit tests for ledger accessors, mutators and mirroring.
-"""
+"""Unit tests for ledger accessors, mutators and mirroring."""
 
 from io import StringIO
 from typing import List
-import pytest
+from cashctrl_ledger import assert_frame_equal, CashCtrlLedger, df_to_consistent_str, nest
 import pandas as pd
-from cashctrl_ledger import CashCtrlLedger, df_to_consistent_str, nest, assert_frame_equal
-from pyledger import StandaloneLedger
+import pytest
 from requests.exceptions import RequestException
 
 
@@ -27,6 +24,8 @@ VAT_CSV = """
     id,             rate, account, inclusive, text
     Test_VAT_code,  0.02,   22000,      True, Input Tax 2%
 """
+
+# flake8: noqa: E501
 
 LEDGER_CSV = """
     id,     date, account, counter_account, currency,     amount, base_currency_amount,      vat_code, text,                             document
@@ -72,8 +71,13 @@ LEDGER_CSV = """
     18, 2024-06-26,      ,           19992,      USD, 9500000.00,           7888888.88,              , Convert 9.5 Mio USD to CHF @ 0.830409356 with 9 digits precision,
     18, 2024-06-26, 10023,                ,      CHF, 7888888.88,                     ,              , Convert 9.5 Mio USD to CHF @ 0.830409356 with 9 digits precision,
 """
-STRIPPED_CSV = '\n'.join([line.strip() for line in LEDGER_CSV.split("\n")])
-LEDGER_ENTRIES = pd.read_csv(StringIO(STRIPPED_CSV), skipinitialspace=True, comment="#", skip_blank_lines=True)
+
+# flake8: enable
+
+STRIPPED_CSV = "\n".join([line.strip() for line in LEDGER_CSV.split("\n")])
+LEDGER_ENTRIES = pd.read_csv(
+    StringIO(STRIPPED_CSV), skipinitialspace=True, comment="#", skip_blank_lines=True
+)
 TEST_ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
 TEST_VAT_CODE = pd.read_csv(StringIO(VAT_CSV), skipinitialspace=True)
 
@@ -99,283 +103,322 @@ def set_up_vat_and_account():
     cashctrl.mirror_vat_codes(initial_vat_codes, delete=True)
     cashctrl.mirror_account_chart(initial_account_chart, delete=True)
 
+
 def txn_to_str(df: pd.DataFrame) -> List[str]:
-    df = nest(df, columns=[col for col in df.columns if not col in ['id', 'date']], key='txn')
-    df = df.drop(columns=['id'])
-    result = [f'{str(date)},{df_to_consistent_str(txn)}' for date, txn in zip(df['date'], df['txn'])]
+    df = nest(df, columns=[col for col in df.columns if col not in ["id", "date"]], key="txn")
+    df = df.drop(columns=["id"])
+    result = [
+        f"{str(date)},{df_to_consistent_str(txn)}" for date, txn in zip(df["date"], df["txn"])
+    ]
     result.sort()
     return result
 
-@pytest.mark.parametrize("ledger_id", set(LEDGER_ENTRIES['id'].unique()).difference([15, 16, 17, 18]))
+
+@pytest.mark.parametrize(
+    "ledger_id", set(LEDGER_ENTRIES["id"].unique()).difference([15, 16, 17, 18])
+)
 def test_add_ledger_entry(set_up_vat_and_account, ledger_id):
     cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == @ledger_id')
+    target = LEDGER_ENTRIES.query("id == @ledger_id")
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
+    created = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'], check_exact=True)
+    assert_frame_equal(
+        created, expected, ignore_index=True, ignore_columns=["id"], check_exact=True
+    )
+
 
 def test_ledger_accessor_mutators_single_transaction(set_up_vat_and_account):
     cashctrl = CashCtrlLedger()
 
     # Test adding a ledger entry
-    target = LEDGER_ENTRIES.query('id == 1')
+    target = LEDGER_ENTRIES.query("id == 1")
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
+    created = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
+    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=["id"])
 
     # Test update the ledger entry
-    target = LEDGER_ENTRIES.query('id == 4').copy()
-    target['id'] = id
+    target = LEDGER_ENTRIES.query("id == 4").copy()
+    target["id"] = id
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
-    updated = remote.loc[remote['id'] == str(id)]
+    updated = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(updated, expected, ignore_index=True)
 
     # TODO: CashCtrl doesn`t allow to convert a single transaction into collective
     # transaction if the single transaction has a taxId assigned. See cashctrl#27.
     # As a workaround, we reset the taxId manually before update with a collective transaction
-    target['vat_code'] = None
+    target["vat_code"] = None
     cashctrl.update_ledger_entry(target)
 
     # Test replace with an collective ledger entry
-    target = LEDGER_ENTRIES.query('id == 2').copy()
-    target['id'] = id
+    target = LEDGER_ENTRIES.query("id == 2").copy()
+    target["id"] = id
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
-    updated = remote.loc[remote['id'] == str(id)]
+    updated = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test delete the created ledger entry
     cashctrl.delete_ledger_entry(id)
     remote = cashctrl.ledger()
-    assert all(remote['id'] != str(id)), f"Ledger entry {id} was not deleted"
+    assert all(remote["id"] != str(id)), f"Ledger entry {id} was not deleted"
+
 
 def test_ledger_accessor_mutators_single_transaction_without_VAT():
     cashctrl = CashCtrlLedger()
 
     # Test adding a ledger entry without VAT code
-    target = LEDGER_ENTRIES.query('id == 4').copy()
-    target['vat_code'] = None
+    target = LEDGER_ENTRIES.query("id == 4").copy()
+    target["vat_code"] = None
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
+    created = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
+    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=["id"])
 
     # Test update the ledger entry
-    target = LEDGER_ENTRIES.query('id == 1').copy()
-    target['id'] = id
-    target['vat_code'] = None
+    target = LEDGER_ENTRIES.query("id == 1").copy()
+    target["id"] = id
+    target["vat_code"] = None
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
-    updated = remote.loc[remote['id'] == str(id)]
+    updated = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test delete the updated ledger entry
     cashctrl.delete_ledger_entry(id)
     remote = cashctrl.ledger()
-    assert all(remote['id'] != str(id)), f"Ledger entry {id} was not deleted"
+    assert all(remote["id"] != str(id)), f"Ledger entry {id} was not deleted"
+
 
 def test_ledger_accessor_mutators_collective_transaction(set_up_vat_and_account):
     cashctrl = CashCtrlLedger()
 
     # Test adding a ledger entry
-    target = LEDGER_ENTRIES.query('id == 2')
+    target = LEDGER_ENTRIES.query("id == 2")
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
+    created = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
+    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=["id"])
 
     # Test update the ledger entry
-    target = LEDGER_ENTRIES.query('id == 3').copy()
-    target['id'] = id
+    target = LEDGER_ENTRIES.query("id == 3").copy()
+    target["id"] = id
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
-    updated = remote.loc[remote['id'] == str(id)]
+    updated = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test replace with an individual ledger entry
     target = LEDGER_ENTRIES.iloc[[0]].copy()
-    target['id'] = id
-    target['vat_code'] = None
+    target["id"] = id
+    target["vat_code"] = None
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
-    updated = remote.loc[remote['id'] == str(id)]
+    updated = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test delete the updated ledger entry
     cashctrl.delete_ledger_entry(id)
     remote = cashctrl.ledger()
-    assert all(remote['id'] != str(id)), f"Ledger entry {id} was not deleted"
+    assert all(remote["id"] != str(id)), f"Ledger entry {id} was not deleted"
+
 
 def test_ledger_accessor_mutators_collective_transaction_without_vat():
     cashctrl = CashCtrlLedger()
 
     # Test adding a ledger entry
-    target = LEDGER_ENTRIES.query('id == 2').copy()
-    target['vat_code'] = None
+    target = LEDGER_ENTRIES.query("id == 2").copy()
+    target["vat_code"] = None
     id = cashctrl.add_ledger_entry(target)
     remote = cashctrl.ledger()
-    created = remote.loc[remote['id'] == str(id)]
+    created = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
-    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=['id'])
+    assert_frame_equal(created, expected, ignore_index=True, ignore_columns=["id"])
 
     # Test update the ledger entry
-    target = LEDGER_ENTRIES.query('id == 3').copy()
-    target['id'] = id
-    target['vat_code'] = None
+    target = LEDGER_ENTRIES.query("id == 3").copy()
+    target["id"] = id
+    target["vat_code"] = None
     cashctrl.update_ledger_entry(target)
     remote = cashctrl.ledger()
-    updated = remote.loc[remote['id'] == str(id)]
+    updated = remote.loc[remote["id"] == str(id)]
     expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(updated, expected, ignore_index=True)
 
     # Test delete the updated ledger entry
     cashctrl.delete_ledger_entry(id)
     remote = cashctrl.ledger()
-    assert all(remote['id'] != str(id)), f"Ledger entry {id} was not deleted"
+    assert all(remote["id"] != str(id)), f"Ledger entry {id} was not deleted"
+
 
 def test_add_ledger_with_non_existing_vat():
     # Adding a ledger entry with non existing VAT code should raise an error
     cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 1').copy()
-    target['vat_code'].iat[0] = 'Test_Non_Existent_VAT_code'
-    with pytest.raises(ValueError, match='No id found for tax code'):
+    target = LEDGER_ENTRIES.query("id == 1").copy()
+    target["vat_code"].iat[0] = "Test_Non_Existent_VAT_code"
+    with pytest.raises(ValueError, match="No id found for tax code"):
         cashctrl.add_ledger_entry(target)
+
 
 def test_add_ledger_with_non_existing_account():
     # Adding a ledger entry with non existing account should raise an error
     cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 1').copy()
-    target['account'] = 33333
-    with pytest.raises(ValueError, match='No id found for account'):
+    target = LEDGER_ENTRIES.query("id == 1").copy()
+    target["account"] = 33333
+    with pytest.raises(ValueError, match="No id found for account"):
         cashctrl.add_ledger_entry(target)
+
 
 def test_add_ledger_with_non_existing_currency():
     # Adding a ledger entry with non existing currency code should raise an error
     cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 1').copy()
-    target['currency'] = 'Non_Existent_Currency'
-    with pytest.raises(ValueError, match='No id found for currency'):
+    target = LEDGER_ENTRIES.query("id == 1").copy()
+    target["currency"] = "Non_Existent_Currency"
+    with pytest.raises(ValueError, match="No id found for currency"):
         cashctrl.add_ledger_entry(target)
+
 
 @pytest.mark.parametrize("id", [15, 16])
 def test_adding_transaction_with_two_non_base_currencies_fails(set_up_vat_and_account, id):
     cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES[LEDGER_ENTRIES['id'] == id]
-    expected = "CashCtrl allows only the base currency plus a single foreign currency"
+    target = LEDGER_ENTRIES[LEDGER_ENTRIES["id"] == id]
+    expected = (
+        "CashCtrl allows only the base currency plus a single foreign currency"
+    )
     with pytest.raises(ValueError, match=expected):
         cashctrl.add_ledger_entry(target)
 
+
 def test_update_ledger_with_illegal_attributes(set_up_vat_and_account):
     cashctrl = CashCtrlLedger()
-    id = cashctrl.add_ledger_entry(LEDGER_ENTRIES.query('id == 1'))
+    id = cashctrl.add_ledger_entry(LEDGER_ENTRIES.query("id == 1"))
 
     # Updating a ledger with non existent VAT code should raise an error
-    target = LEDGER_ENTRIES.query('id == 1').copy()
-    target['id'] = id
-    target['vat_code'] = 'Test_Non_Existent_VAT_code'
-    with pytest.raises(ValueError, match='No id found for tax code'):
+    target = LEDGER_ENTRIES.query("id == 1").copy()
+    target["id"] = id
+    target["vat_code"] = "Test_Non_Existent_VAT_code"
+    with pytest.raises(ValueError, match="No id found for tax code"):
         cashctrl.update_ledger_entry(target)
 
     # Updating a ledger with non existent account code should raise an error
-    target = LEDGER_ENTRIES.query('id == 1').copy()
-    target['id'] = id
-    target['account'].iat[0] = 333333
-    with pytest.raises(ValueError, match='No id found for account'):
+    target = LEDGER_ENTRIES.query("id == 1").copy()
+    target["id"] = id
+    target["account"].iat[0] = 333333
+    with pytest.raises(ValueError, match="No id found for account"):
         cashctrl.update_ledger_entry(target)
 
     # Updating a ledger with non existent currency code should raise an error
-    target = LEDGER_ENTRIES.query('id == 1').copy()
-    target['id'] = id
-    target['currency'].iat[0] = 'Non_Existent_Currency'
-    with pytest.raises(ValueError, match='No id found for currency'):
+    target = LEDGER_ENTRIES.query("id == 1").copy()
+    target["id"] = id
+    target["currency"].iat[0] = "Non_Existent_Currency"
+    with pytest.raises(ValueError, match="No id found for currency"):
         cashctrl.update_ledger_entry(target)
 
     # Delete the ledger entry created above
     cashctrl.delete_ledger_entry(id)
 
-# Updating a non-existent ledger should raise an error
+
 def test_update_non_existent_ledger():
     cashctrl = CashCtrlLedger()
-    target = LEDGER_ENTRIES.query('id == 1').copy()
-    target['id'] = 999999
+    target = LEDGER_ENTRIES.query("id == 1").copy()
+    target["id"] = 999999
     with pytest.raises(RequestException):
         cashctrl.update_ledger_entry(target)
 
-# Deleting a non-existent ledger should raise an error
+
 def test_delete_non_existent_ledger():
     cashctrl = CashCtrlLedger()
     with pytest.raises(RequestException):
-        cashctrl.delete_ledger_entry(ids='non-existent')
+        cashctrl.delete_ledger_entry(ids="non-existent")
+
 
 def test_split_multi_currency_transactions():
     cashctrl = CashCtrlLedger()
     transitory_account = 19993
-    txn = cashctrl.standardize_ledger(LEDGER_ENTRIES.query('id == 15'))
-    spit_txn = cashctrl.split_multi_currency_transactions(txn, transitory_account=transitory_account)
-    is_base_currency = spit_txn['currency'] == cashctrl.base_currency
-    spit_txn.loc[is_base_currency, 'base_currency_amount'] = spit_txn.loc[is_base_currency, 'amount']
+    txn = cashctrl.standardize_ledger(LEDGER_ENTRIES.query("id == 15"))
+    spit_txn = cashctrl.split_multi_currency_transactions(
+        txn, transitory_account=transitory_account
+    )
+    is_base_currency = spit_txn["currency"] == cashctrl.base_currency
+    spit_txn.loc[is_base_currency, "base_currency_amount"] = spit_txn.loc[
+        is_base_currency, "amount"
+    ]
     assert len(spit_txn) == len(txn) + 2, "Expecting two new lines when transaction is split"
-    assert sum(spit_txn['account'] == transitory_account) == 2, (
-        "Expecting two transactions on transitory account")
-    assert all(spit_txn.groupby('id')['base_currency_amount'].sum() == 0), (
-        "Expecting split transactions to be balanced")
-    assert spit_txn.query("account == @transitory_account")['base_currency_amount'].sum() == 0, (
-        "Expecting transitory account to be balanced")
+    assert sum(spit_txn["account"] == transitory_account) == 2, (
+        "Expecting two transactions on transitory account"
+    )
+    assert all(spit_txn.groupby("id")["base_currency_amount"].sum() == 0), (
+        "Expecting split transactions to be balanced"
+    )
+    assert spit_txn.query("account == @transitory_account")["base_currency_amount"].sum() == 0, (
+        "Expecting transitory account to be balanced"
+    )
+
 
 def test_split_several_multi_currency_transactions():
     cashctrl = CashCtrlLedger()
     transitory_account = 19993
-    txn = cashctrl.standardize_ledger(LEDGER_ENTRIES.query('id.isin([15, 16])'))
-    spit_txn = cashctrl.split_multi_currency_transactions(txn, transitory_account=transitory_account)
-    is_base_currency = spit_txn['currency'] == cashctrl.base_currency
-    spit_txn.loc[is_base_currency, 'base_currency_amount'] = spit_txn.loc[is_base_currency, 'amount']
-    id_currency_pairs = (txn['id'] + txn['currency']).nunique()
+    txn = cashctrl.standardize_ledger(LEDGER_ENTRIES.query("id.isin([15, 16])"))
+    spit_txn = cashctrl.split_multi_currency_transactions(
+        txn, transitory_account=transitory_account
+    )
+    is_base_currency = spit_txn["currency"] == cashctrl.base_currency
+    spit_txn.loc[is_base_currency, "base_currency_amount"] = spit_txn.loc[
+        is_base_currency, "amount"
+    ]
+    id_currency_pairs = (txn["id"] + txn["currency"]).nunique()
     assert len(spit_txn) == len(txn) + id_currency_pairs, (
-        "Expecting one new line per currency and transaction")
-    assert sum(spit_txn['account'] == transitory_account) == id_currency_pairs, (
-        "Expecting one transaction on transitory account per id and currency")
-    assert all(spit_txn.groupby('id')['base_currency_amount'].sum() == 0), (
-        "Expecting split transactions to be balanced")
-    assert spit_txn.query("account == @transitory_account")['base_currency_amount'].sum() == 0, (
-        "Expecting transitory account to be balanced")
+        "Expecting one new line per currency and transaction"
+    )
+    assert sum(spit_txn["account"] == transitory_account) == id_currency_pairs, (
+        "Expecting one transaction on transitory account per id and currency"
+    )
+    assert all(spit_txn.groupby("id")["base_currency_amount"].sum() == 0), (
+        "Expecting split transactions to be balanced"
+    )
+    assert spit_txn.query("account == @transitory_account")["base_currency_amount"].sum() == 0, (
+        "Expecting transitory account to be balanced"
+    )
+
 
 def test_mirror_ledger(set_up_vat_and_account):
     cashctrl = CashCtrlLedger()
     cashctrl.transitory_account = 19999
 
     # Mirror with one single and one collective transaction
-    target = LEDGER_ENTRIES.query('id in [1, 2]')
+    target = LEDGER_ENTRIES.query("id in [1, 2]")
     cashctrl.mirror_ledger(target=target, delete=True)
     expected = cashctrl.standardize_ledger(target)
     mirrored = cashctrl.ledger()
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
     # Mirror with duplicate transactions and delete=False
-    target = pd.concat([
-        LEDGER_ENTRIES.query('id == 1'),
-        LEDGER_ENTRIES.query('id == 1').assign(id=5),
-        LEDGER_ENTRIES.query('id == 2').assign(id=6),
-        LEDGER_ENTRIES.query('id == 2')
-    ])
+    target = pd.concat(
+        [
+            LEDGER_ENTRIES.query("id == 1"),
+            LEDGER_ENTRIES.query("id == 1").assign(id=5),
+            LEDGER_ENTRIES.query("id == 2").assign(id=6),
+            LEDGER_ENTRIES.query("id == 2"),
+        ]
+    )
     cashctrl.mirror_ledger(target=target)
     expected = cashctrl.standardize_ledger(target)
     mirrored = cashctrl.ledger()
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
     # Mirror with complex transactions and delete=False
-    target = LEDGER_ENTRIES.query('id in [15, 16, 17, 18]')
+    target = LEDGER_ENTRIES.query("id in [15, 16, 17, 18]")
     cashctrl.mirror_ledger(target=target, delete=False)
     expected = cashctrl.standardize_ledger(target)
     expected = cashctrl.sanitize_ledger(expected)
@@ -386,13 +429,13 @@ def test_mirror_ledger(set_up_vat_and_account):
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
     # Mirror existing transactions with delete=False has no impact
-    target = LEDGER_ENTRIES.query('id in [1, 2]')
+    target = LEDGER_ENTRIES.query("id in [1, 2]")
     cashctrl.mirror_ledger(target=target, delete=False)
     mirrored = cashctrl.ledger()
     assert txn_to_str(mirrored) == txn_to_str(expected)
 
     # Mirror with delete=True
-    target = LEDGER_ENTRIES.query('id in [1, 2]')
+    target = LEDGER_ENTRIES.query("id in [1, 2]")
     cashctrl.mirror_ledger(target=target)
     mirrored = cashctrl.ledger()
     expected = cashctrl.standardize_ledger(target)
