@@ -15,5 +15,13 @@ setup(
     packages=find_packages(exclude=('tests', 'examples', 'scripts')),
     scripts=[
         'scripts/restore_initial_state.py',
-    ]
+    ],
+    extras_require={
+        "dev": [
+            "flake8",
+            "flake8-import-order",
+            "flake8-docstrings",
+            "flake8-bugbear",
+        ]
+    }
 )
