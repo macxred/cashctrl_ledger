@@ -9,6 +9,7 @@ Modules:
 """
 
 from .ledger import CashCtrlLedger
+from .extended_ledger import CashCtrlLedgerExtended
 from .nesting import nest, unnest
 from .ledger_utils import df_to_consistent_str
 from .testing import assert_frame_equal
