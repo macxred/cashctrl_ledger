@@ -2,10 +2,39 @@
 
 [![codecov](https://codecov.io/gh/macxred/cashctrl_ledger/branch/main/graph/badge.svg)](https://codecov.io/gh/macxred/cashctrl_ledger)
 
-`cashctrl_ledger` is a Python package that implements the `pyledger.LedgerEngine` interface, enabling seamless integration with the CashCtrl accounting service. With this package, users can perform various accounting operations programmatically, directly from Python.
+`cashctrl_ledger` is a Python package that implements the `pyledger.LedgerEngine`
+interface, enabling seamless integration with the CashCtrl accounting service. With this package,
+users can perform various accounting operations programmatically, directly from Python.
+
+## Core Components
+
+1. **CashCtrlLedger**\
+The class that Implements the `pyledger` interface by connecting to the CashCtrl online accounting software via REST API.
+
+2. **CashCtrlLedgerExtended**\
+The class that inherits from `CashCtrlLedger` and violates specific limitations of the CashCtrl system.
+This includes handling multi-currency transactions and foreign exchange adjustments.
 
 ## Key Features:
-Coming soon
+- **VAT Codes Management:**
+  - Retrieve VAT codes from the CashCtrl account and convert them to standard pyledger format.
+  - Add, update, and delete VAT codes in the CashCtrl account.
+  - Mirror VAT codes between local and remote states.
+
+- **Account Management:**
+  - Retrieve the account chart from the CashCtrl instance in pyledger format.
+  - Add, update, and delete accounts in the CashCtrl instance.
+  - Mirror account charts between local and remote states.
+
+- **Ledger Management:**
+  - Retrieve and standardize ledger entries from the CashCtrl account.
+  - Add, update, and delete ledger entries in the CashCtrl account.
+  - Mirror ledger data between local and remote states.
+  - Manage ledger entry attachments based on specified file paths.
+
+- **Currency Management:**
+  - Retrieve the base currency of the CashCtrl account.
+  - Get precision for specific currencies (currently supports USD, CHF, EUR).
 
 ## Credentials
 
