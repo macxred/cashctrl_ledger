@@ -5,7 +5,9 @@ interface, enabling seamless integration with the CashCtrl accounting service. W
 package, users can perform various accounting operations programmatically, directly from Python.
 
 Modules:
-- ledger: Contains the CashCtrlLedger class to sync ledger system onto CashCtrl.
+- ledger: Contains the CashCtrlLedger Class that Implements the pyledger interface by connecting
+          to the CashCtrl online accounting software.
+- extended_ledger: Contains the CashCtrlLedgerExtended class that violates limitations of the CashCtrl.
 """
 
 from .ledger import CashCtrlLedger

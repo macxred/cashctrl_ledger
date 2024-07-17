@@ -1,4 +1,4 @@
-"""Module that contains "hackish" code that violates cashctrl limitations"""
+"""This module contains "hackish" code that violates the limitations of the CashCtrl."""
 
 from typing import Union
 import numpy as np
@@ -7,6 +7,13 @@ from .ledger import CashCtrlLedger
 
 
 class CashCtrlLedgerExtended(CashCtrlLedger):
+    """Class that inherits the CashCtrlLedger class and violates
+    the limitations of the CashCtrl.
+
+    See README on https://github.com/macxred/cashctrl_ledger for overview and
+    usage examples.
+    """
+
     _transitory_account = None
 
     # ----------------------------------------------------------------------

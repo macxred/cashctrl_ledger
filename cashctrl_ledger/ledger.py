@@ -1,4 +1,4 @@
-"""Module to sync ledger system onto CashCtrl."""
+"""Module that implements the pyledger interface by connecting to the CashCtrl"""
 
 from datetime import datetime
 from typing import Dict, List, Tuple, Union
@@ -12,7 +12,8 @@ from .nesting import nest, unnest
 
 
 class CashCtrlLedger(LedgerEngine):
-    """Class that give you an ability to sync ledger system onto CashCtrl.
+    """Class that Implements the pyledger interface by connecting
+    to the CashCtrl online accounting software.
 
     See README on https://github.com/macxred/cashctrl_ledger for overview and
     usage examples.
