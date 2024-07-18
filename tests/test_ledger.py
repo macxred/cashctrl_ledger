@@ -2,7 +2,8 @@
 
 from io import StringIO
 from typing import List
-from cashctrl_ledger import assert_frame_equal, CashCtrlLedger, df_to_consistent_str, nest
+from cashctrl_ledger import CashCtrlLedger
+from consistent_df import assert_frame_equal, df_to_consistent_str, nest
 import pandas as pd
 import pytest
 from requests.exceptions import RequestException
