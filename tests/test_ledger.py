@@ -149,12 +149,6 @@ def test_ledger_accessor_mutators_single_transaction(set_up_vat_and_account):
     expected = cashctrl.standardize_ledger(target)
     assert_frame_equal(updated, expected, ignore_index=True)
 
-    # TODO: CashCtrl doesn`t allow to convert a single transaction into collective
-    # transaction if the single transaction has a taxId assigned. See cashctrl#27.
-    # As a workaround, we reset the taxId manually before update with a collective transaction
-    target["vat_code"] = None
-    cashctrl.modify_ledger_entry(target)
-
     # Test replace with an collective ledger entry
     target = LEDGER_ENTRIES.query("id == 2").copy()
     target["id"] = id
