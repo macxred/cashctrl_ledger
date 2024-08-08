@@ -1,0 +1,7 @@
+[flake8]
+max-line-length = 100
+ignore = D100,D101,D102,D103,D104,D105,D107,D202,D203,D204,D205,D400,D401,D402,D403,D404,D405,D406,D407,D408,D409,D410,D411,D412,D413,D414,D415,E203,W503,I201
+import-order-style = google
+docstring-convention = google
+exclude = .git,__pycache__,.pytest_cache,*.egg-info,./venv
+no-blank-lines-between-imports = True

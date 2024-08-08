@@ -1,12 +1,11 @@
-"""
-Module for converting nested DataFrames into long format and vice versa.
-"""
-import pandas as pd
-from typing import List
+"""Module for converting nested DataFrames into long format and vice versa."""
 
-def nest(df: pd.DataFrame, columns: List[str], key: str = 'data') -> pd.DataFrame:
-    """
-    Nest specified columns of a DataFrame
+from typing import List
+import pandas as pd
+
+
+def nest(df: pd.DataFrame, columns: List[str], key: str = "data") -> pd.DataFrame:
+    """Nest specified columns of a DataFrame.
 
     Nesting groups a DataFrame, keeps a single row for every unique combination
     of grouping columns, and nests columns other than the grouping columns
@@ -14,13 +13,13 @@ def nest(df: pd.DataFrame, columns: List[str], key: str = 'data') -> pd.DataFram
     column schema. Each row of the original data frame becomes a row in one of the
     inner data frames.
 
-    Parameters:
-    df (pd.DataFrame): The input DataFrame in long format.
-    columns (List[str]): Columns to nest; these will appear in the inner data frames.
-    key (str): The name of the resulting nested column.
+    Args:
+        df (pd.DataFrame): The input DataFrame in long format.
+        columns (List[str]): Columns to nest; these will appear in the inner data frames.
+        key (str): The name of the resulting nested column. Defaults to 'data'.
 
     Returns:
-    pd.DataFrame: A DataFrame with the data grouped into nested DataFrames.
+        pd.DataFrame: A DataFrame with the data grouped into nested DataFrames.
 
     Example:
     >>> data = {
@@ -60,21 +59,21 @@ def nest(df: pd.DataFrame, columns: List[str], key: str = 'data') -> pd.DataFram
     result[key] = [df[0] for df in nested_dfs.reset_index(drop=True)]
     return result.reset_index(drop=True)
 
-def unnest(df: pd.DataFrame, key: str = 'data') -> pd.DataFrame:
-    """
-    Expands nested DataFrames into long format.
+
+def unnest(df: pd.DataFrame, key: str = "data") -> pd.DataFrame:
+    """Expands nested DataFrames into long format.
 
     Unnest expands a specified data frame column that contains a list of
     nested data frames into rows and columns of the outer data frame.
     Each row or column of the nested data frames becomes a row or column in
     the resulting data frame.
 
-    Parameters:
-    df (pd.DataFrame): The input DataFrame with nested data.
-    key (str): The name of the column with the nested DataFrames to unnest.
+    Args:
+        df (pd.DataFrame): The input DataFrame with nested data.
+        key (str): The name of the column with the nested DataFrames to unnest. Defaults to 'data'.
 
     Returns:
-    pd.DataFrame: A DataFrame with the nested data flattened into long format.
+        pd.DataFrame: A DataFrame with the nested data flattened into long format.
 
     Example:
     >>> data = {
@@ -111,9 +110,10 @@ def unnest(df: pd.DataFrame, key: str = 'data') -> pd.DataFrame:
         flat_dfs = pd.concat(df_reset[key].to_dict())
         flat_dfs.index = flat_dfs.index.get_level_values(0)
 
-    result = (df_reset
-              .drop(columns=[key])
-              .join(flat_dfs, how='right', validate='1:m', rsuffix="_nested"))
+    result = (
+        df_reset.drop(columns=[key])
+        .join(flat_dfs, how="right", validate="1:m", rsuffix="_nested")
+    )
     # Restore original index
     result.index = df.index[result.index]
     return result

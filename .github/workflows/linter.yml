@@ -9,13 +9,7 @@ on:
   # Manually triggered
   workflow_dispatch:
 
-name: Unit/Integration Tests
-
-concurrency:
-  # Within the same concurrency group, run only one job at a time
-  # New jobs cancel existing pending jobs
-  group: CashCtrl-test-account
-  cancel-in-progress: false
+name: Lint
 
 jobs:
   docker:
@@ -50,10 +44,10 @@ jobs:
           . venv/bin/activate
 
       - name: Install dependencies
-        run: pip install coverage pytest pandas .
+        run: pip install pytest pandas flake8 .
 
       - name: Install package
         run: python setup.py develop
 
-      - name: Run tests
-        run: pytest -W error
+      - name: Run Flake8
+        run: flake8

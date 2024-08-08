@@ -1,0 +1,16 @@
+[run]
+omit =
+    */tests/*
+    */venv/*
+    */.venv/*
+    */env/*
+    */.env/*
+    setup.py
+
+[report]
+exclude_lines =
+    if __name__ == .__main__.:
+    pragma: no cover
+    raise NotImplementedError
+    if TYPE_CHECKING:
+fail_under = 90

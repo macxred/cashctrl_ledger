@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
-"""
-This script restores the default VAT codes, accounts, and journals in a CashCtrl ledger system.
+"""This script restores the default VAT codes, accounts, and journals in a CashCtrl ledger system.
 
 Automatic Execution:
     This script is set to run automatically every night at 3 AM as a GitHub Action.
@@ -20,9 +19,9 @@ Usage:
     ```
 """
 
-import pandas as pd
 from io import StringIO
 from cashctrl_ledger import CashCtrlLedger
+import pandas as pd
 
 VAT_CODES = """
     id,account,rate,inclusive,text
@@ -33,6 +32,8 @@ VAT_CODES = """
     Input tax 3.8%,1170,0.038,,Input tax 3.8%
     Input tax 8.1%,1170,0.081,,Input tax 8.1%
 """
+
+# flake8: noqa: E501
 
 ACCOUNTS = """
     account,currency,text,vat_code,group
@@ -156,22 +157,25 @@ ACCOUNTS = """
     9900,CHF,<values><de>Korrekturen</de><en>Corrections</en><fr>Corrections</fr><it>Correzioni</it></values>,,/Balance/Eröffnung \\ Abschluss
 """
 
+# flake8: enable
+
 def main():
     cashctrl_ledger = CashCtrlLedger()
 
     # Delete all journal entries
     journals = cashctrl_ledger._client.list_journal_entries()
-    ids = ','.join(journals['id'].astype(str).tolist())
+    ids = ",".join(journals["id"].astype(str).tolist())
     if len(ids):
-        cashctrl_ledger._client.post("journal/delete.json", {'ids': ids})
+        cashctrl_ledger._client.post("journal/delete.json", {"ids": ids})
 
     # Restore default VAT
     vat = pd.read_csv(StringIO(VAT_CODES), skipinitialspace=True)
-    cashctrl_ledger.mirror_vat_codes(target_state=vat, delete=True)
+    cashctrl_ledger.mirror_vat_codes(target=vat, delete=True)
 
     # Restore default accounts
     accounts = pd.read_csv(StringIO(ACCOUNTS), skipinitialspace=True)
     cashctrl_ledger.mirror_account_chart(target=accounts)
+
 
 if __name__ == "__main__":
     main()
