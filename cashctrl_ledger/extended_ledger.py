@@ -1,4 +1,6 @@
-"""This module contains "hackish" code that violates the limitations of the CashCtrl."""
+"""This module contains the CashCtrlLedgerExtended class that helps to splits transactions
+that can not be represented in CashCtrl into multiple representable transactions.
+"""
 
 from typing import Union
 import numpy as np
@@ -7,8 +9,8 @@ from .ledger import CashCtrlLedger
 
 
 class CashCtrlLedgerExtended(CashCtrlLedger):
-    """Class that inherits the CashCtrlLedger class and violates
-    the limitations of the CashCtrl.
+    """Class that inherits the CashCtrlLedger class and helps to splits transactions
+    that can not be represented in CashCtrl into multiple representable transactions.
 
     See README on https://github.com/macxred/cashctrl_ledger for overview and
     usage examples.
@@ -66,8 +68,10 @@ class CashCtrlLedgerExtended(CashCtrlLedger):
     # Ledger
 
     def sanitize_ledger(self, ledger: pd.DataFrame) -> pd.DataFrame:
-        """Sanitizes the ledger DataFrame by splitting multi-currency transactions
-        and ensuring FX adjustments.
+        """This method overrides the parent generic method to comply with the specific limitations
+        of CashCtrl. It sanitizes the ledger DataFrame by splitting entries with multiple
+        currencies into separate entries for each currency. Ensures foreign currencies
+        can be mapped, correcting with FX adjustments otherwise.
 
         Args:
             ledger (pd.DataFrame): The ledger DataFrame to be sanitized.

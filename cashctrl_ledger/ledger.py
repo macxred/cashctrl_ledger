@@ -1,4 +1,4 @@
-"""Module that implements the pyledger interface by connecting to the CashCtrl"""
+"""Module that implements the pyledger interface by connecting to the CashCtrl API."""
 
 from datetime import datetime
 from typing import Dict, List, Tuple, Union

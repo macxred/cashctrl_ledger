@@ -7,7 +7,8 @@ package, users can perform various accounting operations programmatically, direc
 Modules:
 - ledger: Contains the CashCtrlLedger Class that Implements the pyledger interface by connecting
           to the CashCtrl online accounting software.
-- extended_ledger: Contains the CashCtrlLedgerExtended class that violates limitations of the CashCtrl.
+- extended_ledger: Contains the CashCtrlLedgerExtended class that helps to splits transactions
+				   that can not be represented in CashCtrl into multiple representable transactions.
 """
 
 from .ledger import CashCtrlLedger

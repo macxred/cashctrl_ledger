@@ -12,29 +12,14 @@ users can perform various accounting operations programmatically, directly from 
 The class that Implements the `pyledger` interface by connecting to the CashCtrl online accounting software via REST API.
 
 2. **CashCtrlLedgerExtended**\
-The class that inherits from `CashCtrlLedger` and violates specific limitations of the CashCtrl system.
-This includes handling multi-currency transactions and foreign exchange adjustments.
+The class that inherits from `CashCtrlLedger` and contain the 'hawkish' code
+that splits transactions that can not be represented in CashCtrl into multiple representable transactions.
 
 ## Key Features:
-- **VAT Codes Management:**
-  - Retrieve VAT codes from the CashCtrl account and convert them to standard pyledger format.
-  - Add, update, and delete VAT codes in the CashCtrl account.
-  - Mirror VAT codes between local and remote states.
-
-- **Account Management:**
-  - Retrieve the account chart from the CashCtrl instance in pyledger format.
-  - Add, update, and delete accounts in the CashCtrl instance.
-  - Mirror account charts between local and remote states.
-
-- **Ledger Management:**
-  - Retrieve and standardize ledger entries from the CashCtrl account.
-  - Add, update, and delete ledger entries in the CashCtrl account.
-  - Mirror ledger data between local and remote states.
-  - Manage ledger entry attachments based on specified file paths.
-
-- **Currency Management:**
-  - Retrieve the base currency of the CashCtrl account.
-  - Get precision for specific currencies (currently supports USD, CHF, EUR).
+This package streamlines the connection between your local ledger system and CashCtrl system.
+It simplifies managing VAT codes, accounts, and ledger entries by keeping your local and CashCtrl
+data in sync. You can easily add, update, or delete financial records and attachments,
+ensuring everything is consistent across both systems.
 
 ## Credentials
 
