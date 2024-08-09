@@ -2,10 +2,24 @@
 
 [![codecov](https://codecov.io/gh/macxred/cashctrl_ledger/branch/main/graph/badge.svg)](https://codecov.io/gh/macxred/cashctrl_ledger)
 
-`cashctrl_ledger` is a Python package that implements the `pyledger.LedgerEngine` interface, enabling seamless integration with the CashCtrl accounting service. With this package, users can perform various accounting operations programmatically, directly from Python.
+`cashctrl_ledger` is a Python package that implements the `pyledger.LedgerEngine`
+interface, enabling seamless integration with the CashCtrl accounting service. With this package,
+users can perform various accounting operations programmatically, directly from Python.
+
+## Core Components
+
+1. **CashCtrlLedger**\
+The class that Implements the `pyledger` interface by connecting to the CashCtrl online accounting software via REST API.
+
+2. **CashCtrlLedgerExtended**\
+The class that inherits from `CashCtrlLedger` and contain the 'hawkish' code
+that splits transactions that can not be represented in CashCtrl into multiple representable transactions.
 
 ## Key Features:
-Coming soon
+This package streamlines the connection between your local ledger system and CashCtrl system.
+It simplifies managing VAT codes, accounts, and ledger entries by keeping your local and CashCtrl
+data in sync. You can easily add, update, or delete financial records and attachments,
+ensuring everything is consistent across both systems.
 
 ## Credentials
 

@@ -2,7 +2,7 @@
 
 from io import StringIO
 from typing import List
-from cashctrl_ledger import assert_frame_equal, CashCtrlLedger, df_to_consistent_str, nest
+from cashctrl_ledger import assert_frame_equal, CashCtrlLedger, CashCtrlLedgerExtended, df_to_consistent_str, nest
 import pandas as pd
 import pytest
 from requests.exceptions import RequestException
@@ -84,8 +84,7 @@ TEST_VAT_CODE = pd.read_csv(StringIO(VAT_CSV), skipinitialspace=True)
 
 @pytest.fixture(scope="module")
 def set_up_vat_and_account():
-    cashctrl = CashCtrlLedger()
-    cashctrl.transitory_account = 19999
+    cashctrl = CashCtrlLedgerExtended(transitory_account = 19999)
 
     # Fetch original state
     initial_vat_codes = cashctrl.vat_codes().reset_index()
@@ -344,7 +343,7 @@ def test_delete_non_existent_ledger():
 
 
 def test_split_multi_currency_transactions():
-    cashctrl = CashCtrlLedger()
+    cashctrl = CashCtrlLedgerExtended(transitory_account = 19999)
     transitory_account = 19993
     txn = cashctrl.standardize_ledger(LEDGER_ENTRIES.query("id == 15"))
     spit_txn = cashctrl.split_multi_currency_transactions(
@@ -367,7 +366,7 @@ def test_split_multi_currency_transactions():
 
 
 def test_split_several_multi_currency_transactions():
-    cashctrl = CashCtrlLedger()
+    cashctrl = CashCtrlLedgerExtended(transitory_account = 19993)
     transitory_account = 19993
     txn = cashctrl.standardize_ledger(LEDGER_ENTRIES.query("id.isin([15, 16])"))
     spit_txn = cashctrl.split_multi_currency_transactions(
@@ -393,8 +392,7 @@ def test_split_several_multi_currency_transactions():
 
 
 def test_mirror_ledger(set_up_vat_and_account):
-    cashctrl = CashCtrlLedger()
-    cashctrl.transitory_account = 19999
+    cashctrl = CashCtrlLedgerExtended(transitory_account = 19999)
 
     # Mirror with one single and one collective transaction
     target = LEDGER_ENTRIES.query("id in [1, 2]")
