@@ -979,9 +979,24 @@ class CashCtrlLedger(LedgerEngine):
         """
         return 0.01
 
-    def price(self):
-        """Not implemented yet."""
-        raise NotImplementedError
+    def price(self, currency: str, date: datetime.date = None) -> float:
+        """
+        Retrieves the price of a given currency in terms of the base currency on
+        a specific date.
+
+        Args:
+            currency (str): The currency code to retrieve the price for.
+            date (datetime.date, optional): The date for which the price is
+                requested. Defaults to None, which retrieves the latest price.
+
+        Returns:
+            float: The price of the currency in terms of the base currency.
+        """
+        return self._client.get_exchange_rate(
+            from_currency=currency,
+            to_currency=self.base_currency,
+            date=date
+        )
 
     def add_price(self):
         """Not implemented yet."""
