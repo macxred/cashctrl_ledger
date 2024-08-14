@@ -1000,12 +1000,18 @@ class CashCtrlLedger(LedgerEngine):
 
     def add_price(self):
         """Not implemented yet."""
-        raise NotImplementedError
-
-    def price_history(self):
-        """Not implemented yet."""
-        raise NotImplementedError
+        raise NotImplementedError(
+            "Cashctrl doesn't support manually adding the price of currencies."
+        )
 
     def delete_price(self):
         """Not implemented yet."""
-        raise NotImplementedError
+        raise NotImplementedError(
+            "Cashctrl doesn't support manually deleting the price of currencies."
+        )
+
+    def price_history(self):
+        """Not implemented yet."""
+        raise NotImplementedError(
+            "Cashctrl doesn't support reading of price change history."
+        )
