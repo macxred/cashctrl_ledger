@@ -18,12 +18,30 @@ class CashCtrlLedger(LedgerEngine):
     usage examples.
     """
 
+    _settings = None
+
     # ----------------------------------------------------------------------
     # Constructor
 
     def __init__(self, client: Union[CachedCashCtrlClient, None] = None):
         super().__init__()
         self._client = CachedCashCtrlClient() if client is None else client
+
+    # ----------------------------------------------------------------------
+    # Settings
+
+    @property
+    def settings(self):
+        """Get the settings."""
+        return self._settings
+
+    @settings.setter
+    def settings(self, new_settings):
+        """Set the settings."""
+        if isinstance(new_settings, dict):
+            self._settings = new_settings
+        else:
+            raise ValueError("Settings must be a dictionary")
 
     # ----------------------------------------------------------------------
     # VAT codes
@@ -414,19 +432,22 @@ class CashCtrlLedger(LedgerEngine):
                 "currency": individual["currencyCode"],
                 "text": individual["title"],
                 "vat_code": individual["taxName"],
-                # TODO: Once precision() is implemented, use `round_to_precision()`
-                # instead of hard-coded rounding
-                "base_currency_amount": np.where(
-                    is_fx_adjustment,
-                    pd.NA,
-                    round(individual["amount"] * individual["currencyRate"], 2),
+                "base_currency_amount": self.round_series_to_precision(
+                    pd.Series(
+                        np.where(
+                            is_fx_adjustment,
+                            pd.NA,
+                            individual["amount"] * individual["currencyRate"]
+                        )
+                    ),
+                    pd.Series([self.base_currency] * len(individual))
                 ),
                 "document": individual["reference"],
             }
         )
 
         # Collective ledger entries represent a group of transactions and
-        # map to multiple rows in the resulting data frame with same id.
+        # map to multiple rows in the resulting data frame with the same id.
         collective_ids = ledger.loc[ledger["type"] == "COLLECTIVE", "id"]
         if len(collective_ids) > 0:
 
@@ -476,10 +497,9 @@ class CashCtrlLedger(LedgerEngine):
                 "currency": currency,
                 "account": collective["account"],
                 "text": collective["description"],
-                # TODO: Once precision() is implemented, use `round_to_precision()`
-                # instead of hard-coded rounding
-                "amount": pd.Series(foreign_amount).astype(pd.Float64Dtype()).round(2),
-                "base_currency_amount": pd.Series(base_amount).astype(pd.Float64Dtype()).round(2),
+                "amount": self.round_series_to_precision(pd.Series(foreign_amount), currency),
+                "base_currency_amount":
+                    self.round_series_to_precision(pd.Series(base_amount), currency),
                 "vat_code": collective["taxName"],
                 "document": collective["document"]
             })
@@ -810,9 +830,7 @@ class CashCtrlLedger(LedgerEngine):
         currency = fx_entries["currency"].iat[0]
 
         # Define precision parameters for exchange rate calculation
-        # TODO: Derive `precision` from self.precision(base_currency) once this
-        # method is implemented.
-        precision = 0.01
+        precision = self.precision(base_currency)
         fx_rate_precision = 1e-8  # Precision for exchange rates in CashCtrl
 
         # Calculate the range of acceptable exchange rates
@@ -838,11 +856,14 @@ class CashCtrlLedger(LedgerEngine):
 
         # Confirm fx_rate converts amounts to the expected base currency amount
         if not suppress_error:
-            # TODO: Once precision() is implemented, use `round_to_precision()`
-            if any(
-                (fx_entries["amount"] * fx_rate).round(2)
-                != fx_entries["base_currency_amount"].round(2)
-            ):
+            rounded_amounts = self.round_series_to_precision(
+                fx_entries["amount"] * fx_rate,
+                pd.Series([self.base_currency] * len(fx_entries)),
+            )
+            expected_rounded_amounts = self.round_series_to_precision(
+                fx_entries["base_currency_amount"], fx_entries["currency"]
+            )
+            if any(rounded_amounts != expected_rounded_amounts):
                 raise ValueError("Incoherent FX rates in collective booking.")
 
         return currency, fx_rate
@@ -904,17 +925,13 @@ class CashCtrlLedger(LedgerEngine):
                 elif row["currency"] == currency:
                     amount = row["amount"]
                 elif row["currency"] == base_currency:
-                    # TODO: Once precision() is implemented, use `round_to_precision()`
-                    # instead of hard-coded rounding
-                    amount = round(row["amount"] / fx_rate, 2)
+                    amount = self.round_to_precision(row["amount"] / fx_rate, currency)
                 else:
                     raise ValueError(
-                        "Currencies oder than base or transaction currency are not "
+                        "Currencies other than base or transaction currency are not "
                         "allowed in CashCtrl collective transactions."
                     )
-                # TODO: Once precision() is implemented, use `round_to_precision()`
-                # instead of hard-coded rounding
-                amount = round(amount, 2)
+                amount = self.round_to_precision(amount, currency)
                 items.append(
                     {
                         "accountId": self._client.account_to_id(row["account"]),
@@ -968,16 +985,22 @@ class CashCtrlLedger(LedgerEngine):
         else:
             raise ValueError("Multiple base currencies defined.")
 
-    def precision(self, *args, **kwargs):
+    def precision(self, ticker: str, date: datetime.date = None) -> float:
         """Returns the precision for given currencies.
 
-        TODO: retuning precision for USD, CHF, EUR for now.
-        Needs to be implemented for other tickers.
+        Args:
+            ticker (str): Reference to the associated document.
+            date (datetime.date, optional): Date for which to retrieve the precision.
+                                            Default is None.
 
         Returns:
             float: The precision value.
         """
-        return 0.01
+        if not self._settings:
+            return 0.01
+
+        precision_settings = self._settings.get("precision", {})
+        return precision_settings.get(ticker, 0.01)
 
     def price(self, currency: str, date: datetime.date = None) -> float:
         """

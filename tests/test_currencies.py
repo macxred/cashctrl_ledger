@@ -5,6 +5,11 @@ import pytest
 
 
 CURRENCY = {"code": "AAA", "rate": 0.11111}
+SETTINGS = {
+    "precision": {
+        "USD": 0.0001,
+    },
+}
 
 
 @pytest.fixture(scope="module")
@@ -30,3 +35,16 @@ def test_price_for_currency(currency):
 
     price = cashctrl_ledger.price(currency=CURRENCY["code"])
     assert price == 0.11111, f"Price for {CURRENCY["code"]} should be {CURRENCY["rate"]}"
+
+
+def test_precision():
+    cashctrl_ledger = CashCtrlLedger()
+
+    precision = cashctrl_ledger.precision("USD")
+    assert precision == 0.01, "Default precision should be 0.01"
+
+    cashctrl_ledger.settings = SETTINGS
+    precision = cashctrl_ledger.precision("USD")
+    assert precision == SETTINGS["precision"]["USD"], (
+        f"Precision for USD should be {SETTINGS['precision']['USD']}"
+    )

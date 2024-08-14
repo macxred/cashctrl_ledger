@@ -205,10 +205,12 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
             ):
                 return entry
             else:
-                amount = round(entry["amount"].item(), 2)
-                base_amount = round(entry["base_currency_amount"].item(), 2)
+                amount = self.round_to_precision(entry["amount"].item(), entry["currency"].item())
+                base_amount = self.round_to_precision(
+                    entry["base_currency_amount"].item(), base_currency
+                )
                 fx_rate = round(base_amount / amount, 8)
-                balance = base_amount - round(amount * fx_rate, 2)
+                balance = base_amount - self.round_to_precision(amount * fx_rate, base_currency)
                 if balance == 0.0:
                     return entry
                 else:
@@ -226,14 +228,16 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                             self.standardize_ledger_columns(balancing_txn),
                         ]
                     )
-                    result["amount"] = result["amount"].round(2)
-                    result["base_currency_amount"] = result[
-                        "base_currency_amount"
-                    ].round(2)
+                    result["amount"] = self.round_series_to_precision(
+                        result["amount"], result["currency"]
+                    )
+                    result["base_currency_amount"] = self.round_series_to_precision(
+                        result["base_currency_amount"], pd.Series([base_currency] * len(result))
+                    )
                     return self.standardize_ledger(result)
 
         elif len(entry) > 1:
-            # Collective transaction: multiple row in the ledger data frame
+            # Collective transaction: multiple rows in the ledger data frame
             currency, fx_rate = self._collective_transaction_currency_and_rate(
                 entry, suppress_error=True
             )
@@ -241,12 +245,21 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
             if currency == base_currency:
                 return entry
             else:
-                amount = entry["amount"].round(2)
-                base_amount = entry["base_currency_amount"].round(2)
+                entry["amount"] = self.round_series_to_precision(
+                    entry["amount"], entry["currency"]
+                )
+                entry["base_currency_amount"] = self.round_series_to_precision(
+                    entry["base_currency_amount"],
+                    pd.Series([base_currency] * len(entry))
+                )
                 balance = np.where(
                     entry["currency"] == base_currency,
-                    amount - ((amount / fx_rate).round(2) * fx_rate).round(2),
-                    base_amount - (amount * fx_rate).round(2),
+                    entry["amount"] - self.round_to_precision(
+                        entry["amount"] / fx_rate, currency
+                    ) * fx_rate,
+                    entry["base_currency_amount"] - self.round_to_precision(
+                        entry["amount"] * fx_rate, base_currency
+                    ),
                 )
                 if all(balance == 0.0):
                     return entry
@@ -283,10 +296,12 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     fx_adjust["text"] = "Currency adjustments: " + fx_adjust["text"]
                     fx_adjust = fx_adjust[balance != 0]
                     result = pd.concat([entry, fx_adjust])
-                    result["amount"] = result["amount"].astype(pd.Float64Dtype()).round(2)
-                    result["base_currency_amount"] = result["base_currency_amount"].astype(
-                        pd.Float64Dtype()
-                    ).round(2)
+                    result["amount"] = self.round_series_to_precision(
+                        result["amount"], result["currency"]
+                    )
+                    result["base_currency_amount"] = self.round_series_to_precision(
+                        result["base_currency_amount"], pd.Series([base_currency] * len(result))
+                    )
                     return self.standardize_ledger(result)
 
         else:
