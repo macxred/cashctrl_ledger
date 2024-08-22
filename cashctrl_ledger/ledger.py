@@ -846,34 +846,19 @@ class CashCtrlLedger(LedgerEngine):
         else:
             raise ValueError("Expecting at least one `entry` row.")
 
-    def FX_revaluation(self, df: pd.DataFrame, date: datetime.date = None):
-        """Allocate foreign exchange gains or losses based on the provided exchange rates.
+    def FX_revaluation(self, accounts: pd.DataFrame, date: datetime.date = None):
+        """Record foreign exchange gains or losses.
 
-        This method processes a DataFrame containing foreign currency account balances and applies
-        the corresponding exchange rates to allocate the foreign exchange gains or losses as of the
-        specified date. If no date is provided, the function will automatically use the last day of
-        the current accounting year for allocation.
+        Revalue given foreign currency accounts based on the provided exchange rates
+        and record the revaluation gain/losses.
 
         Args:
-            date (datetime.date or None): The date as of which the allocation should be performed.
-                If `None`, the last day of the current accounting year is used.
-            df (pd.DataFrame): A DataFrame containing the following columns:
-                - 'exchange_rate' (float): The exchange rate to apply for revaluation.
-                - 'foreign_currency_account' (int): The account ID for the foreign currency balance
-                that needs to be revalued.
-                - 'fx_gain_loss_account' (int): The account ID where the resulting foreign exchange
-                gains or losses should be recorded.
-
-        Returns:
-            None: This function allocates the gains or losses and does not return any value.
-
-        Notes:
-            The function assumes that all exchange rates are provided relative to the reporting
-            currency.
-            The DataFrame `df` should contain a separate row for each foreign currency account that
-            needs to be revalued.
-            If the `date` is `None`, the function must have access to the current accounting year
-            information to determine the correct allocation date.
+            accounts (pd.DataFrame): DataFrame with the following columns:
+                - 'foreign_currency_account' (int): The account to revalue.
+                - 'exchange_rate' (float): The exchange rate to apply.
+                - 'fx_gain_loss_account' (int): The account in which to record FX gain/loss.
+            date (datetime.date, optional): The date for the revaluation.
+                Defaults to the last day of the current accounting year.
         """
 
         def get_fx_gain_loss_account() -> int:
@@ -891,19 +876,14 @@ class CashCtrlLedger(LedgerEngine):
         # Get initial setting
         initial_fx_gain_loss_account = get_fx_gain_loss_account()
 
-        for fx_gain_loss_account in df["fx_gain_loss_account"].unique():
+        # Record FX gain loss on given accounts
+        for fx_gain_loss_account in accounts["fx_gain_loss_account"].unique():
             set_fx_gain_loss_account(fx_gain_loss_account)
-
-            filtered_df = df.loc[df["fx_gain_loss_account"] == fx_gain_loss_account]
-            filtered_df["foreign_currency_account"] = filtered_df[
-                "foreign_currency_account"
-            ].apply(self._client.account_to_id)
-
-            allocation_dicts = filtered_df.rename(
-                columns={"foreign_currency_account": "accountId", "currency_rate": "currencyRate"}
-            )[["accountId", "currencyRate"]].to_dict(orient="records")
-
-            payload = {"date": date, "exchangeDiff": allocation_dicts}
+            df = accounts.loc[accounts["fx_gain_loss_account"] == fx_gain_loss_account]
+            exchange_diff = [
+                {"accountId": self._client.account_to_id(account), "currencyRate": rate}
+                for account, rate in zip(df["foreign_currency_account"], df["exchange_rate"])]
+            payload = {"date": date, "exchangeDiff": exchange_diff}
             self._client.post("fiscalperiod/bookexchangediff.json", params=payload)
 
         # Restore initial setting
