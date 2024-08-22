@@ -58,31 +58,25 @@ def test_FX_revaluation(set_up_ledger_and_account):
         "fx_gain_loss_account": [10003, 10003, 10003],
         "exchange_rate": [0.75, 0.5, None],
     })
-    eur_account_id = cashctrl._client.account_to_id(10001)
-    usd_account_id = cashctrl._client.account_to_id(10002)
-    usd_na_account_id = cashctrl._client.account_to_id(10004)
-
     cashctrl.FX_revaluation(accounts=accounts)
-    ex_diff = cashctrl._client.get("fiscalperiod/exchangediff.json")["data"]
-    eur_account = next((item for item in ex_diff if item['accountId'] == eur_account_id), None)
-    usd_account = next((item for item in ex_diff if item['accountId'] == usd_account_id), None)
-    usd_na_account = next((item for item in ex_diff if item['accountId'] == usd_na_account_id), None)
+    fx_rates = cashctrl.FX_valuation()
 
+    # TODO: Refactor this part when get_exchange_rate() will be implemented
     from_currency = cashctrl._client.account_to_currency(10004)
     params = {"from": from_currency, "to": cashctrl.base_currency, "date": None}
     response = cashctrl._client.request("GET", "currency/exchangerate", params=params)
     usd_na_account_fx_rate = response.json()
-    usd_na_account_dcBalance = round(100 * usd_na_account_fx_rate, 2)
+    usd_na_account_balance = round(100 * usd_na_account_fx_rate, 2)
 
-    assert eur_account is not None, "EUR account not found in exchange differences"
-    assert usd_account is not None, "USD account not found in exchange differences"
-    assert usd_na_account is not None, "USD account with NA fx rate not found in exchange differences"
-    assert eur_account['dcBalance'] == 75.0, (
-        f"EUR account dcBalance is {eur_account['dcBalance']}, expected 50.0")
-    assert usd_account['dcBalance'] == 50.0, (
-        f"USD account dcBalance is {usd_account['dcBalance']}, expected 50.0")
-    assert usd_na_account['dcBalance'] == usd_na_account_dcBalance, (
-        f"USD account dcBalance is {usd_na_account['dcBalance']}, expected {usd_na_account_dcBalance}")
+    assert fx_rates.query("account == 10001")["dcBalance"].item() == 75.0, (
+        "EUR account dcBalance doesn't match expected"
+    )
+    assert fx_rates.query("account == 10002")["dcBalance"].item() == 50.0, (
+        "USD account dcBalance doesn't match expected"
+    )
+    assert fx_rates.query("account == 10004")["dcBalance"].item() == usd_na_account_balance, (
+        "USD account with NA exchange rate dcBalance doesn't match expected"
+    )
 
 
 @pytest.mark.parametrize("account_id", [10001, 10002, 10004])

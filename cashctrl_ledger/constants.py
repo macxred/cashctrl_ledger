@@ -8,8 +8,11 @@ JOURNAL_ITEM_COLUMNS = {
     "taxName": "string[python]",
 }
 
-FX_REVALUATION_ACCOUNT_COLUMNS = {
+FX_REVALUATION_ACCOUNT_REQUIRED_COLUMNS = {
     "foreign_currency_account": "int",
-    "fx_gain_loss_account": "int",
-    "exchange_rate": "float64",
+    "fx_gain_loss_account": "Int64",
+}
+
+FX_REVALUATION_ACCOUNT_OPTIONAL_COLUMNS = {
+    "exchange_rate": "Float64",
 }

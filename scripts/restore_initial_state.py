@@ -159,6 +159,8 @@ ACCOUNTS = """
 
 # flake8: enable
 
+DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID = 6960
+
 def main():
     cashctrl_ledger = CashCtrlLedger()
 
@@ -176,6 +178,10 @@ def main():
     accounts = pd.read_csv(StringIO(ACCOUNTS), skipinitialspace=True)
     cashctrl_ledger.mirror_account_chart(target=accounts)
 
+    # Restore initial FX gain/loss account
+    account_id = cashctrl_ledger._client.account_to_id(DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID)
+    payload = {"DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID": account_id}
+    cashctrl_ledger._client.post("setting/update.json", params=payload)
 
 if __name__ == "__main__":
     main()
