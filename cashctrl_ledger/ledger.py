@@ -881,9 +881,24 @@ class CashCtrlLedger(LedgerEngine):
         for fx_gain_loss_account in accounts["fx_gain_loss_account"].unique():
             set_fx_gain_loss_account(fx_gain_loss_account)
             df = accounts.loc[accounts["fx_gain_loss_account"] == fx_gain_loss_account]
+
+            def get_exchange_rate(rate: float | None, account: int) -> float:
+                if pd.isna(rate):
+                    from_currency = self._client.account_to_currency(account)
+                    params = {"from": from_currency, "to": self.base_currency, "date": None}
+                    response = self._client.request("GET", "currency/exchangerate", params=params)
+                    return response.json()
+                else:
+                    return rate
+
             exchange_diff = [
-                {"accountId": self._client.account_to_id(account), "currencyRate": rate}
-                for account, rate in zip(df["foreign_currency_account"], df["exchange_rate"])]
+                {
+                    "accountId": self._client.account_to_id(account),
+                    "currencyRate": get_exchange_rate(rate=rate, account=account),
+                }
+                for account, rate in zip(df["foreign_currency_account"], df["exchange_rate"])
+            ]
+
             payload = {"date": date, "exchangeDiff": exchange_diff}
             self._client.post("fiscalperiod/bookexchangediff.json", params=payload)
 
