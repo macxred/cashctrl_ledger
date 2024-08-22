@@ -7,3 +7,9 @@ JOURNAL_ITEM_COLUMNS = {
     "credit": "float64",
     "taxName": "string[python]",
 }
+
+FX_REVALUATION_ACCOUNT_COLUMNS = {
+    "foreign_currency_account": "int",
+    "fx_gain_loss_account": "int",
+    "exchange_rate": "float64",
+}

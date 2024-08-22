@@ -7,7 +7,7 @@ from consistent_df import df_to_consistent_str, nest, unnest, enforce_dtypes
 import numpy as np
 import pandas as pd
 from pyledger import LedgerEngine, StandaloneLedger
-from .constants import JOURNAL_ITEM_COLUMNS
+from .constants import JOURNAL_ITEM_COLUMNS, FX_REVALUATION_ACCOUNT_COLUMNS
 
 
 class CashCtrlLedger(LedgerEngine):
@@ -1096,6 +1096,7 @@ class CashCtrlLedger(LedgerEngine):
         initial_fx_gain_loss_account = get_fx_gain_loss_account()
 
         # Record FX gain loss on given accounts
+        accounts = enforce_dtypes(accounts, FX_REVALUATION_ACCOUNT_COLUMNS)
         for fx_gain_loss_account in accounts["fx_gain_loss_account"].unique():
             set_fx_gain_loss_account(fx_gain_loss_account)
             df = accounts.loc[accounts["fx_gain_loss_account"] == fx_gain_loss_account]
