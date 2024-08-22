@@ -19,7 +19,7 @@ from pyledger.constants import (
     LEDGER_SCHEMA,
     ASSETS_SCHEMA
 )
-from .constants import JOURNAL_ITEM_COLUMNS, SETTINGS_KEYS
+from .constants import FX_REVALUATION_ACCOUNT_COLUMNS, JOURNAL_ITEM_COLUMNS, SETTINGS_KEYS
 from consistent_df import unnest, enforce_dtypes, enforce_schema
 
 
@@ -877,6 +877,7 @@ class CashCtrlLedger(LedgerEngine):
         initial_fx_gain_loss_account = get_fx_gain_loss_account()
 
         # Record FX gain loss on given accounts
+        accounts = enforce_dtypes(accounts, FX_REVALUATION_ACCOUNT_COLUMNS)
         for fx_gain_loss_account in accounts["fx_gain_loss_account"].unique():
             set_fx_gain_loss_account(fx_gain_loss_account)
             df = accounts.loc[accounts["fx_gain_loss_account"] == fx_gain_loss_account]

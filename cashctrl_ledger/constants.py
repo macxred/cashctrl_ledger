@@ -23,3 +23,9 @@ SETTINGS_KEYS = [
     "DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID",
     "DEFAULT_CREDITOR_ACCOUNT_ID"
 ]
+
+FX_REVALUATION_ACCOUNT_COLUMNS = {
+    "foreign_currency_account": "int",
+    "fx_gain_loss_account": "int",
+    "exchange_rate": "float64",
+}
