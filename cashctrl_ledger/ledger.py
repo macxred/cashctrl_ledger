@@ -876,17 +876,23 @@ class CashCtrlLedger(LedgerEngine):
             information to determine the correct allocation date.
         """
 
-        def update_fx_gain_loss_account(account_id: int):
+        def get_fx_gain_loss_account() -> int:
+            """Retrieves the FX gain/loss account from the settings."""
+            settings = self._client.get("setting/read.json")
+            account_id = settings["DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID"]
+            return self._client.account_from_id(account_id)
+
+        def set_fx_gain_loss_account(account: int):
+            """Sets the FX gain/loss account in the settings."""
+            account_id = self._client.account_to_id(account)
             payload = {"DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID": account_id}
             self._client.post("setting/update.json", params=payload)
 
         # Get initial setting
-        initial_settings = self._client.get("setting/read.json")
-        initial_fx_gain_loss_account_id = initial_settings["DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID"]
+        initial_fx_gain_loss_account = get_fx_gain_loss_account()
 
         for fx_gain_loss_account in df["fx_gain_loss_account"].unique():
-            account_id = self._client.account_to_id(fx_gain_loss_account)
-            update_fx_gain_loss_account(account_id)
+            set_fx_gain_loss_account(fx_gain_loss_account)
 
             filtered_df = df.loc[df["fx_gain_loss_account"] == fx_gain_loss_account]
             filtered_df["foreign_currency_account"] = filtered_df[
@@ -901,7 +907,7 @@ class CashCtrlLedger(LedgerEngine):
             self._client.post("fiscalperiod/bookexchangediff.json", params=payload)
 
         # Restore initial setting
-        update_fx_gain_loss_account(initial_fx_gain_loss_account_id)
+        set_fx_gain_loss_account(initial_fx_gain_loss_account)
 
     # ----------------------------------------------------------------------
     # Currencies
