@@ -846,14 +846,15 @@ class CashCtrlLedger(LedgerEngine):
         else:
             raise ValueError("Expecting at least one `entry` row.")
 
-    def FX_revaluation(self, accounts: pd.DataFrame, date: datetime.date = None):
+    def FX_revaluation(self, accounts: pd.DataFrame = None, date: datetime.date = None):
         """Record foreign exchange gains or losses.
 
-        Revalue given foreign currency accounts based on the provided exchange rates
+        Revalue given foreign currency accounts based on the provided exchange
+        rates (if not provided, use all foreign currency accounts)
         and record the revaluation gain/losses.
 
         Args:
-            accounts (pd.DataFrame): DataFrame with the following columns:
+            accounts (pd.DataFrame, optional): DataFrame with the following columns:
                 - 'foreign_currency_account' (int): The account to revalue.
                 - 'exchange_rate' (float): The exchange rate to apply.
                 - 'fx_gain_loss_account' (int): The account in which to record FX gain/loss.
@@ -875,6 +876,16 @@ class CashCtrlLedger(LedgerEngine):
 
         # Get initial setting
         initial_fx_gain_loss_account = get_fx_gain_loss_account()
+
+        if accounts is None:
+            ex_diff = self._client.get("fiscalperiod/exchangediff.json")["data"]
+            accounts = pd.DataFrame({
+                "foreign_currency_account": [
+                    self._client.account_from_id(entry['accountId']) for entry in ex_diff
+                ],
+                "fx_gain_loss_account": initial_fx_gain_loss_account,
+                "exchange_rate": None
+            })
 
         # Record FX gain loss on given accounts
         accounts = enforce_dtypes(accounts, FX_REVALUATION_ACCOUNT_COLUMNS)

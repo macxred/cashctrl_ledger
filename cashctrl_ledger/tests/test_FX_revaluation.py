@@ -31,7 +31,7 @@ LEDGER_ENTRIES = pd.read_csv(
 TEST_ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def set_up_ledger_and_account():
     cashctrl = CashCtrlLedger()
     cashctrl.transitory_account = 1000
@@ -83,3 +83,26 @@ def test_FX_revaluation(set_up_ledger_and_account):
         f"USD account dcBalance is {usd_account['dcBalance']}, expected 50.0")
     assert usd_na_account['dcBalance'] == usd_na_account_dcBalance, (
         f"USD account dcBalance is {usd_na_account['dcBalance']}, expected {usd_na_account_dcBalance}")
+
+
+@pytest.mark.parametrize("account_id", [10001, 10002, 10004])
+def test_FX_revaluation_account_none(set_up_ledger_and_account, account_id):
+    cashctrl = CashCtrlLedger()
+    cashctrl.FX_revaluation(accounts=None)
+
+    ex_diff = cashctrl._client.get("fiscalperiod/exchangediff.json")["data"]
+    mapped_account_id = cashctrl._client.account_to_id(account_id)
+    account = next((item for item in ex_diff if item['accountId'] == mapped_account_id), None)
+
+    from_currency = cashctrl._client.account_to_currency(account_id)
+    params = {"from": from_currency, "to": cashctrl.base_currency, "date": None}
+    response = cashctrl._client.request("GET", "currency/exchangerate", params=params)
+    account_fx_rate = response.json()
+
+    initial_balance = 100.0  # Assuming the initial balance is 100.0 for simplicity
+    expected_dcBalance = round(initial_balance * account_fx_rate, 2)
+
+    assert account is not None, f"Account {account} with fx rate not found in exchange differences"
+    assert account['dcBalance'] == expected_dcBalance, (
+        f"Account {account} dcBalance is {account['dcBalance']}, expected {expected_dcBalance}"
+    )
