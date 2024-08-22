@@ -862,20 +862,20 @@ class CashCtrlLedger(LedgerEngine):
                 Defaults to the last day of the current accounting year.
         """
 
-        def get_fx_gain_loss_account() -> int:
+        def get_fx_gain_loss_account(allow_missing=False) -> int:
             """Retrieves the FX gain/loss account from the settings."""
             settings = self._client.get("setting/read.json")
-            account_id = settings["DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID"]
-            return self._client.account_from_id(account_id)
+            account_id = settings.get("DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID", None)
+            return self._client.account_from_id(account_id, allow_missing=allow_missing)
 
-        def set_fx_gain_loss_account(account: int):
+        def set_fx_gain_loss_account(account: int, allow_missing=False):
             """Sets the FX gain/loss account in the settings."""
-            account_id = self._client.account_to_id(account)
+            account_id = self._client.account_to_id(account, allow_missing=allow_missing)
             payload = {"DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID": account_id}
             self._client.post("setting/update.json", params=payload)
 
         # Get initial setting
-        initial_fx_gain_loss_account = get_fx_gain_loss_account()
+        initial_fx_gain_loss_account = get_fx_gain_loss_account(allow_missing=True)
 
         if accounts is None:
             ex_diff = self._client.get("fiscalperiod/exchangediff.json")["data"]
@@ -914,7 +914,7 @@ class CashCtrlLedger(LedgerEngine):
             self._client.post("fiscalperiod/bookexchangediff.json", params=payload)
 
         # Restore initial setting
-        set_fx_gain_loss_account(initial_fx_gain_loss_account)
+        set_fx_gain_loss_account(initial_fx_gain_loss_account, allow_missing=True)
 
     # ----------------------------------------------------------------------
     # Currencies
