@@ -10,6 +10,7 @@ ACCOUNT_CSV = """
     /Assets, 10001,      EUR,         , Test EUR Bank Account
     /Assets, 10002,      USD,         , Test USD Bank Account
     /Assets, 10003,      CHF,         , Test CHF Bank Account
+    /Assets, 10004,      USD,         , Test USD Bank Account 2
 """
 
 # flake8: noqa: E501
@@ -18,6 +19,7 @@ LEDGER_CSV = """
     id,     date, account, counter_account, currency,     amount, base_currency_amount,      vat_code, text,                             document
     1,  2024-05-24, 10001,           10003,      EUR,     100.00,                     ,              , pytest single transaction 1,
     2,  2024-05-24, 10002,           10003,      USD,     100.00,                     ,              , pytest single transaction 2,
+    3,  2024-05-24, 10004,           10003,      USD,     100.00,                     ,              , pytest single transaction 3,
 """
 
 # flake8: enable
@@ -52,20 +54,32 @@ def set_up_ledger_and_account():
 def test_FX_revaluation(set_up_ledger_and_account):
     cashctrl = CashCtrlLedger()
     accounts = pd.DataFrame({
-        "foreign_currency_account": [10001, 10002],
-        "fx_gain_loss_account": [10003, 10003],
-        "exchange_rate": [0.75, 0.5],
+        "foreign_currency_account": [10001, 10002, 10004],
+        "fx_gain_loss_account": [10003, 10003, 10003],
+        "exchange_rate": [0.75, 0.5, None],
     })
     eur_account_id = cashctrl._client.account_to_id(10001)
     usd_account_id = cashctrl._client.account_to_id(10002)
+    usd_na_account_id = cashctrl._client.account_to_id(10004)
 
     cashctrl.FX_revaluation(accounts=accounts)
     ex_diff = cashctrl._client.get("fiscalperiod/exchangediff.json")["data"]
     eur_account = next((item for item in ex_diff if item['accountId'] == eur_account_id), None)
     usd_account = next((item for item in ex_diff if item['accountId'] == usd_account_id), None)
+    usd_na_account = next((item for item in ex_diff if item['accountId'] == usd_na_account_id), None)
+
+    from_currency = cashctrl._client.account_to_currency(10004)
+    params = {"from": from_currency, "to": cashctrl.base_currency, "date": None}
+    response = cashctrl._client.request("GET", "currency/exchangerate", params=params)
+    usd_na_account_fx_rate = response.json()
+    usd_na_account_dcBalance = round(100 * usd_na_account_fx_rate, 2)
+
     assert eur_account is not None, "EUR account not found in exchange differences"
     assert usd_account is not None, "USD account not found in exchange differences"
+    assert usd_na_account is not None, "USD account with NA fx rate not found in exchange differences"
     assert eur_account['dcBalance'] == 75.0, (
         f"EUR account dcBalance is {eur_account['dcBalance']}, expected 50.0")
     assert usd_account['dcBalance'] == 50.0, (
         f"USD account dcBalance is {usd_account['dcBalance']}, expected 50.0")
+    assert usd_na_account['dcBalance'] == usd_na_account_dcBalance, (
+        f"USD account dcBalance is {usd_na_account['dcBalance']}, expected {usd_na_account_dcBalance}")
