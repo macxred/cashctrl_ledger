@@ -51,21 +51,21 @@ def set_up_ledger_and_account():
 
 def test_FX_revaluation(set_up_ledger_and_account):
     cashctrl = CashCtrlLedger()
-    df = pd.DataFrame({
+    accounts = pd.DataFrame({
         "foreign_currency_account": [10001, 10002],
         "fx_gain_loss_account": [10003, 10003],
-        "currency_rate": [0.5, 0.5],
+        "exchange_rate": [0.75, 0.5],
     })
     eur_account_id = cashctrl._client.account_to_id(10001)
     usd_account_id = cashctrl._client.account_to_id(10002)
 
-    cashctrl.FX_revaluation(df=df)
+    cashctrl.FX_revaluation(accounts=accounts)
     ex_diff = cashctrl._client.get("fiscalperiod/exchangediff.json")["data"]
     eur_account = next((item for item in ex_diff if item['accountId'] == eur_account_id), None)
     usd_account = next((item for item in ex_diff if item['accountId'] == usd_account_id), None)
     assert eur_account is not None, "EUR account not found in exchange differences"
     assert usd_account is not None, "USD account not found in exchange differences"
-    assert eur_account['dcBalance'] == 50.0, (
+    assert eur_account['dcBalance'] == 75.0, (
         f"EUR account dcBalance is {eur_account['dcBalance']}, expected 50.0")
     assert usd_account['dcBalance'] == 50.0, (
         f"USD account dcBalance is {usd_account['dcBalance']}, expected 50.0")
