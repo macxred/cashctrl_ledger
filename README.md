@@ -8,12 +8,23 @@ users can perform various accounting operations programmatically, directly from 
 
 ## Core Components
 
-1. **CashCtrlLedger**\
-The class that Implements the `pyledger` interface by connecting to the CashCtrl online accounting software via REST API.
+1. **CashCtrlLedger**
+   Implements the `pyledger` interface by connecting to the CashCtrl online
+   accounting software via REST API.
 
-2. **CashCtrlLedgerExtended**\
-The class that inherits from `CashCtrlLedger` and contain the 'hawkish' code
-that splits transactions that can not be represented in CashCtrl into multiple representable transactions.
+2. **ExtendedCashCtrlLedger**
+   Extends `CashCtrlLedger` to ensure that all transactions defined under the
+   `pyledger` interface can be accurately represented within CashCtrl, despite
+   its restrictions and limitations.
+
+   CashCtrl’s data model imposes constraints, such as limiting FX rates to
+   eight-digit precision and restricting collective ledger entries to a single
+   currency beyond the reporting currency. `ExtendedCashCtrlLedger` addresses
+   these challenges by splitting unrepresentable transactions into multiple
+   simpler transactions that conform to CashCtrl’s standards while preserving
+   the overall financial result. This enables seamless integration with
+   `pyledger` and accurate recording of all transactions in the CashCtrl system.
+
 
 ## Key Features:
 This package streamlines the connection between your local ledger system and CashCtrl system.

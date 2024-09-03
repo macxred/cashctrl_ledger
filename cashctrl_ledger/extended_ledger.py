@@ -1,19 +1,28 @@
-"""This module contains the CashCtrlLedgerExtended class that helps to splits transactions
-that can not be represented in CashCtrl into multiple representable transactions.
+"""This module extends CashCtrlLedger to handle transactions that can not be
+directly represented in CahCtrl.
 """
 
-from typing import Union
 import numpy as np
 import pandas as pd
 from .ledger import CashCtrlLedger
 
 
-class CashCtrlLedgerExtended(CashCtrlLedger):
-    """Class that inherits the CashCtrlLedger class and helps to splits transactions
-    that can not be represented in CashCtrl into multiple representable transactions.
+class ExtendedCashCtrlLedger(CashCtrlLedger):
+    """
+    Extends `CashCtrlLedger` to handle transactions that cannot be directly
+    represented due to CashCtrl's limitations.
 
-    See README on https://github.com/macxred/cashctrl_ledger for overview and
-    usage examples.
+    CashCtrl's data model imposes constraints, such as restricting FX rates
+    to eight-digit precision and limiting collective ledger entries to a single
+    currency beyond the reporting currency. This class ensures that transactions
+    conform to CashCtrl's standards by splitting unrepresentable transactions
+    into multiple simpler ones that can be accommodated, while preserving the
+    overall financial result.
+
+    To use this class, a special `transitory_account` must be defined in the
+    chart of accounts. Residual amounts arising from split transactions are
+    recorded in this account. The account is balanced for any group of split
+    transactions that together represent a single original transaction.
     """
 
     _transitory_account = None
@@ -30,15 +39,12 @@ class CashCtrlLedgerExtended(CashCtrlLedger):
 
     @property
     def transitory_account(self) -> int:
-        """Transitory account for balancing entries.
-
-        Some complex transactions can not be mapped to CashCtrl. We split such transactions
-        into multiple simpler transactions. The balance of each simple transaction is booked
-        onto the transitory account, where the combination of all postings originating from
-        the same complex transactions should sum up to zero.
+        """Returns the transitory account used to book residual amounts when complex
+        transactions are broken into simpler ones for compatibility with CashCtrl.
 
         Raises:
-            ValueError: If transitory_account is not set or the account does not exist.
+            ValueError: If the transitory account is not set, does not exist, or is
+            denominated in a different currency than the base currency.
 
         Returns:
             int: The transitory account number.
@@ -68,16 +74,21 @@ class CashCtrlLedgerExtended(CashCtrlLedger):
     # Ledger
 
     def sanitize_ledger(self, ledger: pd.DataFrame) -> pd.DataFrame:
-        """This method overrides the parent generic method to comply with the specific limitations
-        of CashCtrl. It sanitizes the ledger DataFrame by splitting entries with multiple
-        currencies into separate entries for each currency. Ensures foreign currencies
-        can be mapped, correcting with FX adjustments otherwise.
+        """Modify ledger entries to ensure coherence and compatibility with CashCtrl.
+
+        Extends the base `sanitize_ledger` to address CashCtrl-specific constraints:
+        - Splits collective ledger entries with multiple currencies (other than
+          the reporting currency) into separate entries for each currency that can
+          be represented in CashCtrl.
+        - Ensures transactions conform to CashCtrl's eight-digit precision limit.
+        - Creates additional compensating transactions to balance residual amounts
+          using the designated `transitory_account`.
 
         Args:
-            ledger (pd.DataFrame): The ledger DataFrame to be sanitized.
+            ledger (pd.DataFrame): The ledger DataFrame with transactions to be processed.
 
         Returns:
-            pd.DataFrame: The sanitized ledger DataFrame.
+            pd.DataFrame: The modified ledger DataFrame.
         """
         # Number of currencies other than base currency
         base_currency = self.base_currency
@@ -110,25 +121,26 @@ class CashCtrlLedgerExtended(CashCtrlLedger):
         # Invoke parent class method
         return super().sanitize_ledger(result)
 
-    def split_multi_currency_transactions(
-        self, ledger: pd.DataFrame, transitory_account: Union[int, None] = None
-    ) -> pd.DataFrame:
-        """Splits multi-currency transactions into separate transactions for each currency.
+    def split_multi_currency_transactions(self, ledger: pd.DataFrame,
+                                          transitory_account: int | None = None) -> pd.DataFrame:
+        """
+        Splits multi-currency transactions into individual transactions for each currency.
 
-        CashCtrl restricts collective transactions to base currency plus a single foreign currency.
-        This method splits multi-currency transactions into several separate transactions with
-        a single currency and base currency compatible with CashCtrl. A residual balance in any
-        currency is booked to the `transitory_account`, the aggregate amount booked to the
-        transitory account across all currencies is zero.
+        CashCtrl restricts collective transactions to a single currency beyond the reporting
+        currency. This method splits multi-currency transactions into several transactions
+        compatible with CashCtrl, each involving a single currency and possibly
+        the reporting currency. If there is a residual balance in any currency, it is
+        recorded in the `transitory_account`. The total of all entries in the transitory
+        account across these transactions will balance to zero.
 
         Args:
-            ledger (pd.DataFrame): DataFrame with ledger transactions to split.
-            transitory_account (int, optional): The number of the account used for balancing
-                                                transitory entries.
+            ledger (pd.DataFrame): The ledger DataFrame containing transactions to be split.
+            transitory_account (int, optional): The account number for recording balancing
+                entries. If not provided, the instance's `transitory_account` will be used.
 
         Returns:
-            pd.DataFrame: A DataFrame with the split transactions
-                          and any necessary balancing entries.
+            pd.DataFrame: Modified ledger entries with split transactions and any necessary
+                balancing entries.
         """
         base_currency = self.base_currency
         is_base_currency = ledger["currency"] == base_currency
@@ -168,20 +180,22 @@ class CashCtrlLedgerExtended(CashCtrlLedger):
     def _add_fx_adjustment(
         self, entry: pd.DataFrame, transitory_account: int, base_currency: str
     ) -> pd.DataFrame:
-        """Ensure amounts conform to CashCtrl's eight-digit FX rate precision.
+        """
+        Adjusts ledger entries to conform with CashCtrl's eight-digit FX rate precision.
 
-        Adjusts the base currency amounts of a ledger entry to match CashCtrl's
-        eight-digit precision for exchange rates. Adds balancing ledger entries
-        if adjusted amounts differ from the original, ensuring the sum of all
-        entries remains consistent with the original entry.
+        This method ensures that the base currency amounts in a ledger entry match
+        CashCtrl's precision limit for foreign exchange rates of eight digits after
+        the decimal point. If an adjustment is needed due to rounding differences,
+        it adds a balancing ledger entry using the `transitory_account`, so the
+        financial result remains consistent.
 
         Args:
-            entry (pd.DataFrame): Ledger entry data.
-            transitory_account (int): Account for balancing transactions.
-            base_currency (str): Base currency for adjustments.
+            entry (pd.DataFrame): The ledger entry or entries to be adjusted.
+            transitory_account (int): The account number for recording balancing transactions.
+            base_currency (str): The base currency against which adjustments are made.
 
         Returns:
-            pd.DataFrame: Adjusted ledger entries with FX adjustments.
+            pd.DataFrame: The adjusted ledger entries and any necessary balancing entries.
         """
         if len(entry) == 1:
             # Individual transaction: one row in the ledger data frame
