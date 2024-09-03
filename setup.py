@@ -12,7 +12,8 @@ setup(
     install_requires=[
         'pandas',
         'pyledger @ https://github.com/macxred/pyledger/tarball/main',
-        'cashctrl_api @ https://github.com/macxred/cashctrl_api/tarball/main'
+        'cashctrl_api @ https://github.com/macxred/cashctrl_api/tarball/main',
+        'consistent_df @ https://github.com/macxred/consistent_df/tarball/main'
     ],
     packages=find_packages(exclude=('tests', 'examples', 'scripts')),
     scripts=[
