@@ -981,8 +981,8 @@ class CashCtrlLedger(LedgerEngine):
 
     def price(self, currency: str, date: datetime.date = None) -> float:
         """
-        Retrieves the price of a given currency in terms of the base currency on
-        a specific date.
+        Retrieves the price (exchange rate) of a given currency in terms
+        of the base currency.
 
         Args:
             currency (str): The currency code to retrieve the price for.
@@ -990,7 +990,7 @@ class CashCtrlLedger(LedgerEngine):
                 requested. Defaults to None, which retrieves the latest price.
 
         Returns:
-            float: The price of the currency in terms of the base currency.
+            float: The exchange rate between the currency and the base currency.
         """
         return self._client.get_exchange_rate(
             from_currency=currency,
@@ -999,19 +999,16 @@ class CashCtrlLedger(LedgerEngine):
         )
 
     def add_price(self):
-        """Not implemented yet."""
         raise NotImplementedError(
-            "Cashctrl doesn't support manually adding the price of currencies."
+            "Cashctrl doesn't support adding exchange rates through the API."
         )
 
     def delete_price(self):
-        """Not implemented yet."""
         raise NotImplementedError(
-            "Cashctrl doesn't support manually deleting the price of currencies."
+            "Cashctrl doesn't support deleting exchange rates through the API."
         )
 
     def price_history(self):
-        """Not implemented yet."""
         raise NotImplementedError(
-            "Cashctrl doesn't support reading of price change history."
+            "Cashctrl doesn't support reading the exchange rate history through the API."
         )
