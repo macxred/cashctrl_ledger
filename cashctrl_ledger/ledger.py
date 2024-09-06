@@ -496,7 +496,7 @@ class CashCtrlLedger(LedgerEngine):
                 "account": collective["account"],
                 "text": collective["description"],
                 "amount": self.round_to_precision(foreign_amount, currency),
-                "base_currency_amount": self.round_to_precision(base_amount, currency),
+                "base_currency_amount": self.round_to_precision(base_amount, base_currency),
                 "vat_code": collective["taxName"],
                 "document": collective["document"]
             })
@@ -857,7 +857,7 @@ class CashCtrlLedger(LedgerEngine):
                 fx_entries["amount"] * fx_rate, self.base_currency,
             )
             expected_rounded_amounts = self.round_to_precision(
-                fx_entries["base_currency_amount"], fx_entries["currency"]
+                fx_entries["base_currency_amount"], self.base_currency
             )
             if rounded_amounts != expected_rounded_amounts:
                 raise ValueError("Incoherent FX rates in collective booking.")
