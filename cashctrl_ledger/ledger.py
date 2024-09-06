@@ -979,18 +979,36 @@ class CashCtrlLedger(LedgerEngine):
         """
         return 0.01
 
-    def price(self):
-        """Not implemented yet."""
-        raise NotImplementedError
+    def price(self, currency: str, date: datetime.date = None) -> float:
+        """
+        Retrieves the price (exchange rate) of a given currency in terms
+        of the base currency.
+
+        Args:
+            currency (str): The currency code to retrieve the price for.
+            date (datetime.date, optional): The date for which the price is
+                requested. Defaults to None, which retrieves the latest price.
+
+        Returns:
+            float: The exchange rate between the currency and the base currency.
+        """
+        return self._client.get_exchange_rate(
+            from_currency=currency,
+            to_currency=self.base_currency,
+            date=date
+        )
 
     def add_price(self):
-        """Not implemented yet."""
-        raise NotImplementedError
-
-    def price_history(self):
-        """Not implemented yet."""
-        raise NotImplementedError
+        raise NotImplementedError(
+            "Cashctrl doesn't support adding exchange rates through the API."
+        )
 
     def delete_price(self):
-        """Not implemented yet."""
-        raise NotImplementedError
+        raise NotImplementedError(
+            "Cashctrl doesn't support deleting exchange rates through the API."
+        )
+
+    def price_history(self):
+        raise NotImplementedError(
+            "Cashctrl doesn't support reading the exchange rate history through the API."
+        )
