@@ -921,7 +921,7 @@ class CashCtrlLedger(LedgerEngine):
                 elif row["currency"] == currency:
                     amount = row["amount"]
                 elif row["currency"] == base_currency:
-                    amount = self.round_to_precision(row["amount"] / fx_rate, currency)
+                    amount = row["amount"] / fx_rate
                 else:
                     raise ValueError(
                         "Currencies other than base or transaction currency are not "
