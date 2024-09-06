@@ -228,11 +228,11 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                             self.standardize_ledger_columns(balancing_txn),
                         ]
                     )
-                    result["amount"] = self.round_series_to_precision(
+                    result["amount"] = self.round_to_precision(
                         result["amount"], result["currency"]
                     )
-                    result["base_currency_amount"] = self.round_series_to_precision(
-                        result["base_currency_amount"], pd.Series([base_currency] * len(result))
+                    result["base_currency_amount"] = self.round_to_precision(
+                        result["base_currency_amount"], base_currency
                     )
                     return self.standardize_ledger(result)
 
@@ -245,20 +245,17 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
             if currency == base_currency:
                 return entry
             else:
-                entry["amount"] = self.round_series_to_precision(
-                    entry["amount"], entry["currency"]
-                )
-                entry["base_currency_amount"] = self.round_series_to_precision(
-                    entry["base_currency_amount"],
-                    pd.Series([base_currency] * len(entry))
+                entry["amount"] = self.round_to_precision(entry["amount"], entry["currency"])
+                entry["base_currency_amount"] = self.round_to_precision(
+                    entry["base_currency_amount"], base_currency,
                 )
                 balance = np.where(
                     entry["currency"] == base_currency,
-                    entry["amount"] - self.round_to_precision(
-                        entry["amount"] / fx_rate, currency
+                    entry["amount"] - np.array(
+                        self.round_to_precision(entry["amount"] / fx_rate, currency)
                     ) * fx_rate,
-                    entry["base_currency_amount"] - self.round_to_precision(
-                        entry["amount"] * fx_rate, base_currency
+                    entry["base_currency_amount"] - np.array(
+                        self.round_to_precision(entry["amount"] * fx_rate, base_currency)
                     ),
                 )
                 if all(balance == 0.0):
@@ -296,11 +293,11 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     fx_adjust["text"] = "Currency adjustments: " + fx_adjust["text"]
                     fx_adjust = fx_adjust[balance != 0]
                     result = pd.concat([entry, fx_adjust])
-                    result["amount"] = self.round_series_to_precision(
+                    result["amount"] = self.round_to_precision(
                         result["amount"], result["currency"]
                     )
-                    result["base_currency_amount"] = self.round_series_to_precision(
-                        result["base_currency_amount"], pd.Series([base_currency] * len(result))
+                    result["base_currency_amount"] = self.round_to_precision(
+                        result["base_currency_amount"], base_currency
                     )
                     return self.standardize_ledger(result)
 

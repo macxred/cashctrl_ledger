@@ -432,15 +432,13 @@ class CashCtrlLedger(LedgerEngine):
                 "currency": individual["currencyCode"],
                 "text": individual["title"],
                 "vat_code": individual["taxName"],
-                "base_currency_amount": self.round_series_to_precision(
-                    pd.Series(
-                        np.where(
-                            is_fx_adjustment,
-                            pd.NA,
-                            individual["amount"] * individual["currencyRate"]
-                        )
+                "base_currency_amount": self.round_to_precision(
+                    np.where(
+                        is_fx_adjustment,
+                        pd.NA,
+                        individual["amount"] * individual["currencyRate"],
                     ),
-                    pd.Series([self.base_currency] * len(individual))
+                    self.base_currency,
                 ),
                 "document": individual["reference"],
             }
@@ -497,9 +495,8 @@ class CashCtrlLedger(LedgerEngine):
                 "currency": currency,
                 "account": collective["account"],
                 "text": collective["description"],
-                "amount": self.round_series_to_precision(pd.Series(foreign_amount), currency),
-                "base_currency_amount":
-                    self.round_series_to_precision(pd.Series(base_amount), currency),
+                "amount": self.round_to_precision(foreign_amount, currency),
+                "base_currency_amount": self.round_to_precision(base_amount, currency),
                 "vat_code": collective["taxName"],
                 "document": collective["document"]
             })
@@ -856,14 +853,13 @@ class CashCtrlLedger(LedgerEngine):
 
         # Confirm fx_rate converts amounts to the expected base currency amount
         if not suppress_error:
-            rounded_amounts = self.round_series_to_precision(
-                fx_entries["amount"] * fx_rate,
-                pd.Series([self.base_currency] * len(fx_entries)),
+            rounded_amounts = self.round_to_precision(
+                fx_entries["amount"] * fx_rate, self.base_currency,
             )
-            expected_rounded_amounts = self.round_series_to_precision(
+            expected_rounded_amounts = self.round_to_precision(
                 fx_entries["base_currency_amount"], fx_entries["currency"]
             )
-            if any(rounded_amounts != expected_rounded_amounts):
+            if rounded_amounts != expected_rounded_amounts:
                 raise ValueError("Incoherent FX rates in collective booking.")
 
         return currency, fx_rate
