@@ -18,7 +18,18 @@ class CashCtrlLedger(LedgerEngine):
     usage examples.
     """
 
-    _settings = None
+    _precision = {
+        "AUD": 0.01,
+        "CAD": 0.01,
+        "CHF": 0.01,
+        "EUR": 0.01,
+        "GBP": 0.01,
+        "JPY": 1.00,
+        "NZD": 0.01,
+        "NOK": 0.01,
+        "SEK": 0.01,
+        "USD": 0.01,
+    }
 
     # ----------------------------------------------------------------------
     # Constructor
@@ -26,22 +37,6 @@ class CashCtrlLedger(LedgerEngine):
     def __init__(self, client: Union[CachedCashCtrlClient, None] = None):
         super().__init__()
         self._client = CachedCashCtrlClient() if client is None else client
-
-    # ----------------------------------------------------------------------
-    # Settings
-
-    @property
-    def settings(self):
-        """Get the settings."""
-        return self._settings
-
-    @settings.setter
-    def settings(self, new_settings):
-        """Set the settings."""
-        if isinstance(new_settings, dict):
-            self._settings = new_settings
-        else:
-            raise ValueError("Settings must be a dictionary")
 
     # ----------------------------------------------------------------------
     # VAT codes
@@ -982,21 +977,17 @@ class CashCtrlLedger(LedgerEngine):
             raise ValueError("Multiple base currencies defined.")
 
     def precision(self, ticker: str, date: datetime.date = None) -> float:
-        """Returns the precision for given currencies.
+        return self._precision.get(ticker, 0.01)
+
+    def set_precision(self, ticker: str, precision: float):
+        """
+        Set the precision or minimal price increment for a given asset or currency.
 
         Args:
-            ticker (str): Reference to the associated document.
-            date (datetime.date, optional): Date for which to retrieve the precision.
-                                            Default is None.
-
-        Returns:
-            float: The precision value.
+            ticker (str): Unique identifier of the currency or asset.
+            precision (float): Minimal price increment to round to.
         """
-        if not self._settings:
-            return 0.01
-
-        precision_settings = self._settings.get("precision", {})
-        return precision_settings.get(ticker, 0.01)
+        self._precision[ticker] = precision
 
     def price(self, currency: str, date: datetime.date = None) -> float:
         """
