@@ -18,6 +18,19 @@ class CashCtrlLedger(LedgerEngine):
     usage examples.
     """
 
+    _precision = {
+        "AUD": 0.01,
+        "CAD": 0.01,
+        "CHF": 0.01,
+        "EUR": 0.01,
+        "GBP": 0.01,
+        "JPY": 1.00,
+        "NZD": 0.01,
+        "NOK": 0.01,
+        "SEK": 0.01,
+        "USD": 0.01,
+    }
+
     # ----------------------------------------------------------------------
     # Constructor
 
@@ -414,19 +427,20 @@ class CashCtrlLedger(LedgerEngine):
                 "currency": individual["currencyCode"],
                 "text": individual["title"],
                 "vat_code": individual["taxName"],
-                # TODO: Once precision() is implemented, use `round_to_precision()`
-                # instead of hard-coded rounding
-                "base_currency_amount": np.where(
-                    is_fx_adjustment,
-                    pd.NA,
-                    round(individual["amount"] * individual["currencyRate"], 2),
+                "base_currency_amount": self.round_to_precision(
+                    np.where(
+                        is_fx_adjustment,
+                        pd.NA,
+                        individual["amount"] * individual["currencyRate"],
+                    ),
+                    self.base_currency,
                 ),
                 "document": individual["reference"],
             }
         )
 
         # Collective ledger entries represent a group of transactions and
-        # map to multiple rows in the resulting data frame with same id.
+        # map to multiple rows in the resulting data frame with the same id.
         collective_ids = ledger.loc[ledger["type"] == "COLLECTIVE", "id"]
         if len(collective_ids) > 0:
 
@@ -476,10 +490,8 @@ class CashCtrlLedger(LedgerEngine):
                 "currency": currency,
                 "account": collective["account"],
                 "text": collective["description"],
-                # TODO: Once precision() is implemented, use `round_to_precision()`
-                # instead of hard-coded rounding
-                "amount": pd.Series(foreign_amount).astype(pd.Float64Dtype()).round(2),
-                "base_currency_amount": pd.Series(base_amount).astype(pd.Float64Dtype()).round(2),
+                "amount": self.round_to_precision(foreign_amount, currency),
+                "base_currency_amount": self.round_to_precision(base_amount, base_currency),
                 "vat_code": collective["taxName"],
                 "document": collective["document"]
             })
@@ -810,9 +822,7 @@ class CashCtrlLedger(LedgerEngine):
         currency = fx_entries["currency"].iat[0]
 
         # Define precision parameters for exchange rate calculation
-        # TODO: Derive `precision` from self.precision(base_currency) once this
-        # method is implemented.
-        precision = 0.01
+        precision = self.precision(base_currency)
         fx_rate_precision = 1e-8  # Precision for exchange rates in CashCtrl
 
         # Calculate the range of acceptable exchange rates
@@ -838,11 +848,13 @@ class CashCtrlLedger(LedgerEngine):
 
         # Confirm fx_rate converts amounts to the expected base currency amount
         if not suppress_error:
-            # TODO: Once precision() is implemented, use `round_to_precision()`
-            if any(
-                (fx_entries["amount"] * fx_rate).round(2)
-                != fx_entries["base_currency_amount"].round(2)
-            ):
+            rounded_amounts = self.round_to_precision(
+                fx_entries["amount"] * fx_rate, self.base_currency,
+            )
+            expected_rounded_amounts = self.round_to_precision(
+                fx_entries["base_currency_amount"], self.base_currency
+            )
+            if rounded_amounts != expected_rounded_amounts:
                 raise ValueError("Incoherent FX rates in collective booking.")
 
         return currency, fx_rate
@@ -904,17 +916,13 @@ class CashCtrlLedger(LedgerEngine):
                 elif row["currency"] == currency:
                     amount = row["amount"]
                 elif row["currency"] == base_currency:
-                    # TODO: Once precision() is implemented, use `round_to_precision()`
-                    # instead of hard-coded rounding
-                    amount = round(row["amount"] / fx_rate, 2)
+                    amount = row["amount"] / fx_rate
                 else:
                     raise ValueError(
-                        "Currencies oder than base or transaction currency are not "
+                        "Currencies other than base or transaction currency are not "
                         "allowed in CashCtrl collective transactions."
                     )
-                # TODO: Once precision() is implemented, use `round_to_precision()`
-                # instead of hard-coded rounding
-                amount = round(amount, 2)
+                amount = self.round_to_precision(amount, currency)
                 items.append(
                     {
                         "accountId": self._client.account_to_id(row["account"]),
@@ -968,16 +976,18 @@ class CashCtrlLedger(LedgerEngine):
         else:
             raise ValueError("Multiple base currencies defined.")
 
-    def precision(self, *args, **kwargs):
-        """Returns the precision for given currencies.
+    def precision(self, ticker: str, date: datetime.date = None) -> float:
+        return self._precision.get(ticker, 0.01)
 
-        TODO: retuning precision for USD, CHF, EUR for now.
-        Needs to be implemented for other tickers.
-
-        Returns:
-            float: The precision value.
+    def set_precision(self, ticker: str, precision: float):
         """
-        return 0.01
+        Set the precision or minimal price increment for a given asset or currency.
+
+        Args:
+            ticker (str): Unique identifier of the currency or asset.
+            precision (float): Minimal price increment to round to.
+        """
+        self._precision[ticker] = precision
 
     def price(self, currency: str, date: datetime.date = None) -> float:
         """

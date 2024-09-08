@@ -30,3 +30,14 @@ def test_price_for_currency(currency):
 
     price = cashctrl_ledger.price(currency=CURRENCY["code"])
     assert price == 0.11111, f"Price for {CURRENCY["code"]} should be {CURRENCY["rate"]}"
+
+
+def test_precision():
+    cashctrl_ledger = CashCtrlLedger()
+
+    precision = cashctrl_ledger.precision("USD")
+    assert precision == 0.01, "Default precision should be 0.01"
+
+    cashctrl_ledger.set_precision("USD", 0.0001)
+    precision = cashctrl_ledger.precision("USD")
+    assert cashctrl_ledger.precision("USD") == 0.0001, "Precision for USD should be 0.0001"
