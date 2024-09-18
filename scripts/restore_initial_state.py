@@ -159,22 +159,52 @@ ACCOUNTS = """
 
 # flake8: enable
 
+SETTINGS = {
+    "DEFAULT_SETTINGS": {
+        "DEFAULT_OPENING_ACCOUNT_ID": 9100,
+        "DEFAULT_INPUT_TAX_ADJUSTMENT_ACCOUNT_ID": 1172,
+        "DEFAULT_INVENTORY_ASSET_REVENUE_ACCOUNT_ID": 7900,
+        "DEFAULT_INVENTORY_DEPRECIATION_ACCOUNT_ID": 6800,
+        "DEFAULT_PROFIT_ALLOCATION_ACCOUNT_ID": 9200,
+        "DEFAULT_SALES_TAX_ADJUSTMENT_ACCOUNT_ID": 2202,
+        "DEFAULT_INVENTORY_ARTICLE_REVENUE_ACCOUNT_ID": 3200,
+        "DEFAULT_INVENTORY_ARTICLE_EXPENSE_ACCOUNT_ID": 4200,
+        "DEFAULT_DEBTOR_ACCOUNT_ID": 1100,
+        "DEFAULT_INVENTORY_DISPOSAL_ACCOUNT_ID": 6801,
+        "DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID": 6960,
+        "DEFAULT_CREDITOR_ACCOUNT_ID": 2000
+    },
+    "BASE_CURRENCY": "CHF",
+    "DEFAULT_ROUNDINGS":[
+        {
+            "accountId": 6961,
+            "name": "<values><de>Auf 0.05 runden</de><en>Round to 0.05</en></values>",
+            "rounding": 0.05,
+            "mode": "HALF_UP",
+            "text": None,
+            "value": None,
+            "referenced": False
+        },
+        {
+            "accountId": 6961,
+            "name": "<values><de>Auf 1.00 runden</de><en>Round to 1.00</en></values>",
+            "rounding": 1.0,
+            "mode": "HALF_UP",
+            "text": None,
+            "value": None,
+            "referenced": False
+        }
+    ]
+}
+
+
 def main():
     cashctrl_ledger = CashCtrlLedger()
-
-    # Delete all journal entries
-    journals = cashctrl_ledger._client.list_journal_entries()
-    ids = ",".join(journals["id"].astype(str).tolist())
-    if len(ids):
-        cashctrl_ledger._client.post("journal/delete.json", {"ids": ids})
-
-    # Restore default VAT
     vat = pd.read_csv(StringIO(VAT_CODES), skipinitialspace=True)
-    cashctrl_ledger.mirror_vat_codes(target=vat, delete=True)
-
-    # Restore default accounts
     accounts = pd.read_csv(StringIO(ACCOUNTS), skipinitialspace=True)
-    cashctrl_ledger.mirror_account_chart(target=accounts)
+    cashctrl_ledger.restore(
+        settings=SETTINGS, vat_codes=vat, accounts=accounts, ledger=pd.DataFrame({})
+    )
 
 
 if __name__ == "__main__":

@@ -6,8 +6,10 @@ from cashctrl_api import CachedCashCtrlClient
 from consistent_df import df_to_consistent_str, nest, unnest, enforce_dtypes
 import numpy as np
 import pandas as pd
+import zipfile
+import json
 from pyledger import LedgerEngine, StandaloneLedger
-from .constants import JOURNAL_ITEM_COLUMNS
+from .constants import JOURNAL_ITEM_COLUMNS, SETTINGS_KEYS
 
 
 class CashCtrlLedger(LedgerEngine):
@@ -37,6 +39,92 @@ class CashCtrlLedger(LedgerEngine):
     def __init__(self, client: Union[CachedCashCtrlClient, None] = None):
         super().__init__()
         self._client = CachedCashCtrlClient() if client is None else client
+
+    # ----------------------------------------------------------------------
+    # File operations
+
+    def dump_to_zip(self, archive_path: str):
+        with zipfile.ZipFile(archive_path, 'w') as archive:
+            settings = {"BASE_CURRENCY": self.base_currency}
+
+            roundings = self._client.get("rounding/list.json")["data"]
+            for rounding in roundings:
+                rounding["accountId"] = self._client.account_from_id(rounding["accountId"])
+            settings["DEFAULT_ROUNDINGS"] = roundings
+
+            system_settings = self._client.get("setting/read.json")
+            for key in SETTINGS_KEYS:
+                if system_settings.get(key, None) is not None:
+                    system_settings[key] = self._client.account_from_id(system_settings[key])
+            settings["DEFAULT_SETTINGS"] = system_settings
+
+            archive.writestr('settings.json', json.dumps(settings))
+            archive.writestr('ledger.csv', self.ledger().to_csv(index=False))
+            archive.writestr('vat_codes.csv', self.vat_codes().to_csv(index=False))
+            archive.writestr('accounts.csv', self.account_chart().to_csv(index=False))
+
+    def restore(
+        self,
+        settings: dict | None = None,
+        vat_codes: pd.DataFrame | None = None,
+        accounts: pd.DataFrame | None = None,
+        ledger: pd.DataFrame | None = None,
+    ):
+        self.clear()
+        vat_accounts = None
+        roundings = None
+        base_currency = None
+        system_settings = None
+
+        if settings is not None:
+            roundings = settings.get("DEFAULT_ROUNDINGS", None)
+            base_currency = settings.get("BASE_CURRENCY", None)
+            system_settings = settings.get("DEFAULT_SETTINGS", None)
+
+        if base_currency is not None:
+            self.base_currency = base_currency
+        if accounts is not None:
+            vat_accounts = accounts[accounts["vat_code"].notna()]
+            accounts["vat_code"] = pd.NA
+            self.mirror_account_chart(accounts, delete=True)
+        if vat_codes is not None:
+            self.mirror_vat_codes(vat_codes, delete=True)
+        if vat_accounts is not None and not vat_accounts.empty:
+            self.mirror_account_chart(vat_accounts)
+        if ledger is not None:
+            self.mirror_ledger(ledger, delete=True)
+        if system_settings is not None:
+            for key in SETTINGS_KEYS:
+                if system_settings.get(key, None) is not None:
+                    system_settings[key] = self._client.account_to_id(system_settings[key])
+            self._client.post("setting/update.json", data=system_settings)
+        if roundings is not None:
+            for rounding in roundings:
+                rounding["accountId"] = self._client.account_to_id(rounding["accountId"])
+                self._client.post("rounding/create.json", data=rounding)
+
+        # TODO: Implement price history, precision settings,
+        # and FX adjustments restoration logic
+
+    def clear(self):
+        self.mirror_ledger(None, delete=True)
+
+        # Clear default System settings
+        empty_settings = {key: "" for key in SETTINGS_KEYS}
+        self._client.post("setting/update.json", empty_settings)
+        roundings = self._client.get("rounding/list.json")["data"]
+        if len(roundings):
+            ids = ','.join(str(item['id']) for item in roundings)
+            self._client.post("rounding/delete.json", data={"ids": ids})
+
+        # Manually reset accounts VAT to none
+        accounts = self.account_chart()
+        vat_accounts = accounts[accounts["vat_code"].notna()]
+        vat_accounts["vat_code"] = pd.NA
+        self.mirror_account_chart(vat_accounts)
+        self.mirror_vat_codes(None, delete=True)
+        self.mirror_account_chart(None, delete=True)
+        # TODO: Implement price history, precision settings, and FX adjustments clearing logic
 
     # ----------------------------------------------------------------------
     # VAT codes
@@ -99,7 +187,7 @@ class CashCtrlLedger(LedgerEngine):
         self._client.post("tax/create.json", data=payload)
         self._client.invalidate_tax_rates_cache()
 
-    def update_vat_code(
+    def modify_vat_code(
         self,
         code: str,
         rate: float,
@@ -179,7 +267,7 @@ class CashCtrlLedger(LedgerEngine):
         merged = pd.merge(left, right, how="outer", indicator=True)
         to_update = merged[merged["_merge"] == "left_only"]
         for row in to_update.to_dict("records"):
-            self.update_vat_code(
+            self.modify_vat_code(
                 code=row["id"],
                 text=row["text"],
                 account=row["account"],
@@ -207,7 +295,7 @@ class CashCtrlLedger(LedgerEngine):
                 "group": accounts["path"],
             }
         )
-        return StandaloneLedger.standardize_account_chart(result)
+        return self.standardize_account_chart(result)
 
     def add_account(
         self,
@@ -281,6 +369,23 @@ class CashCtrlLedger(LedgerEngine):
             self._client.post("account/delete.json", {"ids": delete_id})
             self._client.invalidate_accounts_cache()
 
+    def delete_accounts(self, accounts: List[int] = [], allow_missing: bool = False):
+        """Deletes an account from the remote CashCtrl instance.
+
+        Args:
+            accounts (str[]): The account numbers to be deleted.
+            allow_missing (bool, optional): If True, do not raise an error if the
+                                            account is missing. Defaults to False.
+        """
+        ids = []
+        for account in accounts:
+            id = self._client.account_to_id(account, allow_missing)
+            if id is not None:
+                ids.append(str(id))
+        if len(ids):
+            self._client.post("account/delete.json", {"ids": ", ".join(ids)})
+            self._client.invalidate_accounts_cache()
+
     def mirror_account_chart(self, target: pd.DataFrame, delete: bool = False):
         """Synchronizes remote CashCtrl accounts with a desired target state
         provided as a DataFrame.
@@ -290,15 +395,16 @@ class CashCtrlLedger(LedgerEngine):
             delete (bool, optional): If True, deletes accounts on the remote that are not
                                      present in the target DataFrame.
         """
+        if target is not None:
+            target = target.copy()
         target_df = StandaloneLedger.standardize_account_chart(target).reset_index()
         current_state = self.account_chart().reset_index()
 
         # Delete superfluous accounts on remote
         if delete:
-            for account in set(current_state["account"]).difference(
-                set(target_df["account"])
-            ):
-                self.delete_account(account=account)
+            self.delete_accounts(
+                set(current_state["account"]).difference(set(target_df["account"]))
+            )
 
         # Create new accounts on remote
         accounts = set(target_df["account"]).difference(
@@ -312,6 +418,9 @@ class CashCtrlLedger(LedgerEngine):
             return ["/" + "/".join(parts[:i]) for i in range(1, len(parts) + 1)]
 
         def account_groups(df: pd.DataFrame) -> Dict[str, str]:
+            if df is None or df.empty:
+                return {}
+
             df["nodes"] = [
                 pd.DataFrame({"items": get_nodes_list(path)}) for path in df["group"]
             ]
@@ -975,6 +1084,21 @@ class CashCtrlLedger(LedgerEngine):
             raise ValueError("No base currency set.")
         else:
             raise ValueError("Multiple base currencies defined.")
+
+    @base_currency.setter
+    def base_currency(self, currency):
+        currencies = self._client.list_currencies()
+        target_currency = currencies[currencies["code"] == currency].iloc[0]
+        payload = {
+            "code": currency,
+            "id": target_currency["id"],
+            "isDefault": True,
+            "description": target_currency["description"],
+            "rate": target_currency["rate"]
+        }
+
+        self._client.post("currency/update.json", data=payload)
+        self._client.invalidate_currencies_cache()
 
     def precision(self, ticker: str, date: datetime.date = None) -> float:
         return self._precision.get(ticker, 0.01)
