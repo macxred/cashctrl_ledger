@@ -52,11 +52,12 @@ class CashCtrlLedger(LedgerEngine):
                 rounding["accountId"] = self._client.account_from_id(rounding["accountId"])
             settings["DEFAULT_ROUNDINGS"] = roundings
 
+            default_settings = {}
             system_settings = self._client.get("setting/read.json")
             for key in SETTINGS_KEYS:
                 if system_settings.get(key, None) is not None:
-                    system_settings[key] = self._client.account_from_id(system_settings[key])
-            settings["DEFAULT_SETTINGS"] = system_settings
+                    default_settings[key] = self._client.account_from_id(system_settings[key])
+            settings["DEFAULT_SETTINGS"] = default_settings
 
             archive.writestr('settings.json', json.dumps(settings))
             archive.writestr('ledger.csv', self.ledger().to_csv(index=False))
@@ -102,7 +103,6 @@ class CashCtrlLedger(LedgerEngine):
             for rounding in roundings:
                 rounding["accountId"] = self._client.account_to_id(rounding["accountId"])
                 self._client.post("rounding/create.json", data=rounding)
-
         # TODO: Implement price history, precision settings,
         # and FX adjustments restoration logic
 

@@ -10,110 +10,104 @@ from base_test import initial_ledger
 
 
 class TestAccounts(BaseTestLedger):
-    @pytest.fixture()
+    @pytest.fixture(scope="module")
     def ledger(self, initial_ledger):
-        initial_ledger.clear()
         initial_ledger.restore(accounts=self.ACCOUNTS, vat_codes=self.VAT_CODES)
         return initial_ledger
-
-    @pytest.fixture()
-    def ledger_engine(self, ledger):
-        ledger.restore(accounts=self.ACCOUNTS, vat_codes=self.VAT_CODES)
-        return ledger
 
     @pytest.mark.parametrize(
         "ledger_id", set(BaseTestLedger.LEDGER_ENTRIES["id"].unique()).difference([15, 16, 17, 18])
     )
-    def test_add_ledger_entry(self, ledger_engine, ledger_id):
-        ledger_engine.restore(accounts=self.ACCOUNTS, vat_codes=self.VAT_CODES)
+    def test_add_ledger_entry(self, ledger, ledger_id):
+        ledger.restore(accounts=self.ACCOUNTS, vat_codes=self.VAT_CODES)
         target = self.LEDGER_ENTRIES.query("id == @ledger_id")
-        id = ledger_engine.add_ledger_entry(target)
-        remote = ledger_engine.ledger()
+        id = ledger.add_ledger_entry(target)
+        remote = ledger.ledger()
         created = remote.loc[remote["id"] == str(id)]
-        expected = ledger_engine.standardize_ledger(target)
+        expected = ledger.standardize_ledger(target)
         assert_frame_equal(
             created, expected, ignore_index=True, ignore_columns=["id"], check_exact=True
         )
 
-    def test_add_ledger_with_non_existing_vat(self, ledger_engine):
+    def test_add_ledger_with_non_existing_vat(self, ledger):
         # Adding a ledger entry with non existing VAT code should raise an error
         target = self.LEDGER_ENTRIES.query("id == 1").copy()
         target["vat_code"].iat[0] = "Test_Non_Existent_VAT_code"
         with pytest.raises(ValueError, match="No id found for tax code"):
-            ledger_engine.add_ledger_entry(target)
+            ledger.add_ledger_entry(target)
 
-    def test_add_ledger_with_non_existing_account(self, ledger_engine):
+    def test_add_ledger_with_non_existing_account(self, ledger):
         # Adding a ledger entry with non existing account should raise an error
         target = self.LEDGER_ENTRIES.query("id == 1").copy()
         target["account"] = 33333
         with pytest.raises(ValueError, match="No id found for account"):
-            ledger_engine.add_ledger_entry(target)
+            ledger.add_ledger_entry(target)
 
-    def test_add_ledger_with_non_existing_currency(self, ledger_engine):
+    def test_add_ledger_with_non_existing_currency(self, ledger):
         # Adding a ledger entry with non existing currency code should raise an error
         target = self.LEDGER_ENTRIES.query("id == 1").copy()
         target["currency"] = "Non_Existent_Currency"
         with pytest.raises(ValueError, match="No id found for currency"):
-            ledger_engine.add_ledger_entry(target)
+            ledger.add_ledger_entry(target)
 
     @pytest.mark.parametrize("id", [15, 16])
-    def test_adding_transaction_with_two_non_base_currencies_fails(self, ledger_engine, id):
+    def test_adding_transaction_with_two_non_base_currencies_fails(self, ledger, id):
         target = self.LEDGER_ENTRIES[self.LEDGER_ENTRIES["id"] == id]
         expected = (
             "CashCtrl allows only the base currency plus a single foreign currency"
         )
         with pytest.raises(ValueError, match=expected):
-            ledger_engine.add_ledger_entry(target)
+            ledger.add_ledger_entry(target)
 
-    def test_modify_non_existed_raises_error(self, ledger_engine):
+    def test_modify_non_existed_raises_error(self, ledger):
         super().test_modify_non_existed_raises_error(
-            ledger_engine, error_class=RequestException, error_message="entry does not exist"
+            ledger, error_class=RequestException, error_message="entry does not exist"
         )
 
-    def test_update_ledger_with_illegal_attributes(self, ledger_engine):
-        id = ledger_engine.add_ledger_entry(self.LEDGER_ENTRIES.query("id == 1"))
+    def test_update_ledger_with_illegal_attributes(self, ledger):
+        id = ledger.add_ledger_entry(self.LEDGER_ENTRIES.query("id == 1"))
 
         # Updating a ledger with non existent VAT code should raise an error
         target = self.LEDGER_ENTRIES.query("id == 1").copy()
         target["id"] = id
         target["vat_code"] = "Test_Non_Existent_VAT_code"
         with pytest.raises(ValueError, match="No id found for tax code"):
-            ledger_engine.modify_ledger_entry(target)
+            ledger.modify_ledger_entry(target)
 
         # Updating a ledger with non existent account code should raise an error
         target = self.LEDGER_ENTRIES.query("id == 1").copy()
         target["id"] = id
         target["account"].iat[0] = 333333
         with pytest.raises(ValueError, match="No id found for account"):
-            ledger_engine.modify_ledger_entry(target)
+            ledger.modify_ledger_entry(target)
 
         # Updating a ledger with non existent currency code should raise an error
         target = self.LEDGER_ENTRIES.query("id == 1").copy()
         target["id"] = id
         target["currency"].iat[0] = "Non_Existent_Currency"
         with pytest.raises(ValueError, match="No id found for currency"):
-            ledger_engine.modify_ledger_entry(target)
+            ledger.modify_ledger_entry(target)
 
         # Delete the ledger entry created above
-        ledger_engine.delete_ledger_entry(id)
+        ledger.delete_ledger_entry(id)
 
-    def test_update_non_existent_ledger(self, ledger_engine):
+    def test_update_non_existent_ledger(self, ledger):
         target = self.LEDGER_ENTRIES.query("id == 1").copy()
         target["id"] = 999999
         with pytest.raises(RequestException):
-            ledger_engine.modify_ledger_entry(target)
+            ledger.modify_ledger_entry(target)
 
-    def test_delete_non_existent_ledger(self, ledger_engine):
+    def test_delete_non_existent_ledger(self, ledger):
         with pytest.raises(RequestException):
-            ledger_engine.delete_ledger_entry(ids="non-existent")
+            ledger.delete_ledger_entry(ids="non-existent")
 
-    def test_split_multi_currency_transactions(self, ledger_engine):
+    def test_split_multi_currency_transactions(self, ledger):
         transitory_account = 9995
-        txn = ledger_engine.standardize_ledger(self.LEDGER_ENTRIES.query("id == 15"))
-        spit_txn = ledger_engine.split_multi_currency_transactions(
+        txn = ledger.standardize_ledger(self.LEDGER_ENTRIES.query("id == 15"))
+        spit_txn = ledger.split_multi_currency_transactions(
             txn, transitory_account=transitory_account
         )
-        is_base_currency = spit_txn["currency"] == ledger_engine.base_currency
+        is_base_currency = spit_txn["currency"] == ledger.base_currency
         spit_txn.loc[is_base_currency, "base_currency_amount"] = spit_txn.loc[
             is_base_currency, "amount"
         ]
@@ -128,13 +122,13 @@ class TestAccounts(BaseTestLedger):
             "Expecting transitory account to be balanced"
         )
 
-    def test_split_several_multi_currency_transactions(self, ledger_engine):
+    def test_split_several_multi_currency_transactions(self, ledger):
         transitory_account = 9995
-        txn = ledger_engine.standardize_ledger(self.LEDGER_ENTRIES.query("id.isin([15, 16])"))
-        spit_txn = ledger_engine.split_multi_currency_transactions(
+        txn = ledger.standardize_ledger(self.LEDGER_ENTRIES.query("id.isin([15, 16])"))
+        spit_txn = ledger.split_multi_currency_transactions(
             txn, transitory_account=transitory_account
         )
-        is_base_currency = spit_txn["currency"] == ledger_engine.base_currency
+        is_base_currency = spit_txn["currency"] == ledger.base_currency
         spit_txn.loc[is_base_currency, "base_currency_amount"] = spit_txn.loc[
             is_base_currency, "amount"
         ]

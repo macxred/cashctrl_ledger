@@ -10,9 +10,9 @@ from requests.exceptions import RequestException
 
 
 ACCOUNT_CSV = """
-    group,    account, currency, vat_code, text
-    /Balance,    9990,       EUR,         , Test EUR Bank Account
-    /Balance/Node,    9993,       EUR,         , Transitory Account EUR
+    group,         account, currency, vat_code, text
+    /Balance,         9990,      EUR,         , Test EUR Bank Account
+    /Balance/Node,    9993,      EUR,         , Transitory Account EUR
 """
 
 # flake8: noqa: E501
@@ -40,6 +40,12 @@ class TestAccounts(BaseTestAccounts):
         initial_ledger.clear()
         return initial_ledger
 
+    @pytest.fixture(scope="module")
+    def ledger_with_balance(self, initial_ledger):
+        initial_ledger.clear()
+        initial_ledger.restore(accounts=self.ACCOUNTS, ledger=LEDGER_ENTRIES)
+        return initial_ledger
+
     @pytest.mark.parametrize(
         "account, date, expected",
         [
@@ -65,9 +71,8 @@ class TestAccounts(BaseTestAccounts):
             (9995, None, {"CHF": -100.00, "base_currency": -100.00}),
         ],
     )
-    def test_account_single_balance(self, ledger, account, date, expected):
-        ledger.restore(accounts=self.ACCOUNTS, ledger=LEDGER_ENTRIES)
-        balance = ledger._single_account_balance(account=account, date=date)
+    def test_account_single_balance(self, ledger_with_balance, account, date, expected):
+        balance = ledger_with_balance._single_account_balance(account=account, date=date)
         assert balance == expected
 
     def test_add_already_existed_raise_error(self, ledger):
