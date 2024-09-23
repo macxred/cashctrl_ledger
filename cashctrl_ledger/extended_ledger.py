@@ -35,14 +35,10 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         self.transitory_account = transitory_account
 
     def clear(self):
-        """Clear all data from the ledger system.
-
-        This method ensures that a transitory account exists before clearing the ledger.
-        If the transitory account is missing, it is created with default properties.
-        After that, the parent class's `clear` method is invoked to complete the clearing process.
-        """
-        transitory = self._client.account_to_id(self._transitory_account, allow_missing=True)
-        if transitory is None:
+        transitory_account = self._client.account_to_id(
+            self._transitory_account, allow_missing=True
+        )
+        if transitory_account is None:
             payload = {
                 "account": self._transitory_account,
                 "currency": self.base_currency,
@@ -87,6 +83,14 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
 
     @transitory_account.setter
     def transitory_account(self, value: int):
+        if value not in set(self._client.list_accounts()["number"]):
+            self.add_account(
+                account=value,
+                vat_code=None,
+                group="/Assets",
+                text="Transitory account",
+                currency=self.base_currency
+            )
         self._transitory_account = value
 
     # ----------------------------------------------------------------------

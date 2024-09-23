@@ -4,30 +4,24 @@ import pytest
 import pandas as pd
 from requests.exceptions import RequestException
 from pyledger import BaseTestLedger
-from consistent_df import assert_frame_equal
 # flake8: noqa: F401
 from base_test import initial_ledger
+from io import StringIO
 
 
-class TestAccounts(BaseTestLedger):
-    @pytest.fixture(scope="module")
+class TestLedger(BaseTestLedger):
+    @pytest.fixture(scope="class")
     def ledger(self, initial_ledger):
-        initial_ledger.restore(accounts=self.ACCOUNTS, vat_codes=self.VAT_CODES)
+        initial_ledger.restore(
+            accounts=self.ACCOUNTS, vat_codes=self.VAT_CODES, settings=self.SETTINGS
+        )
         return initial_ledger
 
     @pytest.mark.parametrize(
         "ledger_id", set(BaseTestLedger.LEDGER_ENTRIES["id"].unique()).difference([15, 16, 17, 18])
     )
     def test_add_ledger_entry(self, ledger, ledger_id):
-        ledger.restore(accounts=self.ACCOUNTS, vat_codes=self.VAT_CODES)
-        target = self.LEDGER_ENTRIES.query("id == @ledger_id")
-        id = ledger.add_ledger_entry(target)
-        remote = ledger.ledger()
-        created = remote.loc[remote["id"] == str(id)]
-        expected = ledger.standardize_ledger(target)
-        assert_frame_equal(
-            created, expected, ignore_index=True, ignore_columns=["id"], check_exact=True
-        )
+        super().test_add_ledger_entry(ledger, ledger_id)
 
     def test_add_ledger_with_non_existing_vat(self, ledger):
         # Adding a ledger entry with non existing VAT code should raise an error
@@ -52,6 +46,17 @@ class TestAccounts(BaseTestLedger):
 
     @pytest.mark.parametrize("id", [15, 16])
     def test_adding_transaction_with_two_non_base_currencies_fails(self, ledger, id):
+        # flake8: noqa: E501
+        LEDGER_CSV = """
+            id,     date, account, counter_account, currency,     amount, base_currency_amount, vat_code, text,                             document
+            15, 2024-06-26,     ,            9991,      USD,  100000.00,             90000.00,        ,   Convert 100k USD to EUR @ 0.9375,
+            15, 2024-06-26, 9990,                ,      EUR,   93750.00,             90000.00,        ,   Convert 100k USD to EUR @ 0.9375,
+            16, 2024-06-26,     ,            9991,      USD,  200000.00,            180000.00,        ,   Convert 200k USD to EUR and CHF,
+            16, 2024-06-26, 9990,                ,      EUR,   93750.00,             90000.00,        ,   Convert 200k USD to EUR and CHF,
+            16, 2024-06-26, 9992,                ,      CHF,   90000.00,             90000.00,        ,   Convert 200k USD to EUR and CHF,
+        """
+        # flake8: enable
+        target = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
         target = self.LEDGER_ENTRIES[self.LEDGER_ENTRIES["id"] == id]
         expected = (
             "CashCtrl allows only the base currency plus a single foreign currency"
@@ -65,24 +70,31 @@ class TestAccounts(BaseTestLedger):
         )
 
     def test_update_ledger_with_illegal_attributes(self, ledger):
-        id = ledger.add_ledger_entry(self.LEDGER_ENTRIES.query("id == 1"))
+        # flake8: noqa: E501
+        LEDGER_CSV = """
+            id,     date, account, counter_account, currency,     amount, base_currency_amount, vat_code, text,                             document
+             1,  2024-05-24, 9992,            9995,      CHF,     100.00,                     ,  OutRed,   pytest single transaction 1,      /file1.txt
+        """
+        # flake8: enable
+        ledger_entry = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
+        id = ledger.add_ledger_entry(ledger_entry)
 
         # Updating a ledger with non existent VAT code should raise an error
-        target = self.LEDGER_ENTRIES.query("id == 1").copy()
+        target = ledger_entry.copy()
         target["id"] = id
         target["vat_code"] = "Test_Non_Existent_VAT_code"
         with pytest.raises(ValueError, match="No id found for tax code"):
             ledger.modify_ledger_entry(target)
 
         # Updating a ledger with non existent account code should raise an error
-        target = self.LEDGER_ENTRIES.query("id == 1").copy()
+        target = ledger_entry.copy()
         target["id"] = id
         target["account"].iat[0] = 333333
         with pytest.raises(ValueError, match="No id found for account"):
             ledger.modify_ledger_entry(target)
 
         # Updating a ledger with non existent currency code should raise an error
-        target = self.LEDGER_ENTRIES.query("id == 1").copy()
+        target = ledger_entry.copy()
         target["id"] = id
         target["currency"].iat[0] = "Non_Existent_Currency"
         with pytest.raises(ValueError, match="No id found for currency"):

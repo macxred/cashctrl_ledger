@@ -40,12 +40,12 @@ class TestAccounts(BaseTestAccounts):
         initial_ledger.clear()
         return initial_ledger
 
-    @pytest.fixture(scope="module")
+    @pytest.fixture(scope="class")
     def ledger_with_balance(self, initial_ledger):
-        initial_ledger.clear()
-        initial_ledger.restore(accounts=self.ACCOUNTS, ledger=LEDGER_ENTRIES)
+        initial_ledger.restore(accounts=self.ACCOUNTS, ledger=LEDGER_ENTRIES, settings=self.SETTINGS)
         return initial_ledger
 
+    # TODO: Move this test to the PyLedger package when storing Price history implemented
     @pytest.mark.parametrize(
         "account, date, expected",
         [
@@ -86,7 +86,7 @@ class TestAccounts(BaseTestAccounts):
         )
     def test_delete_non_existing_account_raise_error(self, ledger):
         ledger.delete_account(1141, allow_missing=True)
-        assert 1141 not in ledger.account_chart().index
+        assert 1141 not in ledger.account_chart()["account"].values
         with pytest.raises(ValueError):
             ledger.delete_account(1141)
 
@@ -161,8 +161,11 @@ class TestAccounts(BaseTestAccounts):
             )
 
     def test_mirror_accounts_with_root_category(self, ledger):
-        ledger.restore(accounts=ACCOUNTS)
-        initial_accounts = ledger.account_chart().reset_index()
+        """This test ensures that root categories remain untouched, and all new accounts categories
+        expected to be created are done so before any existing accounts are mirrored.
+        """
+        ledger.restore(accounts=ACCOUNTS, settings=self.SETTINGS)
+        initial_accounts = ledger.account_chart()
         expected = initial_accounts[~initial_accounts["group"].str.startswith("/Balance")]
         initial_categories = ledger._client.list_categories("account", include_system=True)
         categories_dict = initial_categories.set_index("path")["number"].to_dict()
@@ -172,7 +175,7 @@ class TestAccounts(BaseTestAccounts):
         )
 
         ledger.mirror_account_chart(expected.copy(), delete=True)
-        mirrored_df = ledger.account_chart().reset_index()
+        mirrored_df = ledger.account_chart()
         updated_categories = ledger._client.list_categories("account", include_system=True)
         updated_categories_dict = updated_categories.set_index("path")["number"].to_dict()
         difference = set(categories_dict.keys()) - set(updated_categories_dict.keys())
@@ -189,7 +192,7 @@ class TestAccounts(BaseTestAccounts):
         )
 
         ledger.mirror_account_chart(initial_accounts.copy(), delete=True)
-        mirrored_df = ledger.account_chart().reset_index()
+        mirrored_df = ledger.account_chart()
         updated_categories = ledger._client.list_categories("account", include_system=True)
         updated_categories_dict = initial_categories.set_index("path")["number"].to_dict()
         pd.testing.assert_frame_equal(initial_accounts, mirrored_df)

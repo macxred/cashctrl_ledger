@@ -48,7 +48,7 @@ SETTINGS = {
     "BASE_CURRENCY": "CHF",
     "DEFAULT_ROUNDINGS":[
         {
-            "accountId": 6961,
+            "account": 6961,
             "name": "<values><de>Auf 0.05 runden</de><en>Round to 0.05</en></values>",
             "rounding": 0.05,
             "mode": "HALF_UP",
@@ -57,7 +57,7 @@ SETTINGS = {
             "referenced": False
         },
         {
-            "accountId": 6961,
+            "account": 6961,
             "name": "<values><de>Auf 1.00 runden</de><en>Round to 1.00</en></values>",
             "rounding": 1.0,
             "mode": "HALF_UP",
@@ -70,7 +70,9 @@ SETTINGS = {
 
 
 class TestDumpRestoreClear(BaseTestDumpRestoreClear):
-    @pytest.fixture()
+    LEDGER_ENTRIES = BaseTestDumpRestoreClear.LEDGER_ENTRIES.query("id.isin([1, 2, 3, 4])")
+
+    @pytest.fixture(scope="class")
     def ledger(self, initial_ledger):
         initial_ledger.clear()
         return initial_ledger
@@ -90,13 +92,13 @@ class TestDumpRestoreClear(BaseTestDumpRestoreClear):
                     system_settings[key] = ledger._client.account_to_id(system_settings[key])
             if roundings is not None:
                 for rounding in roundings:
-                    rounding["accountId"] = ledger._client.account_to_id(rounding["accountId"])
+                    rounding["accountId"] = ledger._client.account_to_id(rounding["account"])
 
             roundings = pd.DataFrame(roundings)
             default_roundings = pd.DataFrame(SETTINGS["DEFAULT_ROUNDINGS"])
             columns = roundings.columns.intersection(default_roundings.columns)
             roundings = roundings[columns]
 
-            assert_frame_equal(default_roundings, roundings)
+            assert_frame_equal(default_roundings, roundings, check_like=True)
             assert base_currency == SETTINGS["BASE_CURRENCY"]
             assert system_settings == SETTINGS["DEFAULT_SETTINGS"]

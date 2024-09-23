@@ -49,13 +49,14 @@ class CashCtrlLedger(LedgerEngine):
 
             roundings = self._client.get("rounding/list.json")["data"]
             for rounding in roundings:
-                rounding["accountId"] = self._client.account_from_id(rounding["accountId"])
+                rounding["account"] = self._client.account_from_id(rounding["accountId"])
+                rounding.pop("accountId")
             settings["DEFAULT_ROUNDINGS"] = roundings
 
             default_settings = {}
             system_settings = self._client.get("setting/read.json")
             for key in SETTINGS_KEYS:
-                if system_settings.get(key, None) is not None:
+                if key in system_settings:
                     default_settings[key] = self._client.account_from_id(system_settings[key])
             settings["DEFAULT_SETTINGS"] = default_settings
 
@@ -72,36 +73,33 @@ class CashCtrlLedger(LedgerEngine):
         ledger: pd.DataFrame | None = None,
     ):
         self.clear()
-        vat_accounts = None
-        roundings = None
-        base_currency = None
-        system_settings = None
-
         if settings is not None:
             roundings = settings.get("DEFAULT_ROUNDINGS", None)
             base_currency = settings.get("BASE_CURRENCY", None)
             system_settings = settings.get("DEFAULT_SETTINGS", None)
+        else:
+            roundings = None
+            base_currency = None
+            system_settings = None
 
         if base_currency is not None:
             self.base_currency = base_currency
         if accounts is not None:
-            vat_accounts = accounts[accounts["vat_code"].notna()]
-            accounts["vat_code"] = pd.NA
-            self.mirror_account_chart(accounts, delete=True)
+            self.mirror_account_chart(accounts.assign(vat_code=pd.NA), delete=True)
         if vat_codes is not None:
             self.mirror_vat_codes(vat_codes, delete=True)
-        if vat_accounts is not None and not vat_accounts.empty:
-            self.mirror_account_chart(vat_accounts)
+        if accounts is not None:
+            self.mirror_account_chart(accounts, delete=True)
         if ledger is not None:
             self.mirror_ledger(ledger, delete=True)
         if system_settings is not None:
             for key in SETTINGS_KEYS:
-                if system_settings.get(key, None) is not None:
+                if key in system_settings:
                     system_settings[key] = self._client.account_to_id(system_settings[key])
             self._client.post("setting/update.json", data=system_settings)
         if roundings is not None:
             for rounding in roundings:
-                rounding["accountId"] = self._client.account_to_id(rounding["accountId"])
+                rounding["accountId"] = self._client.account_to_id(rounding["account"])
                 self._client.post("rounding/create.json", data=rounding)
         # TODO: Implement price history, precision settings,
         # and FX adjustments restoration logic
@@ -119,9 +117,7 @@ class CashCtrlLedger(LedgerEngine):
 
         # Manually reset accounts VAT to none
         accounts = self.account_chart()
-        vat_accounts = accounts[accounts["vat_code"].notna()]
-        vat_accounts["vat_code"] = pd.NA
-        self.mirror_account_chart(vat_accounts)
+        self.mirror_account_chart(accounts.assign(vat_code=pd.NA))
         self.mirror_vat_codes(None, delete=True)
         self.mirror_account_chart(None, delete=True)
         # TODO: Implement price history, precision settings, and FX adjustments clearing logic
@@ -370,7 +366,7 @@ class CashCtrlLedger(LedgerEngine):
             self._client.invalidate_accounts_cache()
 
     def delete_accounts(self, accounts: List[int] = [], allow_missing: bool = False):
-        """Deletes an account from the remote CashCtrl instance.
+        """Deletes accounts from the remote CashCtrl instance.
 
         Args:
             accounts (str[]): The account numbers to be deleted.
@@ -395,8 +391,6 @@ class CashCtrlLedger(LedgerEngine):
             delete (bool, optional): If True, deletes accounts on the remote that are not
                                      present in the target DataFrame.
         """
-        if target is not None:
-            target = target.copy()
         target_df = StandaloneLedger.standardize_account_chart(target).reset_index()
         current_state = self.account_chart().reset_index()
 
@@ -421,6 +415,7 @@ class CashCtrlLedger(LedgerEngine):
             if df is None or df.empty:
                 return {}
 
+            df = df.copy()
             df["nodes"] = [
                 pd.DataFrame({"items": get_nodes_list(path)}) for path in df["group"]
             ]
