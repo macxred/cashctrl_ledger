@@ -46,16 +46,14 @@ class TestLedger(BaseTestLedger):
 
     @pytest.mark.parametrize("id", [15, 16])
     def test_adding_transaction_with_two_non_base_currencies_fails(self, ledger, id):
-        # flake8: noqa: E501
         LEDGER_CSV = """
-            id,     date, account, counter_account, currency,     amount, base_currency_amount, vat_code, text,                             document
-            15, 2024-06-26,     ,            9991,      USD,  100000.00,             90000.00,        ,   Convert 100k USD to EUR @ 0.9375,
-            15, 2024-06-26, 9990,                ,      EUR,   93750.00,             90000.00,        ,   Convert 100k USD to EUR @ 0.9375,
-            16, 2024-06-26,     ,            9991,      USD,  200000.00,            180000.00,        ,   Convert 200k USD to EUR and CHF,
-            16, 2024-06-26, 9990,                ,      EUR,   93750.00,             90000.00,        ,   Convert 200k USD to EUR and CHF,
-            16, 2024-06-26, 9992,                ,      CHF,   90000.00,             90000.00,        ,   Convert 200k USD to EUR and CHF,
+            id,   date, account, counter, currency,    amount, base_amount, text
+            0, 2024-06-26,     ,    9991,      USD, 100000.00,    90000.00, Convert USD to EUR
+            0, 2024-06-26, 9990,        ,      EUR,  93750.00,    90000.00, Convert USD to EUR
+            1, 2024-06-26,     ,    9991,      USD, 200000.00,   180000.00, Convert USD to EUR+CHF
+            1, 2024-06-26, 9990,        ,      EUR,  93750.00,    90000.00, Convert USD to EUR+CHF
+            1, 2024-06-26, 9992,        ,      CHF,  90000.00,    90000.00, Convert USD to EUR+CHF
         """
-        # flake8: enable
         target = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
         target = self.LEDGER_ENTRIES[self.LEDGER_ENTRIES["id"] == id]
         expected = (
@@ -70,12 +68,10 @@ class TestLedger(BaseTestLedger):
         )
 
     def test_update_ledger_with_illegal_attributes(self, ledger):
-        # flake8: noqa: E501
         LEDGER_CSV = """
-            id,     date, account, counter_account, currency,     amount, base_currency_amount, vat_code, text,                             document
-             1,  2024-05-24, 9992,            9995,      CHF,     100.00,                     ,  OutRed,   pytest single transaction 1,      /file1.txt
+            date,       account, counter_account, currency, amount, text
+            2024-05-24,    9992,            9995,      CHF, 100.00, Test
         """
-        # flake8: enable
         ledger_entry = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
         id = ledger.add_ledger_entry(ledger_entry)
 
