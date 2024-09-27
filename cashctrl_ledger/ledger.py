@@ -373,6 +373,8 @@ class CashCtrlLedger(LedgerEngine):
             allow_missing (bool, optional): If True, do not raise an error if the
                                             account is missing. Defaults to False.
         """
+        if isinstance(accounts, int):
+            accounts = [accounts]
         ids = []
         for account in accounts:
             id = self._client.account_to_id(account, allow_missing)
@@ -1082,17 +1084,27 @@ class CashCtrlLedger(LedgerEngine):
 
     @base_currency.setter
     def base_currency(self, currency):
+        # TODO: Perform testing of this method after restore() for currencies implemented
         currencies = self._client.list_currencies()
-        target_currency = currencies[currencies["code"] == currency].iloc[0]
-        payload = {
-            "code": currency,
-            "id": target_currency["id"],
-            "isDefault": True,
-            "description": target_currency["description"],
-            "rate": target_currency["rate"]
-        }
+        if currency in set(currencies["code"]):
+            target_currency = currencies[currencies["code"] == currency].iloc[0]
+            payload = {
+                "id": target_currency["id"],
+                "code": currency,
+                "isDefault": True,
+                "description": target_currency["description"],
+                "rate": target_currency["rate"]
+            }
+            self._client.post("currency/update.json", data=payload)
+        else:
+            payload = {
+                "code": currency,
+                "isDefault": True,
+                "description": "Reporting Currency",
+                "rate": 1
+            }
+            self._client.post("currency/create.json", data=payload)
 
-        self._client.post("currency/update.json", data=payload)
         self._client.invalidate_currencies_cache()
 
     def precision(self, ticker: str, date: datetime.date = None) -> float:
