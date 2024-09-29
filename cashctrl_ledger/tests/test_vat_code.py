@@ -2,7 +2,7 @@
 
 import pytest
 import pandas as pd
-from pyledger import BaseTestVatCode
+from pyledger.tests import BaseTestVatCode
 # flake8: noqa: F401
 from base_test import initial_ledger
 

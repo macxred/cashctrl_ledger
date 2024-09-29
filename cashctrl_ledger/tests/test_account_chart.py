@@ -3,7 +3,7 @@
 from io import StringIO
 import pandas as pd
 import pytest
-from pyledger import BaseTestAccounts
+from pyledger.tests.base_accounts import BaseTestAccounts
 # flake8: noqa: F401
 from base_test import initial_ledger
 from requests.exceptions import RequestException

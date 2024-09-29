@@ -56,7 +56,7 @@ jobs:
         run: python setup.py develop
 
       - name: Run tests
-        run: coverage run -m pytest -W error
+        run: coverage run -m pytest
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

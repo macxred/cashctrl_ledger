@@ -5,7 +5,7 @@ import pytest
 import zipfile
 import json
 from io import StringIO
-from pyledger import BaseTestDumpRestoreClear
+from pyledger.tests import BaseTestDumpRestoreClear
 # flake8: noqa: F401
 from base_test import initial_ledger
 from cashctrl_ledger.constants import SETTINGS_KEYS
