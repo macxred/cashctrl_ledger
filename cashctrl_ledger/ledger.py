@@ -369,12 +369,10 @@ class CashCtrlLedger(LedgerEngine):
         """Deletes accounts from the remote CashCtrl instance.
 
         Args:
-            accounts (str[]): The account numbers to be deleted.
+            accounts (int[]): The account numbers to be deleted.
             allow_missing (bool, optional): If True, do not raise an error if the
                                             account is missing. Defaults to False.
         """
-        if isinstance(accounts, int):
-            accounts = [accounts]
         ids = []
         for account in accounts:
             id = self._client.account_to_id(account, allow_missing)
