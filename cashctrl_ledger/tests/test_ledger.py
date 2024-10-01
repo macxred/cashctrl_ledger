@@ -97,7 +97,7 @@ class TestLedger(BaseTestLedger):
             ledger.modify_ledger_entry(target)
 
         # Delete the ledger entry created above
-        ledger.delete_ledger_entry(id)
+        ledger.delete_ledger_entries([str(id)])
 
     def test_update_non_existent_ledger(self, ledger):
         target = self.LEDGER_ENTRIES.query("id == 1").copy()
@@ -107,7 +107,7 @@ class TestLedger(BaseTestLedger):
 
     def test_delete_non_existent_ledger(self, ledger):
         with pytest.raises(RequestException):
-            ledger.delete_ledger_entry(ids="non-existent")
+            ledger.delete_ledger_entries(ids=["non-existent"])
 
     def test_split_multi_currency_transactions(self, ledger):
         transitory_account = 9995

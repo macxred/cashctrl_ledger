@@ -213,17 +213,22 @@ class CashCtrlLedger(LedgerEngine):
         self._client.post("tax/update.json", data=payload)
         self._client.invalidate_tax_rates_cache()
 
-    def delete_vat_code(self, code: str, allow_missing: bool = False):
-        """Deletes a VAT code from the remote CashCtrl account.
+    def delete_vat_codes(self, codes: List[str] = [], allow_missing: bool = False):
+        """Deletes a VAT codes from the remote CashCtrl account.
 
         Args:
-            code (str): The VAT code name to be deleted.
+            codes (List[str]): The VAT code names to be deleted.
             allow_missing (bool, optional): If True, no error is raised if the VAT code is not
                                             found; if False, raises ValueError. Defaults to False.
         """
-        delete_id = self._client.tax_code_to_id(code, allow_missing=allow_missing)
-        if delete_id:
-            self._client.post("tax/delete.json", {"ids": delete_id})
+        ids = []
+        for code in codes:
+            id = self._client.tax_code_to_id(code, allow_missing=allow_missing)
+            if id:
+                ids.append(str(id))
+
+        if len(ids):
+            self._client.post("tax/delete.json", {"ids": ", ".join(ids)})
             self._client.invalidate_tax_rates_cache()
 
     # ----------------------------------------------------------------------
@@ -306,19 +311,6 @@ class CashCtrlLedger(LedgerEngine):
         }
         self._client.post("account/update.json", data=payload)
         self._client.invalidate_accounts_cache()
-
-    def delete_account(self, account: str, allow_missing: bool = False):
-        """Deletes an account from the remote CashCtrl instance.
-
-        Args:
-            account (str): The account number to be deleted.
-            allow_missing (bool, optional): If True, do not raise an error if the
-                                            account is missing. Defaults to False.
-        """
-        delete_id = self._client.account_to_id(account, allow_missing=allow_missing)
-        if delete_id:
-            self._client.post("account/delete.json", {"ids": delete_id})
-            self._client.invalidate_accounts_cache()
 
     def delete_accounts(self, accounts: List[int] = [], allow_missing: bool = False):
         """Deletes accounts from the remote CashCtrl instance.
@@ -538,14 +530,14 @@ class CashCtrlLedger(LedgerEngine):
         """Not implemented yet."""
         raise NotImplementedError
 
-    def add_ledger_entry(self, entry: pd.DataFrame) -> int:
+    def add_ledger_entry(self, entry: pd.DataFrame) -> str:
         """Adds a new ledger entry to the remote CashCtrl instance.
 
         Args:
             entry (pd.DataFrame): DataFrame with ledger entry in pyledger schema.
 
         Returns:
-            int: The Id of created ledger entry.
+            str: The Id of created ledger entry.
         """
         payload = self._map_ledger_entry(entry)
         res = self._client.post("journal/create.json", data=payload)
@@ -565,15 +557,13 @@ class CashCtrlLedger(LedgerEngine):
         self._client.post("journal/update.json", data=payload)
         self._client.invalidate_journal_cache()
 
-    def delete_ledger_entry(self, ids: Union[str, List[str]]):
+    def delete_ledger_entries(self, ids: List[str] = []):
         """Deletes a ledger entry from the remote CashCtrl instance.
 
         Args:
-            ids (Union[str, List[str]]): The Id(s) of the ledger entry(ies) to be deleted.
+            ids (List[str]): The Ids of the ledger entries to be deleted.
         """
-        if isinstance(ids, list):
-            ids = ",".join(ids)
-        self._client.post("journal/delete.json", {"ids": ids})
+        self._client.post("journal/delete.json", {"ids": ",".join(ids)})
         self._client.invalidate_journal_cache()
 
     def standardize_ledger(self, ledger: pd.DataFrame) -> pd.DataFrame:
