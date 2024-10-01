@@ -85,10 +85,10 @@ class TestAccounts(BaseTestAccounts):
             ledger, error_class=ValueError, error_message="No id found for account"
         )
     def test_delete_non_existing_account_raise_error(self, ledger):
-        ledger.delete_account(1141, allow_missing=True)
+        ledger.delete_accounts([1141], allow_missing=True)
         assert 1141 not in ledger.account_chart()["account"].values
         with pytest.raises(ValueError):
-            ledger.delete_account(1141)
+            ledger.delete_accounts([1141])
 
     def test_add_account_with_invalid_currency_error(self, ledger):
         with pytest.raises(ValueError):
