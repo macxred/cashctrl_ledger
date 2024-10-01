@@ -97,7 +97,7 @@ class TestLedger(BaseTestLedger):
             ledger.modify_ledger_entry(target)
 
         # Delete the ledger entry created above
-        ledger.delete_ledger_entries([str(id)])
+        ledger.delete_ledger_entries([id])
 
     def test_update_non_existent_ledger(self, ledger):
         target = self.LEDGER_ENTRIES.query("id == 1").copy()

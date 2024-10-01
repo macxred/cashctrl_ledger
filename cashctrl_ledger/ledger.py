@@ -214,13 +214,6 @@ class CashCtrlLedger(LedgerEngine):
         self._client.invalidate_tax_rates_cache()
 
     def delete_vat_codes(self, codes: List[str] = [], allow_missing: bool = False):
-        """Deletes a VAT codes from the remote CashCtrl account.
-
-        Args:
-            codes (List[str]): The VAT code names to be deleted.
-            allow_missing (bool, optional): If True, no error is raised if the VAT code is not
-                                            found; if False, raises ValueError. Defaults to False.
-        """
         ids = []
         for code in codes:
             id = self._client.tax_code_to_id(code, allow_missing=allow_missing)
@@ -313,13 +306,6 @@ class CashCtrlLedger(LedgerEngine):
         self._client.invalidate_accounts_cache()
 
     def delete_accounts(self, accounts: List[int] = [], allow_missing: bool = False):
-        """Deletes accounts from the remote CashCtrl instance.
-
-        Args:
-            accounts (int[]): The account numbers to be deleted.
-            allow_missing (bool, optional): If True, do not raise an error if the
-                                            account is missing. Defaults to False.
-        """
         ids = []
         for account in accounts:
             id = self._client.account_to_id(account, allow_missing)
@@ -558,12 +544,7 @@ class CashCtrlLedger(LedgerEngine):
         self._client.invalidate_journal_cache()
 
     def delete_ledger_entries(self, ids: List[str] = []):
-        """Deletes a ledger entry from the remote CashCtrl instance.
-
-        Args:
-            ids (List[str]): The Ids of the ledger entries to be deleted.
-        """
-        self._client.post("journal/delete.json", {"ids": ",".join(ids)})
+        self._client.post("journal/delete.json", {"ids": ",".join([str(id) for id in ids])})
         self._client.invalidate_journal_cache()
 
     def standardize_ledger(self, ledger: pd.DataFrame) -> pd.DataFrame:

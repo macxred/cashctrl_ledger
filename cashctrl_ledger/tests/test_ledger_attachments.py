@@ -71,7 +71,7 @@ def ledger_ids():
     yield ledger_ids
 
     # Restore original ledger state
-    engine.delete_ledger_entries([str(id) for id in ledger_ids])
+    engine.delete_ledger_entries(ledger_ids)
 
 
 @pytest.fixture(scope="module")
@@ -88,7 +88,7 @@ def ledger_attached_ids():
     yield ledger_ids
 
     # Restore original ledger state
-    cashctrl.delete_ledger_entries([str(id) for id in ledger_ids])
+    cashctrl.delete_ledger_entries(ledger_ids)
 
 
 def sort_dict_values(items):
