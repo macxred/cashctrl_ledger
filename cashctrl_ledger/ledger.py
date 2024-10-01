@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Dict, List, Tuple, Union
 from cashctrl_api import CachedCashCtrlClient
-from consistent_df import df_to_consistent_str, nest, unnest, enforce_dtypes
+from consistent_df import unnest, enforce_dtypes
 import numpy as np
 import pandas as pd
 import zipfile
@@ -226,51 +226,6 @@ class CashCtrlLedger(LedgerEngine):
             self._client.post("tax/delete.json", {"ids": delete_id})
             self._client.invalidate_tax_rates_cache()
 
-    def mirror_vat_codes(self, target: pd.DataFrame, delete: bool = False):
-        """Aligns VAT rates on the remote CashCtrl account with
-        the desired state provided as a DataFrame.
-
-        Args:
-            target (pd.DataFrame): DataFrame containing VAT rates in
-                                         the pyledger.vat_codes format.
-            delete (bool, optional): If True, deletes VAT codes on the remote account
-                                     that are not present in target_state.
-        """
-        target_df = StandaloneLedger.standardize_vat_codes(target).reset_index()
-        current_state = self.vat_codes().reset_index()
-
-        # Delete superfluous VAT codes on remote
-        if delete:
-            for idx in set(current_state["id"]).difference(set(target_df["id"])):
-                self.delete_vat_code(code=idx)
-
-        # Create new VAT codes on remote
-        ids = set(target_df["id"]).difference(set(current_state["id"]))
-        to_add = target_df.loc[target_df["id"].isin(ids)]
-        for row in to_add.to_dict("records"):
-            self.add_vat_code(
-                code=row["id"],
-                text=row["text"],
-                account=row["account"],
-                rate=row["rate"],
-                inclusive=row["inclusive"],
-            )
-
-        # Update modified VAT cods on remote
-        both = set(target_df["id"]).intersection(set(current_state["id"]))
-        left = target_df.loc[target_df["id"].isin(both)]
-        right = current_state.loc[current_state["id"].isin(both)]
-        merged = pd.merge(left, right, how="outer", indicator=True)
-        to_update = merged[merged["_merge"] == "left_only"]
-        for row in to_update.to_dict("records"):
-            self.modify_vat_code(
-                code=row["id"],
-                text=row["text"],
-                account=row["account"],
-                rate=row["rate"],
-                inclusive=row["inclusive"],
-            )
-
     # ----------------------------------------------------------------------
     # Accounts
 
@@ -386,6 +341,9 @@ class CashCtrlLedger(LedgerEngine):
         """Synchronizes remote CashCtrl accounts with a desired target state
         provided as a DataFrame.
 
+        Updates existing categories before creating accounts and then invokes
+        the parent class method.
+
         Args:
             target (pd.DataFrame): DataFrame with an account chart in the pyledger format.
             delete (bool, optional): If True, deletes accounts on the remote that are not
@@ -399,12 +357,6 @@ class CashCtrlLedger(LedgerEngine):
             self.delete_accounts(
                 set(current_state["account"]).difference(set(target_df["account"]))
             )
-
-        # Create new accounts on remote
-        accounts = set(target_df["account"]).difference(
-            set(current_state["account"])
-        )
-        to_add = target_df.loc[target_df["account"].isin(accounts)]
 
         # Update account categories
         def get_nodes_list(path: str) -> List[str]:
@@ -428,31 +380,7 @@ class CashCtrlLedger(LedgerEngine):
             delete=delete,
             ignore_account_root_nodes=True,
         )
-
-        for row in to_add.to_dict("records"):
-            self.add_account(
-                account=row["account"],
-                currency=row["currency"],
-                text=row["text"],
-                vat_code=row["vat_code"],
-                group=row["group"],
-            )
-
-        # Update modified accounts on remote
-        both = set(target_df["account"]).intersection(set(current_state["account"]))
-        left = target_df.loc[target_df["account"].isin(both)]
-        right = current_state.loc[current_state["account"].isin(both)]
-        merged = pd.merge(left, right, how="outer", indicator=True)
-        to_update = merged[merged["_merge"] == "left_only"]
-
-        for row in to_update.to_dict("records"):
-            self.modify_account(
-                account=row["account"],
-                currency=row["currency"],
-                text=row["text"],
-                vat_code=row["vat_code"],
-                group=row["group"],
-            )
+        super().mirror_account_chart(target, delete)
 
     def _single_account_balance(
         self, account: int, date: Union[datetime.date, None] = None
@@ -647,86 +575,6 @@ class CashCtrlLedger(LedgerEngine):
             ids = ",".join(ids)
         self._client.post("journal/delete.json", {"ids": ids})
         self._client.invalidate_journal_cache()
-
-    def mirror_ledger(self, target: pd.DataFrame, delete: bool = False):
-        """Mirrors the ledger data to the remote CashCtrl instance.
-
-        Args:
-            target (pd.DataFrame): DataFrame containing ledger data in pyledger format.
-            delete (bool, optional): If True, deletes ledger entries on the remote that are
-                                     not present in the target DataFrame.
-        """
-        # Standardize data frame schema, discard incoherent entries with a warning
-        target = self.standardize_ledger(target)
-        target = self.sanitize_ledger(target)
-
-        # Nest to create one row per transaction, add unique string identifier
-        def process_ledger(df: pd.DataFrame) -> pd.DataFrame:
-            df = nest(
-                df,
-                columns=[col for col in df.columns if col not in ["id", "date"]],
-                key="txn",
-            )
-            df["txn_str"] = [
-                f"{str(date)},{df_to_consistent_str(txn)}"
-                for date, txn in zip(df["date"], df["txn"])
-            ]
-            return df
-
-        remote = process_ledger(self.ledger())
-        target = process_ledger(target)
-        if target["id"].duplicated().any():
-            # We expect nesting to combine all rows with the same
-            raise ValueError("Non-unique dates in `target` transactions.")
-
-        # Count occurrences of each unique transaction in target and remote,
-        # find number of additions and deletions for each unique transaction
-        count = pd.DataFrame({
-            "remote": remote["txn_str"].value_counts(),
-            "target": target["txn_str"].value_counts(),
-        })
-        count = count.fillna(0).reset_index(names="txn_str")
-        count["n_add"] = (count["target"] - count["remote"]).clip(lower=0).astype(int)
-        count["n_delete"] = (count["remote"] - count["target"]).clip(lower=0).astype(int)
-
-        # Delete unneeded transactions on remote
-        if delete and any(count["n_delete"] > 0):
-            ids = [
-                id
-                for txn_str, n in zip(count["txn_str"], count["n_delete"])
-                if n > 0
-                for id in remote.loc[remote["txn_str"] == txn_str, "id"]
-                .tail(n=n)
-                .values
-            ]
-            self.delete_ledger_entry(ids=",".join(ids))
-
-        # Add missing transactions to remote
-        for txn_str, n in zip(count["txn_str"], count["n_add"]):
-            if n > 0:
-                txn = unnest(
-                    target.loc[target["txn_str"] == txn_str, :].head(1), "txn"
-                )
-                if txn["id"].dropna().nunique() > 0:
-                    id = txn["id"].dropna().unique()[0]
-                else:
-                    id = txn["text"].iat[0]
-                for _ in range(n):
-                    try:
-                        self.add_ledger_entry(txn)
-                    except Exception as e:
-                        raise Exception(
-                            f"Error while adding ledger entry {id}: {e}"
-                        ) from e
-
-        # return number of elements found, targeted, changed:
-        stats = {
-            "pre-existing": int(count["remote"].sum()),
-            "targeted": int(count["target"].sum()),
-            "added": count["n_add"].sum(),
-            "deleted": count["n_delete"].sum() if delete else 0,
-        }
-        return stats
 
     def standardize_ledger(self, ledger: pd.DataFrame) -> pd.DataFrame:
         """Standardizes the ledger DataFrame to conform to CashCtrl format.
