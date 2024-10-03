@@ -63,7 +63,7 @@ class CashCtrlLedger(LedgerEngine):
             archive.writestr('settings.json', json.dumps(settings))
             archive.writestr('ledger.csv', self.ledger().to_csv(index=False))
             archive.writestr('tax_codes.csv', self.tax_codes().to_csv(index=False))
-            archive.writestr('accounts.csv', self.account_chart().to_csv(index=False))
+            archive.writestr('accounts.csv', self.accounts().to_csv(index=False))
 
     def restore(
         self,
@@ -85,11 +85,11 @@ class CashCtrlLedger(LedgerEngine):
         if base_currency is not None:
             self.base_currency = base_currency
         if accounts is not None:
-            self.mirror_account_chart(accounts.assign(tax_code=pd.NA), delete=True)
+            self.mirror_accounts(accounts.assign(tax_code=pd.NA), delete=True)
         if tax_codes is not None:
             self.mirror_tax_codes(tax_codes, delete=True)
         if accounts is not None:
-            self.mirror_account_chart(accounts, delete=True)
+            self.mirror_accounts(accounts, delete=True)
         if ledger is not None:
             self.mirror_ledger(ledger, delete=True)
         if system_settings is not None:
@@ -116,10 +116,10 @@ class CashCtrlLedger(LedgerEngine):
             self._client.post("rounding/delete.json", data={"ids": ids})
 
         # Manually reset accounts TAX to none
-        accounts = self.account_chart()
-        self.mirror_account_chart(accounts.assign(tax_code=pd.NA))
+        accounts = self.accounts()
+        self.mirror_accounts(accounts.assign(tax_code=pd.NA))
         self.mirror_tax_codes(None, delete=True)
-        self.mirror_account_chart(None, delete=True)
+        self.mirror_accounts(None, delete=True)
         # TODO: Implement price history, precision settings, and FX adjustments clearing logic
 
     # ----------------------------------------------------------------------
@@ -227,12 +227,12 @@ class CashCtrlLedger(LedgerEngine):
     # ----------------------------------------------------------------------
     # Accounts
 
-    def account_chart(self) -> pd.DataFrame:
-        """Retrieves the account chart from a remote CashCtrl instance,
+    def accounts(self) -> pd.DataFrame:
+        """Retrieves the accounts from a remote CashCtrl instance,
         formatted to the pyledger schema.
 
         Returns:
-            pd.DataFrame: A DataFrame with the account chart in pyledger format.
+            pd.DataFrame: A DataFrame with the accounts in pyledger format.
         """
         accounts = self._client.list_accounts()
         result = pd.DataFrame(
@@ -244,7 +244,7 @@ class CashCtrlLedger(LedgerEngine):
                 "group": accounts["path"],
             }
         )
-        return self.standardize_account_chart(result)
+        return self.standardize_accounts(result)
 
     def add_account(
         self,
@@ -315,7 +315,7 @@ class CashCtrlLedger(LedgerEngine):
             self._client.post("account/delete.json", {"ids": ", ".join(ids)})
             self._client.invalidate_accounts_cache()
 
-    def mirror_account_chart(self, target: pd.DataFrame, delete: bool = False):
+    def mirror_accounts(self, target: pd.DataFrame, delete: bool = False):
         """Synchronizes remote CashCtrl accounts with a desired target state
         provided as a DataFrame.
 
@@ -323,12 +323,12 @@ class CashCtrlLedger(LedgerEngine):
         the parent class method.
 
         Args:
-            target (pd.DataFrame): DataFrame with an account chart in the pyledger format.
+            target (pd.DataFrame): DataFrame with an accounts in the pyledger format.
             delete (bool, optional): If True, deletes accounts on the remote that are not
                                      present in the target DataFrame.
         """
-        target_df = StandaloneLedger.standardize_account_chart(target).reset_index()
-        current_state = self.account_chart().reset_index()
+        target_df = StandaloneLedger.standardize_accounts(target).reset_index()
+        current_state = self.accounts().reset_index()
 
         # Delete superfluous accounts on remote
         if delete:
@@ -358,7 +358,7 @@ class CashCtrlLedger(LedgerEngine):
             delete=delete,
             ignore_account_root_nodes=True,
         )
-        super().mirror_account_chart(target, delete)
+        super().mirror_accounts(target, delete)
 
     def _single_account_balance(
         self, account: int, date: Union[datetime.date, None] = None

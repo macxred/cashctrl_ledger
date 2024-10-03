@@ -22,7 +22,7 @@ class TestTaxCodes(BaseTestTaxCodes):
 
     def test_add_tax_with_not_valid_account_raise_error(self, ledger):
         ledger.delete_accounts([8888], allow_missing=True)
-        assert 8888 not in ledger.account_chart()["account"].values
+        assert 8888 not in ledger.accounts()["account"].values
         with pytest.raises(ValueError):
             ledger.add_tax_code(
                 code="TestCode", text="TAX 20%", account=8888, rate=0.02, inclusive=True
@@ -30,7 +30,7 @@ class TestTaxCodes(BaseTestTaxCodes):
 
     def test_update_tax_with_not_valid_account_raise_error(self, ledger):
         ledger.delete_accounts([8888], allow_missing=True)
-        assert 8888 not in ledger.account_chart()["account"].values
+        assert 8888 not in ledger.accounts()["account"].values
         with pytest.raises(ValueError):
             ledger.modify_tax_code(
                 code="TestCode", text="TAX 20%", account=8888, rate=0.02, inclusive=True

@@ -1,4 +1,4 @@
-"""Unit tests for account chart accessor and mutator methods."""
+"""Unit tests for accounts accessor and mutator methods."""
 
 from io import StringIO
 import pandas as pd
@@ -86,7 +86,7 @@ class TestAccounts(BaseTestAccounts):
         )
     def test_delete_non_existing_account_raise_error(self, ledger):
         ledger.delete_accounts([1141], allow_missing=True)
-        assert 1141 not in ledger.account_chart()["account"].values
+        assert 1141 not in ledger.accounts()["account"].values
         with pytest.raises(ValueError):
             ledger.delete_accounts([1141])
 
@@ -165,7 +165,7 @@ class TestAccounts(BaseTestAccounts):
         expected to be created are done so before any existing accounts are mirrored.
         """
         ledger.restore(accounts=ACCOUNTS, settings=self.SETTINGS)
-        initial_accounts = ledger.account_chart()
+        initial_accounts = ledger.accounts()
         expected = initial_accounts[~initial_accounts["group"].str.startswith("/Balance")]
         initial_categories = ledger._client.list_categories("account", include_system=True)
         categories_dict = initial_categories.set_index("path")["number"].to_dict()
@@ -174,8 +174,8 @@ class TestAccounts(BaseTestAccounts):
             "There are no remote accounts placed in /Balance node"
         )
 
-        ledger.mirror_account_chart(expected.copy(), delete=True)
-        mirrored_df = ledger.account_chart()
+        ledger.mirror_accounts(expected.copy(), delete=True)
+        mirrored_df = ledger.accounts()
         updated_categories = ledger._client.list_categories("account", include_system=True)
         updated_categories_dict = updated_categories.set_index("path")["number"].to_dict()
         difference = set(categories_dict.keys()) - set(updated_categories_dict.keys())
@@ -191,8 +191,8 @@ class TestAccounts(BaseTestAccounts):
             "Root node /Balance was deleted"
         )
 
-        ledger.mirror_account_chart(initial_accounts.copy(), delete=True)
-        mirrored_df = ledger.account_chart()
+        ledger.mirror_accounts(initial_accounts.copy(), delete=True)
+        mirrored_df = ledger.accounts()
         updated_categories = ledger._client.list_categories("account", include_system=True)
         updated_categories_dict = initial_categories.set_index("path")["number"].to_dict()
         pd.testing.assert_frame_equal(initial_accounts, mirrored_df)
