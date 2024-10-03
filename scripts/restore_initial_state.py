@@ -24,7 +24,7 @@ from cashctrl_ledger import CashCtrlLedger
 import pandas as pd
 
 TAX_CODES = """
-    id,account,rate,inclusive,description
+    id,account,rate,is_inclusive,description
     TAX 2.6%,2200,0.026,,TAX 2.6%
     TAX 3.8%,2200,0.038,,TAX 3.8%
     TAX 8.1%,2200,0.081,,TAX 8.1%

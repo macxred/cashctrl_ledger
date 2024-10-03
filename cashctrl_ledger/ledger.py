@@ -143,7 +143,7 @@ class CashCtrlLedger(LedgerEngine):
                 "description": tax_rates["documentName"],
                 "account": tax_rates["accountId"].map(account_map),
                 "rate": tax_rates["percentage"] / 100,
-                "inclusive": ~tax_rates["isGrossCalcType"],
+                "is_inclusive": ~tax_rates["isGrossCalcType"],
             }
         )
 
@@ -159,8 +159,8 @@ class CashCtrlLedger(LedgerEngine):
         code: str,
         rate: float,
         account: str,
-        inclusive: bool = True,
         description: str = "",
+        is_inclusive: bool = True,
     ):
         """Adds a new TAX code to the CashCtrl account.
 
@@ -168,7 +168,7 @@ class CashCtrlLedger(LedgerEngine):
             code (str): The TAX code to be added.
             rate (float): The TAX rate, must be between 0 and 1.
             account (str): The account identifier to which the TAX is applied.
-            inclusive (bool, optional): Determines whether the TAX is calculated as 'NET'
+            is_inclusive (bool, optional): Determines whether the TAX is calculated as 'NET'
                                         (True, default) or 'GROSS' (False). Defaults to True.
             description (str, optional): Additional description associated with the TAX code.
                                   Defaults to "".
@@ -177,8 +177,8 @@ class CashCtrlLedger(LedgerEngine):
             "name": code,
             "percentage": rate * 100,
             "accountId": self._client.account_to_id(account),
-            "calcType": "NET" if inclusive else "GROSS",
             "documentName": description,
+            "calcType": "NET" if is_inclusive else "GROSS",
         }
         self._client.post("tax/create.json", data=payload)
         self._client.invalidate_tax_rates_cache()
@@ -188,8 +188,8 @@ class CashCtrlLedger(LedgerEngine):
         code: str,
         rate: float,
         account: str,
-        inclusive: bool = True,
         description: str = "",
+        is_inclusive: bool = True,
     ):
         """Updates an existing TAX code in the CashCtrl account with new parameters.
 
@@ -197,7 +197,7 @@ class CashCtrlLedger(LedgerEngine):
             code (str): The TAX code to be updated.
             rate (float): The TAX rate, must be between 0 and 1.
             account (str): The account identifier to which the TAX is applied.
-            inclusive (bool, optional): Determines whether the TAX is calculated as 'NET'
+            is_inclusive (bool, optional): Determines whether the TAX is calculated as 'NET'
                                         (True, default) or 'GROSS' (False). Defaults to True.
             description (str, optional): Additional description associated with the TAX code.
                                   Defaults to "".
@@ -206,7 +206,7 @@ class CashCtrlLedger(LedgerEngine):
             "id": self._client.tax_code_to_id(code),
             "percentage": rate * 100,
             "accountId": self._client.account_to_id(account),
-            "calcType": "NET" if inclusive else "GROSS",
+            "calcType": "NET" if is_inclusive else "GROSS",
             "name": code,
             "documentName": description,
         }
