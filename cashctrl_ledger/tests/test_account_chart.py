@@ -10,7 +10,7 @@ from requests.exceptions import RequestException
 
 
 ACCOUNT_CSV = """
-    group,         account, currency, vat_code, text
+    group,         account, currency, tax_code, text
     /Balance,         9990,      EUR,         , Test EUR Bank Account
     /Balance/Node,    9993,      EUR,         , Transitory Account EUR
 """
@@ -96,17 +96,17 @@ class TestAccounts(BaseTestAccounts):
                 account=1142,
                 currency="",
                 text="test account",
-                vat_code=None,
+                tax_code=None,
                 group="/Assets/Anlagevermögen",
             )
 
-    def test_add_account_with_invalid_vat_raise_error(self, ledger):
+    def test_add_account_with_invalid_tax_raise_error(self, ledger):
         with pytest.raises(ValueError):
             ledger.modify_account(
                 account=1143,
                 currency="USD",
                 text="test account",
-                vat_code="Non-Existing Tax Code",
+                tax_code="Non-Existing Tax Code",
                 group="/Assets/Anlagevermögen",
             )
 
@@ -116,7 +116,7 @@ class TestAccounts(BaseTestAccounts):
                 account=999999,
                 currency="USD",
                 text="test account",
-                vat_code="MwSt. 2.6%",
+                tax_code="MwSt. 2.6%",
                 group="/Assets/Anlagevermögen/ABC",
             )
 
@@ -126,7 +126,7 @@ class TestAccounts(BaseTestAccounts):
                 account=1147,
                 currency="CHF",
                 text="test account",
-                vat_code="MwSt. 2.6%",
+                tax_code="MwSt. 2.6%",
                 group="/Assets/Anlagevermögen",
             )
 
@@ -136,17 +136,17 @@ class TestAccounts(BaseTestAccounts):
                 account=1148,
                 currency="not-existing-currency",
                 text="test account",
-                vat_code=None,
+                tax_code=None,
                 group="/Assets/Anlagevermögen",
             )
 
-    def test_modify_account_with_invalid_vat_raise_error(self, ledger):
+    def test_modify_account_with_invalid_tax_raise_error(self, ledger):
         with pytest.raises(ValueError):
             ledger.modify_account(
                 account=1149,
                 currency="USD",
                 text="test create account",
-                vat_code="Non-Existing Tax Code",
+                tax_code="Non-Existing Tax Code",
                 group="/Assets/Anlagevermögen",
             )
 
@@ -156,7 +156,7 @@ class TestAccounts(BaseTestAccounts):
                 account=1149,
                 currency="USD",
                 text="test create account",
-                vat_code="MwSt. 2.6%",
+                tax_code="MwSt. 2.6%",
                 group="/ABC",
             )
 

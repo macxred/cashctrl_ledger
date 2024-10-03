@@ -62,13 +62,13 @@ class CashCtrlLedger(LedgerEngine):
 
             archive.writestr('settings.json', json.dumps(settings))
             archive.writestr('ledger.csv', self.ledger().to_csv(index=False))
-            archive.writestr('vat_codes.csv', self.vat_codes().to_csv(index=False))
+            archive.writestr('tax_codes.csv', self.tax_codes().to_csv(index=False))
             archive.writestr('accounts.csv', self.account_chart().to_csv(index=False))
 
     def restore(
         self,
         settings: dict | None = None,
-        vat_codes: pd.DataFrame | None = None,
+        tax_codes: pd.DataFrame | None = None,
         accounts: pd.DataFrame | None = None,
         ledger: pd.DataFrame | None = None,
     ):
@@ -85,9 +85,9 @@ class CashCtrlLedger(LedgerEngine):
         if base_currency is not None:
             self.base_currency = base_currency
         if accounts is not None:
-            self.mirror_account_chart(accounts.assign(vat_code=pd.NA), delete=True)
-        if vat_codes is not None:
-            self.mirror_vat_codes(vat_codes, delete=True)
+            self.mirror_account_chart(accounts.assign(tax_code=pd.NA), delete=True)
+        if tax_codes is not None:
+            self.mirror_tax_codes(tax_codes, delete=True)
         if accounts is not None:
             self.mirror_account_chart(accounts, delete=True)
         if ledger is not None:
@@ -115,22 +115,22 @@ class CashCtrlLedger(LedgerEngine):
             ids = ','.join(str(item['id']) for item in roundings)
             self._client.post("rounding/delete.json", data={"ids": ids})
 
-        # Manually reset accounts VAT to none
+        # Manually reset accounts TAX to none
         accounts = self.account_chart()
-        self.mirror_account_chart(accounts.assign(vat_code=pd.NA))
-        self.mirror_vat_codes(None, delete=True)
+        self.mirror_account_chart(accounts.assign(tax_code=pd.NA))
+        self.mirror_tax_codes(None, delete=True)
         self.mirror_account_chart(None, delete=True)
         # TODO: Implement price history, precision settings, and FX adjustments clearing logic
 
     # ----------------------------------------------------------------------
-    # VAT codes
+    # TAX codes
 
-    def vat_codes(self) -> pd.DataFrame:
-        """Retrieves VAT codes from the remote CashCtrl account and converts to standard
+    def tax_codes(self) -> pd.DataFrame:
+        """Retrieves TAX codes from the remote CashCtrl account and converts to standard
         pyledger format.
 
         Returns:
-            pd.DataFrame: A DataFrame with pyledger.VAT_CODE column schema.
+            pd.DataFrame: A DataFrame with pyledger.TAX_CODE column schema.
         """
         tax_rates = self._client.list_tax_rates()
         accounts = self._client.list_accounts()
@@ -150,11 +150,11 @@ class CashCtrlLedger(LedgerEngine):
         duplicates = set(result.loc[result["id"].duplicated(), "id"])
         if duplicates:
             raise ValueError(
-                f"Duplicated VAT codes in the remote system: '{', '.join(map(str, duplicates))}'"
+                f"Duplicated TAX codes in the remote system: '{', '.join(map(str, duplicates))}'"
             )
-        return StandaloneLedger.standardize_vat_codes(result)
+        return StandaloneLedger.standardize_tax_codes(result)
 
-    def add_vat_code(
+    def add_tax_code(
         self,
         code: str,
         rate: float,
@@ -162,15 +162,15 @@ class CashCtrlLedger(LedgerEngine):
         inclusive: bool = True,
         text: str = "",
     ):
-        """Adds a new VAT code to the CashCtrl account.
+        """Adds a new TAX code to the CashCtrl account.
 
         Args:
-            code (str): The VAT code to be added.
-            rate (float): The VAT rate, must be between 0 and 1.
-            account (str): The account identifier to which the VAT is applied.
-            inclusive (bool, optional): Determines whether the VAT is calculated as 'NET'
+            code (str): The TAX code to be added.
+            rate (float): The TAX rate, must be between 0 and 1.
+            account (str): The account identifier to which the TAX is applied.
+            inclusive (bool, optional): Determines whether the TAX is calculated as 'NET'
                                         (True, default) or 'GROSS' (False). Defaults to True.
-            text (str, optional): Additional text or description associated with the VAT code.
+            text (str, optional): Additional text or description associated with the TAX code.
                                   Defaults to "".
         """
         payload = {
@@ -183,7 +183,7 @@ class CashCtrlLedger(LedgerEngine):
         self._client.post("tax/create.json", data=payload)
         self._client.invalidate_tax_rates_cache()
 
-    def modify_vat_code(
+    def modify_tax_code(
         self,
         code: str,
         rate: float,
@@ -191,15 +191,15 @@ class CashCtrlLedger(LedgerEngine):
         inclusive: bool = True,
         text: str = "",
     ):
-        """Updates an existing VAT code in the CashCtrl account with new parameters.
+        """Updates an existing TAX code in the CashCtrl account with new parameters.
 
         Args:
-            code (str): The VAT code to be updated.
-            rate (float): The VAT rate, must be between 0 and 1.
-            account (str): The account identifier to which the VAT is applied.
-            inclusive (bool, optional): Determines whether the VAT is calculated as 'NET'
+            code (str): The TAX code to be updated.
+            rate (float): The TAX rate, must be between 0 and 1.
+            account (str): The account identifier to which the TAX is applied.
+            inclusive (bool, optional): Determines whether the TAX is calculated as 'NET'
                                         (True, default) or 'GROSS' (False). Defaults to True.
-            text (str, optional): Additional text or description associated with the VAT code.
+            text (str, optional): Additional text or description associated with the TAX code.
                                   Defaults to "".
         """
         payload = {
@@ -213,7 +213,7 @@ class CashCtrlLedger(LedgerEngine):
         self._client.post("tax/update.json", data=payload)
         self._client.invalidate_tax_rates_cache()
 
-    def delete_vat_codes(self, codes: List[str] = [], allow_missing: bool = False):
+    def delete_tax_codes(self, codes: List[str] = [], allow_missing: bool = False):
         ids = []
         for code in codes:
             id = self._client.tax_code_to_id(code, allow_missing=allow_missing)
@@ -240,7 +240,7 @@ class CashCtrlLedger(LedgerEngine):
                 "account": accounts["number"],
                 "currency": accounts["currencyCode"],
                 "text": accounts["name"],
-                "vat_code": accounts["taxName"],
+                "tax_code": accounts["taxName"],
                 "group": accounts["path"],
             }
         )
@@ -252,7 +252,7 @@ class CashCtrlLedger(LedgerEngine):
         currency: str,
         text: str,
         group: str,
-        vat_code: Union[str, None] = None,
+        tax_code: Union[str, None] = None,
     ):
         """Adds a new account to the remote CashCtrl instance.
 
@@ -261,15 +261,15 @@ class CashCtrlLedger(LedgerEngine):
             currency (str): The currency associated with the account.
             text (str): Additional text or description associated with the account.
             group (str): The category group to which the account belongs.
-            vat_code (str, optional): The VAT code to be applied to the account, if any.
+            tax_code (str, optional): The TAX code to be applied to the account, if any.
         """
         payload = {
             "number": account,
             "currencyId": self._client.currency_to_id(currency),
             "name": text,
             "taxId": None
-            if pd.isna(vat_code)
-            else self._client.tax_code_to_id(vat_code),
+            if pd.isna(tax_code)
+            else self._client.tax_code_to_id(tax_code),
             "categoryId": self._client.account_category_to_id(group),
         }
         self._client.post("account/create.json", data=payload)
@@ -281,7 +281,7 @@ class CashCtrlLedger(LedgerEngine):
         currency: str,
         text: str,
         group: str,
-        vat_code: Union[str, None] = None,
+        tax_code: Union[str, None] = None,
     ):
         """Updates an existing account in the remote CashCtrl instance.
 
@@ -290,7 +290,7 @@ class CashCtrlLedger(LedgerEngine):
             currency (str): The currency associated with the account.
             text (str): Additional text or description associated with the account.
             group (str): The category group to which the account belongs.
-            vat_code (str, optional): The VAT code to be applied to the account, if any.
+            tax_code (str, optional): The TAX code to be applied to the account, if any.
         """
         payload = {
             "id": self._client.account_to_id(account),
@@ -298,8 +298,8 @@ class CashCtrlLedger(LedgerEngine):
             "currencyId": self._client.currency_to_id(currency),
             "name": text,
             "taxId": None
-            if pd.isna(vat_code)
-            else self._client.tax_code_to_id(vat_code),
+            if pd.isna(tax_code)
+            else self._client.tax_code_to_id(tax_code),
             "categoryId": self._client.account_category_to_id(group),
         }
         self._client.post("account/update.json", data=payload)
@@ -436,7 +436,7 @@ class CashCtrlLedger(LedgerEngine):
                 "amount": individual["amount"],
                 "currency": individual["currencyCode"],
                 "text": individual["title"],
-                "vat_code": individual["taxName"],
+                "tax_code": individual["taxName"],
                 "base_currency_amount": self.round_to_precision(
                     np.where(
                         is_fx_adjustment,
@@ -502,7 +502,7 @@ class CashCtrlLedger(LedgerEngine):
                 "text": collective["description"],
                 "amount": self.round_to_precision(foreign_amount, currency),
                 "base_currency_amount": self.round_to_precision(base_amount, base_currency),
-                "vat_code": collective["taxName"],
+                "tax_code": collective["taxName"],
                 "document": collective["document"]
             })
             result = pd.concat([
@@ -820,8 +820,8 @@ class CashCtrlLedger(LedgerEngine):
                 else self._client.currency_to_id(currency),
                 "title": entry["text"].iat[0],
                 "taxId": None
-                if pd.isna(entry["vat_code"].iat[0])
-                else self._client.tax_code_to_id(entry["vat_code"].iat[0]),
+                if pd.isna(entry["tax_code"].iat[0])
+                else self._client.tax_code_to_id(entry["tax_code"].iat[0]),
                 "currencyRate": fx_rate,
                 "reference": None
                 if pd.isna(entry["document"].iat[0])
@@ -852,8 +852,8 @@ class CashCtrlLedger(LedgerEngine):
                         "credit": -amount if amount < 0 else None,
                         "debit": amount if amount >= 0 else None,
                         "taxId": None
-                        if pd.isna(row["vat_code"])
-                        else self._client.tax_code_to_id(row["vat_code"]),
+                        if pd.isna(row["tax_code"])
+                        else self._client.tax_code_to_id(row["tax_code"]),
                         "description": row["text"],
                     }
                 )

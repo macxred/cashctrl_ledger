@@ -43,7 +43,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 "account": self._transitory_account,
                 "currency": self.base_currency,
                 "text": "temp transitory account",
-                "vat_code": None,
+                "tax_code": None,
                 "group": "/Assets",
             }
             self.add_account(**payload)
@@ -86,7 +86,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         if value not in set(self._client.list_accounts()["number"]):
             self.add_account(
                 account=value,
-                vat_code=None,
+                tax_code=None,
                 group="/Assets",
                 text="Transitory account",
                 currency=self.base_currency

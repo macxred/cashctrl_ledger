@@ -13,7 +13,7 @@ from consistent_df import assert_frame_equal
 
 
 ACCOUNT_CSV = """
-      group,  account, currency, vat_code, text
+      group,  account, currency, tax_code, text
     /Assets,     9100,      CHF,         , Opening Account
     /Assets,     1172,      CHF,         , Input Tax Adjustment Account
     /Assets,     7900,      CHF,         , Inventory Asset Revenue Account

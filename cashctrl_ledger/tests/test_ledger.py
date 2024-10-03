@@ -13,7 +13,7 @@ class TestLedger(BaseTestLedger):
     @pytest.fixture(scope="class")
     def ledger(self, initial_ledger):
         initial_ledger.restore(
-            accounts=self.ACCOUNTS, vat_codes=self.VAT_CODES, settings=self.SETTINGS
+            accounts=self.ACCOUNTS, tax_codes=self.TAX_CODES, settings=self.SETTINGS
         )
         return initial_ledger
 
@@ -23,10 +23,10 @@ class TestLedger(BaseTestLedger):
     def test_add_ledger_entry(self, ledger, ledger_id):
         super().test_add_ledger_entry(ledger, ledger_id)
 
-    def test_add_ledger_with_non_existing_vat(self, ledger):
-        # Adding a ledger entry with non existing VAT code should raise an error
+    def test_add_ledger_with_non_existing_tax(self, ledger):
+        # Adding a ledger entry with non existing TAX code should raise an error
         target = self.LEDGER_ENTRIES.query("id == 1").copy()
-        target["vat_code"].iat[0] = "Test_Non_Existent_VAT_code"
+        target["tax_code"].iat[0] = "Test_Non_Existent_TAX_code"
         with pytest.raises(ValueError, match="No id found for tax code"):
             ledger.add_ledger_entry(target)
 
@@ -75,10 +75,10 @@ class TestLedger(BaseTestLedger):
         ledger_entry = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
         id = ledger.add_ledger_entry(ledger_entry)
 
-        # Updating a ledger with non existent VAT code should raise an error
+        # Updating a ledger with non existent TAX code should raise an error
         target = ledger_entry.copy()
         target["id"] = id
-        target["vat_code"] = "Test_Non_Existent_VAT_code"
+        target["tax_code"] = "Test_Non_Existent_TAX_code"
         with pytest.raises(ValueError, match="No id found for tax code"):
             ledger.modify_ledger_entry(target)
 
