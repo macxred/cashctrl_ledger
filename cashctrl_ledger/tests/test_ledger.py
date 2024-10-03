@@ -45,9 +45,9 @@ class TestLedger(BaseTestLedger):
             ledger.add_ledger_entry(target)
 
     @pytest.mark.parametrize("id", [15, 16])
-    def test_adding_transaction_with_two_non_base_currencies_fails(self, ledger, id):
+    def test_adding_transaction_with_two_non_reporting_currencies_fails(self, ledger, id):
         LEDGER_CSV = """
-            id,   date, account, counter, currency,    amount, base_amount, text
+            id,   date, account, counter, currency,    amount, reporting_amount, text
             0, 2024-06-26,     ,    9991,      USD, 100000.00,    90000.00, Convert USD to EUR
             0, 2024-06-26, 9990,        ,      EUR,  93750.00,    90000.00, Convert USD to EUR
             1, 2024-06-26,     ,    9991,      USD, 200000.00,   180000.00, Convert USD to EUR+CHF
@@ -57,7 +57,7 @@ class TestLedger(BaseTestLedger):
         target = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
         target = self.LEDGER_ENTRIES[self.LEDGER_ENTRIES["id"] == id]
         expected = (
-            "CashCtrl allows only the base currency plus a single foreign currency"
+            "CashCtrl allows only the reporting currency plus a single foreign currency"
         )
         with pytest.raises(ValueError, match=expected):
             ledger.add_ledger_entry(target)
@@ -115,18 +115,18 @@ class TestLedger(BaseTestLedger):
         spit_txn = ledger.split_multi_currency_transactions(
             txn, transitory_account=transitory_account
         )
-        is_base_currency = spit_txn["currency"] == ledger.base_currency
-        spit_txn.loc[is_base_currency, "base_currency_amount"] = spit_txn.loc[
-            is_base_currency, "amount"
+        is_reporting_currency = spit_txn["currency"] == ledger.reporting_currency
+        spit_txn.loc[is_reporting_currency, "report_amount"] = spit_txn.loc[
+            is_reporting_currency, "amount"
         ]
         assert len(spit_txn) == len(txn) + 2, "Expecting two new lines when transaction is split"
         assert sum(spit_txn["account"] == transitory_account) == 2, (
             "Expecting two transactions on transitory account"
         )
-        assert all(spit_txn.groupby("id")["base_currency_amount"].sum() == 0), (
+        assert all(spit_txn.groupby("id")["report_amount"].sum() == 0), (
             "Expecting split transactions to be balanced"
         )
-        assert spit_txn.query("account == @transitory_account")["base_currency_amount"].sum() == 0, (
+        assert spit_txn.query("account == @transitory_account")["report_amount"].sum() == 0, (
             "Expecting transitory account to be balanced"
         )
 
@@ -136,9 +136,9 @@ class TestLedger(BaseTestLedger):
         spit_txn = ledger.split_multi_currency_transactions(
             txn, transitory_account=transitory_account
         )
-        is_base_currency = spit_txn["currency"] == ledger.base_currency
-        spit_txn.loc[is_base_currency, "base_currency_amount"] = spit_txn.loc[
-            is_base_currency, "amount"
+        is_reporting_currency = spit_txn["currency"] == ledger.reporting_currency
+        spit_txn.loc[is_reporting_currency, "report_amount"] = spit_txn.loc[
+            is_reporting_currency, "amount"
         ]
         id_currency_pairs = (txn["id"] + txn["currency"]).nunique()
         assert len(spit_txn) == len(txn) + id_currency_pairs, (
@@ -147,9 +147,9 @@ class TestLedger(BaseTestLedger):
         assert sum(spit_txn["account"] == transitory_account) == id_currency_pairs, (
             "Expecting one transaction on transitory account per id and currency"
         )
-        assert all(spit_txn.groupby("id")["base_currency_amount"].sum() == 0), (
+        assert all(spit_txn.groupby("id")["report_amount"].sum() == 0), (
             "Expecting split transactions to be balanced"
         )
-        assert spit_txn.query("account == @transitory_account")["base_currency_amount"].sum() == 0, (
+        assert spit_txn.query("account == @transitory_account")["report_amount"].sum() == 0, (
             "Expecting transitory account to be balanced"
         )

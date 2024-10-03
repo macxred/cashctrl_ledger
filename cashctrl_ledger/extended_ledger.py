@@ -41,7 +41,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         if transitory_account is None:
             payload = {
                 "account": self._transitory_account,
-                "currency": self.base_currency,
+                "currency": self.reporting_currency,
                 "text": "temp transitory account",
                 "tax_code": None,
                 "group": "/Assets",
@@ -59,7 +59,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
 
         Raises:
             ValueError: If the transitory account is not set, does not exist, or is
-            denominated in a different currency than the base currency.
+            denominated in a different currency than the reporting currency.
 
         Returns:
             int: The transitory account number.
@@ -73,10 +73,10 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 f"The transitory account {self._transitory_account} does not exist."
             )
         account_currency = self._client.account_to_currency(self._transitory_account)
-        if account_currency != self.base_currency:
+        if account_currency != self.reporting_currency:
             raise ValueError(
                 f"The transitory account {self._transitory_account} must be "
-                f"denominated in {self.base_currency} base currency, not "
+                f"denominated in {self.reporting_currency} reporting currency, not "
                 f"{account_currency}."
             )
         return self._transitory_account
@@ -89,7 +89,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 tax_code=None,
                 group="/Assets",
                 text="Transitory account",
-                currency=self.base_currency
+                currency=self.reporting_currency
             )
         self._transitory_account = value
 
@@ -113,9 +113,9 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         Returns:
             pd.DataFrame: The modified ledger DataFrame.
         """
-        # Number of currencies other than base currency
-        base_currency = self.base_currency
-        n_currency = ledger[["id", "currency"]][ledger["currency"] != base_currency]
+        # Number of currencies other than reporting currency
+        reporting_currency = self.reporting_currency
+        n_currency = ledger[["id", "currency"]][ledger["currency"] != reporting_currency]
         n_currency = n_currency.groupby("id")["currency"].nunique()
 
         # Split entries with multiple currencies into separate entries for each currency
@@ -133,7 +133,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         result = []
         for _, txn in df.groupby("id"):
             new_txn = self._add_fx_adjustment(
-                txn, transitory_account=transitory_account, base_currency=base_currency
+                txn, transitory_account=transitory_account, reporting_currency=reporting_currency
             )
             result.append(new_txn)
         if len(result) > 0:
@@ -165,14 +165,14 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
             pd.DataFrame: Modified ledger entries with split transactions and any necessary
                 balancing entries.
         """
-        base_currency = self.base_currency
-        is_base_currency = ledger["currency"] == base_currency
-        ledger.loc[is_base_currency, "base_currency_amount"] = ledger.loc[
-            is_base_currency, "amount"
+        reporting_currency = self.reporting_currency
+        is_reporting_currency = ledger["currency"] == reporting_currency
+        ledger.loc[is_reporting_currency, "report_amount"] = ledger.loc[
+            is_reporting_currency, "amount"
         ]
 
-        if any(ledger["base_currency_amount"].isna()):
-            raise ValueError("Base currency amount missing for some items.")
+        if any(ledger["report_amount"].isna()):
+            raise ValueError("Reporting currency amount missing for some items.")
         if transitory_account is None:
             transitory_account = self.transitory_account
 
@@ -180,7 +180,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         for (id, currency), group in ledger.groupby(["id", "currency"]):
             sub_id = f"{id}:{currency}"
             result.append(group.assign(id=sub_id))
-            balance = round(group["base_currency_amount"].sum(), 2)
+            balance = round(group["report_amount"].sum(), 2)
             if balance != 0:
                 clearing_txn = pd.DataFrame(
                     {
@@ -190,8 +190,8 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                             "into multiple transactions compatible with CashCtrl."
                         ],
                         "amount": [-1 * balance],
-                        "base_currency_amount": [-1 * balance],
-                        "currency": [base_currency],
+                        "report_amount": [-1 * balance],
+                        "currency": [reporting_currency],
                         "account": [transitory_account],
                     }
                 )
@@ -201,12 +201,12 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         return self.standardize_ledger(result)
 
     def _add_fx_adjustment(
-        self, entry: pd.DataFrame, transitory_account: int, base_currency: str
+        self, entry: pd.DataFrame, transitory_account: int, reporting_currency: str
     ) -> pd.DataFrame:
         """
         Adjusts ledger entries to conform with CashCtrl's eight-digit FX rate precision.
 
-        This method ensures that the base currency amounts in a ledger entry match
+        This method ensures that the reporting currency amounts in a ledger entry match
         CashCtrl's precision limit for foreign exchange rates of eight digits after
         the decimal point. If an adjustment is needed due to rounding differences,
         it adds a balancing ledger entry using the `transitory_account`, so the
@@ -215,7 +215,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         Args:
             entry (pd.DataFrame): The ledger entry or entries to be adjusted.
             transitory_account (int): The account number for recording balancing transactions.
-            base_currency (str): The base currency against which adjustments are made.
+            reporting_currency (str): The reporting currency against which adjustments are made.
 
         Returns:
             pd.DataFrame: The adjusted ledger entries and any necessary balancing entries.
@@ -224,26 +224,26 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
             # Individual transaction: one row in the ledger data frame
             if (
                 entry["amount"].item() == 0
-                or entry["currency"].item() == base_currency
+                or entry["currency"].item() == reporting_currency
             ):
                 return entry
             else:
                 amount = self.round_to_precision(entry["amount"].item(), entry["currency"].item())
-                base_amount = self.round_to_precision(
-                    entry["base_currency_amount"].item(), base_currency
+                reporting_amount = self.round_to_precision(
+                    entry["report_amount"].item(), reporting_currency
                 )
-                fx_rate = round(base_amount / amount, 8)
-                balance = base_amount - self.round_to_precision(amount * fx_rate, base_currency)
+                fx_rate = round(reporting_amount / amount, 8)
+                balance = reporting_amount - self.round_to_precision(amount * fx_rate, reporting_currency)
                 if balance == 0.0:
                     return entry
                 else:
                     balancing_txn = entry.copy()
                     balancing_txn["id"] = balancing_txn["id"] + ":fx"
-                    balancing_txn["currency"] = base_currency
+                    balancing_txn["currency"] = reporting_currency
                     balancing_txn["amount"] = balance
-                    balancing_txn["base_currency_amount"] = pd.NA
-                    entry["base_currency_amount"] = (
-                        entry["base_currency_amount"] - balance
+                    balancing_txn["report_amount"] = pd.NA
+                    entry["report_amount"] = (
+                        entry["report_amount"] - balance
                     )
                     result = pd.concat(
                         [
@@ -254,8 +254,8 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     result["amount"] = self.round_to_precision(
                         result["amount"], result["currency"]
                     )
-                    result["base_currency_amount"] = self.round_to_precision(
-                        result["base_currency_amount"], base_currency
+                    result["report_amount"] = self.round_to_precision(
+                        result["report_amount"], reporting_currency
                     )
                     return self.standardize_ledger(result)
 
@@ -265,39 +265,39 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 entry, suppress_error=True
             )
             fx_rate = round(fx_rate, 8)
-            if currency == base_currency:
+            if currency == reporting_currency:
                 return entry
             else:
                 entry["amount"] = self.round_to_precision(entry["amount"], entry["currency"])
-                entry["base_currency_amount"] = self.round_to_precision(
-                    entry["base_currency_amount"], base_currency,
+                entry["report_amount"] = self.round_to_precision(
+                    entry["report_amount"], reporting_currency,
                 )
                 balance = np.where(
-                    entry["currency"] == base_currency,
+                    entry["currency"] == reporting_currency,
                     entry["amount"] - np.array(
                         self.round_to_precision(entry["amount"] / fx_rate, currency)
                     ) * fx_rate,
-                    entry["base_currency_amount"] - np.array(
-                        self.round_to_precision(entry["amount"] * fx_rate, base_currency)
+                    entry["report_amount"] - np.array(
+                        self.round_to_precision(entry["amount"] * fx_rate, reporting_currency)
                     ),
                 )
                 if all(balance == 0.0):
                     return entry
                 else:
-                    is_base_currency = entry["currency"] == base_currency
+                    is_reporting_currency = entry["currency"] == reporting_currency
                     balancing_txn = entry.head(1).copy()
-                    balancing_txn["currency"] = base_currency
+                    balancing_txn["currency"] = reporting_currency
                     balancing_txn["amount"] = balance.sum()
                     balancing_txn["account"] = transitory_account
-                    balancing_txn["base_currency_amount"] = pd.NA
+                    balancing_txn["report_amount"] = pd.NA
                     balancing_txn[
                         "text"
                     ] = "Currency adjustments to match CashCtrl FX rate precision"
                     entry["amount"] = entry["amount"] - np.where(
-                        is_base_currency, balance, 0
+                        is_reporting_currency, balance, 0
                     )
-                    entry["base_currency_amount"] = (
-                        entry["base_currency_amount"] - balance
+                    entry["report_amount"] = (
+                        entry["report_amount"] - balance
                     )
                     entry = pd.concat(
                         [
@@ -307,10 +307,10 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     )
                     balance = np.append(balance, -1 * balance.sum())
                     fx_adjust = entry.copy()
-                    is_base_currency = fx_adjust["currency"] == base_currency
-                    fx_adjust["amount"] = np.where(is_base_currency, balance, 0.0)
-                    fx_adjust["base_currency_amount"] = np.where(
-                        is_base_currency, pd.NA, balance
+                    is_reporting_currency = fx_adjust["currency"] == reporting_currency
+                    fx_adjust["amount"] = np.where(is_reporting_currency, balance, 0.0)
+                    fx_adjust["report_amount"] = np.where(
+                        is_reporting_currency, pd.NA, balance
                     )
                     fx_adjust["id"] = fx_adjust["id"] + ":fx"
                     fx_adjust["text"] = "Currency adjustments: " + fx_adjust["text"]
@@ -319,8 +319,8 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     result["amount"] = self.round_to_precision(
                         result["amount"], result["currency"]
                     )
-                    result["base_currency_amount"] = self.round_to_precision(
-                        result["base_currency_amount"], base_currency
+                    result["report_amount"] = self.round_to_precision(
+                        result["report_amount"], reporting_currency
                     )
                     return self.standardize_ledger(result)
 

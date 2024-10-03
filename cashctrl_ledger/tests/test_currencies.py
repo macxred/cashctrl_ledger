@@ -17,11 +17,11 @@ def currency():
     cashctrl._client.post("currency/delete.json", data={"ids": res["insertId"]})
 
 
-def test_price_for_base_currency():
+def test_price_for_reporting_currency():
     cashctrl_ledger = CashCtrlLedger()
 
-    price = cashctrl_ledger.price(cashctrl_ledger.base_currency)
-    assert price == 1, "Price for base currency should be 1."
+    price = cashctrl_ledger.price(cashctrl_ledger.reporting_currency)
+    assert price == 1, "Price for reporting currency should be 1."
 
 
 @pytest.mark.skip(reason="Cashctrl doesn't support looking up exchange rates for custom currencies")

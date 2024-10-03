@@ -174,7 +174,7 @@ SETTINGS = {
         "DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID": 6960,
         "DEFAULT_CREDITOR_ACCOUNT_ID": 2000
     },
-    "BASE_CURRENCY": "CHF",
+    "reporting_currency": "CHF",
     "DEFAULT_ROUNDINGS":[
         {
             "account": 6961,

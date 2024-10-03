@@ -45,7 +45,7 @@ SETTINGS = {
         "DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID": 6960,
         "DEFAULT_CREDITOR_ACCOUNT_ID": 2000
     },
-    "BASE_CURRENCY": "CHF",
+    "REPORTING_CURRENCY": "CHF",
     "DEFAULT_ROUNDINGS":[
         {
             "account": 6961,
@@ -83,7 +83,7 @@ class TestDumpRestoreClear(BaseTestDumpRestoreClear):
         with zipfile.ZipFile(tmp_path / "system.zip", 'r') as archive:
             settings = json.loads(archive.open('settings.json').read().decode('utf-8'))
             roundings = settings.get("DEFAULT_ROUNDINGS", None)
-            base_currency = settings.get("BASE_CURRENCY", None)
+            reporting_currency = settings.get("REPORTING_CURRENCY", None)
             system_settings = settings.get("DEFAULT_SETTINGS", None)
             settings["DEFAULT_SETTINGS"]
 
@@ -100,5 +100,5 @@ class TestDumpRestoreClear(BaseTestDumpRestoreClear):
             roundings = roundings[columns]
 
             assert_frame_equal(default_roundings, roundings, check_like=True)
-            assert base_currency == SETTINGS["BASE_CURRENCY"]
+            assert reporting_currency == SETTINGS["REPORTING_CURRENCY"]
             assert system_settings == SETTINGS["DEFAULT_SETTINGS"]
