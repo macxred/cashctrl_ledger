@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 LEDGER_CSV = """
-    id,   date, account, contra,  currency, amount,  description,                         document
+    id,   date, account, contra,  currency, amount,  description,                  document
     1, 2024-05-24, 2100,   2200,       CHF,    100,  pytest single transaction 1,
     2, 2024-05-24, 2100,   2200,       CHF,    100,  pytest single transaction 1,  file1.txt
     3, 2024-05-24, 2100,   2200,       CHF,    100,  pytest single transaction 1,  subdir/file2.txt

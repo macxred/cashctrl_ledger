@@ -52,7 +52,6 @@ SETTINGS = {
             "name": "<values><de>Auf 0.05 runden</de><en>Round to 0.05</en></values>",
             "rounding": 0.05,
             "mode": "HALF_UP",
-            "description": None,
             "value": None,
             "referenced": False
         },
@@ -61,7 +60,6 @@ SETTINGS = {
             "name": "<values><de>Auf 1.00 runden</de><en>Round to 1.00</en></values>",
             "rounding": 1.0,
             "mode": "HALF_UP",
-            "description": None,
             "value": None,
             "referenced": False
         }

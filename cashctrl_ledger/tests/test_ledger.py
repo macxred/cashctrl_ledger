@@ -9,6 +9,11 @@ from base_test import initial_ledger
 from io import StringIO
 
 
+LEDGER_IDS = set(
+    BaseTestLedger.LEDGER_ENTRIES["id"].astype(str).unique()
+).difference(['15', '16', '17', '18'])
+
+
 class TestLedger(BaseTestLedger):
     @pytest.fixture(scope="class")
     def ledger(self, initial_ledger):
@@ -17,37 +22,35 @@ class TestLedger(BaseTestLedger):
         )
         return initial_ledger
 
-    @pytest.mark.parametrize(
-        "ledger_id", set(BaseTestLedger.LEDGER_ENTRIES["id"].unique()).difference([15, 16, 17, 18])
-    )
+    @pytest.mark.parametrize("ledger_id", LEDGER_IDS)
     def test_add_ledger_entry(self, ledger, ledger_id):
         super().test_add_ledger_entry(ledger, ledger_id)
 
     def test_add_ledger_with_non_existing_tax(self, ledger):
         # Adding a ledger entry with non existing TAX code should raise an error
-        target = self.LEDGER_ENTRIES.query("id == 1").copy()
+        target = self.LEDGER_ENTRIES.query("id == '1'").copy()
         target["tax_code"].iat[0] = "Test_Non_Existent_TAX_code"
         with pytest.raises(ValueError, match="No id found for tax code"):
             ledger.add_ledger_entry(target)
 
     def test_add_ledger_with_non_existing_account(self, ledger):
         # Adding a ledger entry with non existing account should raise an error
-        target = self.LEDGER_ENTRIES.query("id == 1").copy()
+        target = self.LEDGER_ENTRIES.query("id == '1'").copy()
         target["account"] = 33333
         with pytest.raises(ValueError, match="No id found for account"):
             ledger.add_ledger_entry(target)
 
     def test_add_ledger_with_non_existing_currency(self, ledger):
         # Adding a ledger entry with non existing currency code should raise an error
-        target = self.LEDGER_ENTRIES.query("id == 1").copy()
+        target = self.LEDGER_ENTRIES.query("id == '1'").copy()
         target["currency"] = "Non_Existent_Currency"
         with pytest.raises(ValueError, match="No id found for currency"):
             ledger.add_ledger_entry(target)
 
-    @pytest.mark.parametrize("id", [15, 16])
+    @pytest.mark.parametrize("id", ['15', '16'])
     def test_adding_transaction_with_two_non_reporting_currencies_fails(self, ledger, id):
         LEDGER_CSV = """
-            id,   date, account, contra, currency,    amount, reporting_amount, description
+            id,   date, account, contra, currency,    amount, reporting_amount, text
             0, 2024-06-26,     ,   9991,      USD, 100000.00,         90000.00, Convert USD to EUR
             0, 2024-06-26, 9990,       ,      EUR,  93750.00,         90000.00, Convert USD to EUR
             1, 2024-06-26,     ,   9991,      USD, 200000.00,        180000.00, Convert USD to EUR+CHF
@@ -100,7 +103,7 @@ class TestLedger(BaseTestLedger):
         ledger.delete_ledger_entries([id])
 
     def test_update_non_existent_ledger(self, ledger):
-        target = self.LEDGER_ENTRIES.query("id == 1").copy()
+        target = self.LEDGER_ENTRIES.query("id == '1'").copy()
         target["id"] = 999999
         with pytest.raises(RequestException):
             ledger.modify_ledger_entry(target)
@@ -111,7 +114,7 @@ class TestLedger(BaseTestLedger):
 
     def test_split_multi_currency_transactions(self, ledger):
         transitory_account = 9995
-        txn = ledger.standardize_ledger(self.LEDGER_ENTRIES.query("id == 15"))
+        txn = ledger.standardize_ledger(self.LEDGER_ENTRIES.query("id == '15'"))
         spit_txn = ledger.split_multi_currency_transactions(
             txn, transitory_account=transitory_account
         )
@@ -132,7 +135,7 @@ class TestLedger(BaseTestLedger):
 
     def test_split_several_multi_currency_transactions(self, ledger):
         transitory_account = 9995
-        txn = ledger.standardize_ledger(self.LEDGER_ENTRIES.query("id.isin([15, 16])"))
+        txn = ledger.standardize_ledger(self.LEDGER_ENTRIES.query("id.isin(['15', '16'])"))
         spit_txn = ledger.split_multi_currency_transactions(
             txn, transitory_account=transitory_account
         )

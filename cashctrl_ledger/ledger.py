@@ -363,7 +363,8 @@ class CashCtrlLedger(LedgerEngine):
     def _single_account_balance(
         self, account: int, date: Union[datetime.date, None] = None
     ) -> dict:
-        """Calculate the balance of a single account in both account currency and reporting currency.
+        """Calculate the balance of a single account in both account currency
+        and reporting currency.
 
         Args:
             account (int): The account number.
@@ -528,7 +529,7 @@ class CashCtrlLedger(LedgerEngine):
         payload = self._map_ledger_entry(entry)
         res = self._client.post("journal/create.json", data=payload)
         self._client.invalidate_journal_cache()
-        return res["insertId"]
+        return str(res["insertId"])
 
     def modify_ledger_entry(self, entry: pd.DataFrame):
         """Adds a new ledger entry to the remote CashCtrl instance.
@@ -617,6 +618,7 @@ class CashCtrlLedger(LedgerEngine):
         # Map ledger entries to their actual and targeted attachments
         attachments = self._get_ledger_attachments()
         ledger = self._client.list_journal_entries()
+        ledger["id"] = ledger["id"].astype("string[python]")
         ledger["reference"] = "/" + ledger["reference"]
         files = self._client.list_files()
         df = pd.DataFrame(
@@ -653,7 +655,7 @@ class CashCtrlLedger(LedgerEngine):
 
         Args:
             allow_missing (bool, optional): If True, return None if the file has no path,
-                e.g. for files in the recylce bin. Otherwise raise a ValueError. Defaults to True.
+                e.g. for files in the recycle bin. Otherwise raise a ValueError. Defaults to True.
 
         Returns:
             Dict[str, List[str]]: A Dict that contains ledger ids with attached
@@ -670,7 +672,7 @@ class CashCtrlLedger(LedgerEngine):
                 for attachment in res["attachments"]
             ]
             if len(paths):
-                result[id] = paths
+                result[str(id)] = paths
         return result
 
     def _collective_transaction_currency_and_rate(
@@ -683,18 +685,18 @@ class CashCtrlLedger(LedgerEngine):
           and an exchange rate of 1.0.
         - If more than one non-reporting currencies are present, raise a ValueError.
         - Otherwise, return the unique non-reporting currency and an exchange rate that converts all
-        given non-reporting-currency amounts within the rounding precision to the reporting currency amounts.
-        Raise a ValueError if no such exchange rate exists.
+        given non-reporting-currency amounts within the rounding precision to the reporting
+        currency amounts. Raise a ValueError if no such exchange rate exists.
 
         In CashCtrl, collective transactions can be denominated in the accounting system's reporting
         currency and at most one additional foreign currency. This additional currency, if any,
         and a unique exchange rate to the reporting currency are recorded with the transaction.
-        If all individual entries are denominated in the reporting currency, the reporting currency is
-        set as the transaction currency.
+        If all individual entries are denominated in the reporting currency, the reporting currency
+        is set as the transaction currency.
 
         Individual entries can be linked to accounts denominated in the transaction's currency
-        or the reporting currency. If in the reporting currency, the entry's amount is multiplied by the
-        transaction's exchange rate when recorded in the account.
+        or the reporting currency. If in the reporting currency, the entry's amount is multiplied
+        by the transaction's exchange rate when recorded in the account.
 
         This differs from pyledger, where each leg of a transaction specifies both foreign and
         reporting currency amounts. The present method facilitates mapping from CashCtrl to pyledger
@@ -730,7 +732,9 @@ class CashCtrlLedger(LedgerEngine):
         # Check if all entries are denominated in reporting currency
         reporting_currency = self.reporting_currency
         is_reporting_txn = (
-            entry["currency"].isna() | (entry["currency"] == reporting_currency) | (entry["amount"] == 0)
+            entry["currency"].isna()
+            | (entry["currency"] == reporting_currency)
+            | (entry["amount"] == 0)
         )
         if all(is_reporting_txn):
             return reporting_currency, 1.0

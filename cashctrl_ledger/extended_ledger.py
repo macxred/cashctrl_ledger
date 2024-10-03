@@ -233,7 +233,9 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     entry["report_amount"].item(), reporting_currency
                 )
                 fx_rate = round(reporting_amount / amount, 8)
-                balance = reporting_amount - self.round_to_precision(amount * fx_rate, reporting_currency)
+                balance = reporting_amount - self.round_to_precision(
+                    amount * fx_rate, reporting_currency
+                )
                 if balance == 0.0:
                     return entry
                 else:
