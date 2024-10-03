@@ -15,21 +15,17 @@ ACCOUNT_CSV = """
     /Balance/Node,    9993,      EUR,         , Transitory Account EUR
 """
 
-# flake8: noqa: E501
-
 LEDGER_CSV = """
-    id,     date, account, counter_account, currency,     amount, report_amount, text
-    1,  2024-01-21,  9992,            9995,      CHF,     100.00,              , transaction 1
-    2,  2024-02-22,  9991,            9994,      USD,     100.00,         88.88, transaction 2
-    3,  2024-03-23,  9991,                ,      USD,     100.00,         85.55, transaction 3
-    3,  2024-03-23,      ,            9995,      CHF,      85.55,              , transaction 3
-    4,  2024-04-24,  9994,            9991,      USD,     100.00,         77.77, transaction 4
-    5,  2024-05-25,  9992,            9995,      CHF,      10.00,              , transaction 5
-    6,  2024-06-26,  9995,                ,      CHF,      95.55,              , transaction 6
-    6,  2024-06-26,      ,            9991,      USD,     100.00,         95.55, transaction 6
+    id,     date, account, contra, currency,     amount, report_amount, text
+    1,  2024-01-21,  9992,   9995,      CHF,     100.00,              , transaction 1
+    2,  2024-02-22,  9991,   9994,      USD,     100.00,         88.88, transaction 2
+    3,  2024-03-23,  9991,       ,      USD,     100.00,         85.55, transaction 3
+    3,  2024-03-23,      ,   9995,      CHF,      85.55,              , transaction 3
+    4,  2024-04-24,  9994,   9991,      USD,     100.00,         77.77, transaction 4
+    5,  2024-05-25,  9992,   9995,      CHF,      10.00,              , transaction 5
+    6,  2024-06-26,  9995,       ,      CHF,      95.55,              , transaction 6
+    6,  2024-06-26,      ,   9991,      USD,     100.00,         95.55, transaction 6
 """
-
-# flake8: enable
 LEDGER_ENTRIES = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
 ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
 

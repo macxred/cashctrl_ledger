@@ -432,7 +432,7 @@ class CashCtrlLedger(LedgerEngine):
                 "id": individual["id"],
                 "date": individual["dateAdded"].dt.date,
                 "account": individual["debit_account"],
-                "counter_account": individual["credit_account"],
+                "contra": individual["credit_account"],
                 "amount": individual["amount"],
                 "currency": individual["currencyCode"],
                 "text": individual["title"],
@@ -569,31 +569,31 @@ class CashCtrlLedger(LedgerEngine):
         # two items with a single account each
         is_collective = df["id"].duplicated(keep=False)
         items_to_split = (
-            is_collective & df["account"].notna() & df["counter_account"].notna()
+            is_collective & df["account"].notna() & df["contra"].notna()
         )
         if items_to_split.any():
             new = df.loc[items_to_split].copy()
-            new["account"] = new["counter_account"]
-            new.loc[:, "counter_account"] = pd.NA
+            new["account"] = new["contra"]
+            new.loc[:, "contra"] = pd.NA
             for col in ["amount", "report_amount"]:
                 new[col] = np.where(
                     new[col].isna() | (new[col] == 0), new[col], -1 * new[col]
                 )
-            df.loc[items_to_split, "counter_account"] = pd.NA
+            df.loc[items_to_split, "contra"] = pd.NA
             df = pd.concat([df, new])
 
         # TODO: move this code block to parent class
-        # Swap accounts if a counter_account but no account is provided,
+        # Swap accounts if a contra but no account is provided,
         # or if individual transaction amount is negative
-        swap_accounts = df["counter_account"].notna() & (
+        swap_accounts = df["contra"].notna() & (
             (df["amount"] < 0) | df["account"].isna()
         )
         if swap_accounts.any():
             initial_account = df.loc[swap_accounts, "account"]
             df.loc[swap_accounts, "account"] = df.loc[
-                swap_accounts, "counter_account"
+                swap_accounts, "contra"
             ]
-            df.loc[swap_accounts, "counter_account"] = initial_account
+            df.loc[swap_accounts, "contra"] = initial_account
             df.loc[swap_accounts, "amount"] = -1 * df.loc[swap_accounts, "amount"]
             df.loc[swap_accounts, "report_amount"] = (
                 -1 * df.loc[swap_accounts, "report_amount"]
@@ -814,7 +814,7 @@ class CashCtrlLedger(LedgerEngine):
                 "dateAdded": entry["date"].iat[0],
                 "amount": amount,
                 "debitId": self._client.account_to_id(entry["account"].iat[0]),
-                "creditId": self._client.account_to_id(entry["counter_account"].iat[0]),
+                "creditId": self._client.account_to_id(entry["contra"].iat[0]),
                 "currencyId": None
                 if pd.isna(currency)
                 else self._client.currency_to_id(currency),
