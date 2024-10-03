@@ -42,7 +42,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
             payload = {
                 "account": self._transitory_account,
                 "currency": self.reporting_currency,
-                "text": "temp transitory account",
+                "description": "temp transitory account",
                 "tax_code": None,
                 "group": "/Assets",
             }
@@ -88,7 +88,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 account=value,
                 tax_code=None,
                 group="/Assets",
-                text="Transitory account",
+                description="Transitory account",
                 currency=self.reporting_currency
             )
         self._transitory_account = value
@@ -185,7 +185,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 clearing_txn = pd.DataFrame(
                     {
                         "id": [sub_id],
-                        "text": [
+                        "description": [
                             "Split multi-currency transaction "
                             "into multiple transactions compatible with CashCtrl."
                         ],
@@ -291,7 +291,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     balancing_txn["account"] = transitory_account
                     balancing_txn["report_amount"] = pd.NA
                     balancing_txn[
-                        "text"
+                        "description"
                     ] = "Currency adjustments to match CashCtrl FX rate precision"
                     entry["amount"] = entry["amount"] - np.where(
                         is_reporting_currency, balance, 0
@@ -313,7 +313,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                         is_reporting_currency, pd.NA, balance
                     )
                     fx_adjust["id"] = fx_adjust["id"] + ":fx"
-                    fx_adjust["text"] = "Currency adjustments: " + fx_adjust["text"]
+                    fx_adjust["description"] = "Currency adjustments: " + fx_adjust["description"]
                     fx_adjust = fx_adjust[balance != 0]
                     result = pd.concat([entry, fx_adjust])
                     result["amount"] = self.round_to_precision(

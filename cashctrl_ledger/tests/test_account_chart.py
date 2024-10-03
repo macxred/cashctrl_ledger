@@ -10,13 +10,13 @@ from requests.exceptions import RequestException
 
 
 ACCOUNT_CSV = """
-    group,         account, currency, tax_code, text
+    group,         account, currency, tax_code, description
     /Balance,         9990,      EUR,         , Test EUR Bank Account
     /Balance/Node,    9993,      EUR,         , Transitory Account EUR
 """
 
 LEDGER_CSV = """
-    id,     date, account, contra, currency,     amount, report_amount, text
+    id,     date, account, contra, currency,     amount, report_amount, description
     1,  2024-01-21,  9992,   9995,      CHF,     100.00,              , transaction 1
     2,  2024-02-22,  9991,   9994,      USD,     100.00,         88.88, transaction 2
     3,  2024-03-23,  9991,       ,      USD,     100.00,         85.55, transaction 3
@@ -91,7 +91,7 @@ class TestAccounts(BaseTestAccounts):
             ledger.add_account(
                 account=1142,
                 currency="",
-                text="test account",
+                description="test account",
                 tax_code=None,
                 group="/Assets/Anlagevermögen",
             )
@@ -101,7 +101,7 @@ class TestAccounts(BaseTestAccounts):
             ledger.modify_account(
                 account=1143,
                 currency="USD",
-                text="test account",
+                description="test account",
                 tax_code="Non-Existing Tax Code",
                 group="/Assets/Anlagevermögen",
             )
@@ -111,7 +111,7 @@ class TestAccounts(BaseTestAccounts):
             ledger.add_account(
                 account=999999,
                 currency="USD",
-                text="test account",
+                description="test account",
                 tax_code="MwSt. 2.6%",
                 group="/Assets/Anlagevermögen/ABC",
             )
@@ -121,7 +121,7 @@ class TestAccounts(BaseTestAccounts):
             ledger.modify_account(
                 account=1147,
                 currency="CHF",
-                text="test account",
+                description="test account",
                 tax_code="MwSt. 2.6%",
                 group="/Assets/Anlagevermögen",
             )
@@ -131,7 +131,7 @@ class TestAccounts(BaseTestAccounts):
             ledger.modify_account(
                 account=1148,
                 currency="not-existing-currency",
-                text="test account",
+                description="test account",
                 tax_code=None,
                 group="/Assets/Anlagevermögen",
             )
@@ -141,7 +141,7 @@ class TestAccounts(BaseTestAccounts):
             ledger.modify_account(
                 account=1149,
                 currency="USD",
-                text="test create account",
+                description="test create account",
                 tax_code="Non-Existing Tax Code",
                 group="/Assets/Anlagevermögen",
             )
@@ -151,7 +151,7 @@ class TestAccounts(BaseTestAccounts):
             ledger.modify_account(
                 account=1149,
                 currency="USD",
-                text="test create account",
+                description="test create account",
                 tax_code="MwSt. 2.6%",
                 group="/ABC",
             )

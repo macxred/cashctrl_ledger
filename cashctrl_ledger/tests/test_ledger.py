@@ -47,7 +47,7 @@ class TestLedger(BaseTestLedger):
     @pytest.mark.parametrize("id", [15, 16])
     def test_adding_transaction_with_two_non_reporting_currencies_fails(self, ledger, id):
         LEDGER_CSV = """
-            id,   date, account, contra, currency,    amount, reporting_amount, text
+            id,   date, account, contra, currency,    amount, reporting_amount, description
             0, 2024-06-26,     ,   9991,      USD, 100000.00,         90000.00, Convert USD to EUR
             0, 2024-06-26, 9990,       ,      EUR,  93750.00,         90000.00, Convert USD to EUR
             1, 2024-06-26,     ,   9991,      USD, 200000.00,        180000.00, Convert USD to EUR+CHF
@@ -69,7 +69,7 @@ class TestLedger(BaseTestLedger):
 
     def test_update_ledger_with_illegal_attributes(self, ledger):
         LEDGER_CSV = """
-            date,       account, contra, currency, amount, text
+            date,       account, contra, currency, amount, description
             2024-05-24,    9992,   9995,      CHF, 100.00, Test
         """
         ledger_entry = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)

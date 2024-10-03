@@ -140,7 +140,7 @@ class CashCtrlLedger(LedgerEngine):
         result = pd.DataFrame(
             {
                 "id": tax_rates["name"],
-                "text": tax_rates["documentName"],
+                "description": tax_rates["documentName"],
                 "account": tax_rates["accountId"].map(account_map),
                 "rate": tax_rates["percentage"] / 100,
                 "inclusive": ~tax_rates["isGrossCalcType"],
@@ -160,7 +160,7 @@ class CashCtrlLedger(LedgerEngine):
         rate: float,
         account: str,
         inclusive: bool = True,
-        text: str = "",
+        description: str = "",
     ):
         """Adds a new TAX code to the CashCtrl account.
 
@@ -170,7 +170,7 @@ class CashCtrlLedger(LedgerEngine):
             account (str): The account identifier to which the TAX is applied.
             inclusive (bool, optional): Determines whether the TAX is calculated as 'NET'
                                         (True, default) or 'GROSS' (False). Defaults to True.
-            text (str, optional): Additional text or description associated with the TAX code.
+            description (str, optional): Additional description associated with the TAX code.
                                   Defaults to "".
         """
         payload = {
@@ -178,7 +178,7 @@ class CashCtrlLedger(LedgerEngine):
             "percentage": rate * 100,
             "accountId": self._client.account_to_id(account),
             "calcType": "NET" if inclusive else "GROSS",
-            "documentName": text,
+            "documentName": description,
         }
         self._client.post("tax/create.json", data=payload)
         self._client.invalidate_tax_rates_cache()
@@ -189,7 +189,7 @@ class CashCtrlLedger(LedgerEngine):
         rate: float,
         account: str,
         inclusive: bool = True,
-        text: str = "",
+        description: str = "",
     ):
         """Updates an existing TAX code in the CashCtrl account with new parameters.
 
@@ -199,7 +199,7 @@ class CashCtrlLedger(LedgerEngine):
             account (str): The account identifier to which the TAX is applied.
             inclusive (bool, optional): Determines whether the TAX is calculated as 'NET'
                                         (True, default) or 'GROSS' (False). Defaults to True.
-            text (str, optional): Additional text or description associated with the TAX code.
+            description (str, optional): Additional description associated with the TAX code.
                                   Defaults to "".
         """
         payload = {
@@ -208,7 +208,7 @@ class CashCtrlLedger(LedgerEngine):
             "accountId": self._client.account_to_id(account),
             "calcType": "NET" if inclusive else "GROSS",
             "name": code,
-            "documentName": text,
+            "documentName": description,
         }
         self._client.post("tax/update.json", data=payload)
         self._client.invalidate_tax_rates_cache()
@@ -239,7 +239,7 @@ class CashCtrlLedger(LedgerEngine):
             {
                 "account": accounts["number"],
                 "currency": accounts["currencyCode"],
-                "text": accounts["name"],
+                "description": accounts["name"],
                 "tax_code": accounts["taxName"],
                 "group": accounts["path"],
             }
@@ -250,7 +250,7 @@ class CashCtrlLedger(LedgerEngine):
         self,
         account: str,
         currency: str,
-        text: str,
+        description: str,
         group: str,
         tax_code: Union[str, None] = None,
     ):
@@ -259,14 +259,14 @@ class CashCtrlLedger(LedgerEngine):
         Args:
             account (str): The account number or identifier to be added.
             currency (str): The currency associated with the account.
-            text (str): Additional text or description associated with the account.
+            description (str): Description associated with the account.
             group (str): The category group to which the account belongs.
             tax_code (str, optional): The TAX code to be applied to the account, if any.
         """
         payload = {
             "number": account,
             "currencyId": self._client.currency_to_id(currency),
-            "name": text,
+            "name": description,
             "taxId": None
             if pd.isna(tax_code)
             else self._client.tax_code_to_id(tax_code),
@@ -279,7 +279,7 @@ class CashCtrlLedger(LedgerEngine):
         self,
         account: str,
         currency: str,
-        text: str,
+        description: str,
         group: str,
         tax_code: Union[str, None] = None,
     ):
@@ -288,7 +288,7 @@ class CashCtrlLedger(LedgerEngine):
         Args:
             account (str): The account number or identifier to be added.
             currency (str): The currency associated with the account.
-            text (str): Additional text or description associated with the account.
+            description (str): Description associated with the account.
             group (str): The category group to which the account belongs.
             tax_code (str, optional): The TAX code to be applied to the account, if any.
         """
@@ -296,7 +296,7 @@ class CashCtrlLedger(LedgerEngine):
             "id": self._client.account_to_id(account),
             "number": account,
             "currencyId": self._client.currency_to_id(currency),
-            "name": text,
+            "name": description,
             "taxId": None
             if pd.isna(tax_code)
             else self._client.tax_code_to_id(tax_code),
@@ -435,7 +435,7 @@ class CashCtrlLedger(LedgerEngine):
                 "contra": individual["credit_account"],
                 "amount": individual["amount"],
                 "currency": individual["currencyCode"],
-                "text": individual["title"],
+                "description": individual["title"],
                 "tax_code": individual["taxName"],
                 "report_amount": self.round_to_precision(
                     np.where(
@@ -499,7 +499,7 @@ class CashCtrlLedger(LedgerEngine):
                 "date": collective["date"],
                 "currency": currency,
                 "account": collective["account"],
-                "text": collective["description"],
+                "description": collective["description"],
                 "amount": self.round_to_precision(foreign_amount, currency),
                 "report_amount": self.round_to_precision(reporting_amount, reporting_currency),
                 "tax_code": collective["taxName"],
@@ -818,7 +818,7 @@ class CashCtrlLedger(LedgerEngine):
                 "currencyId": None
                 if pd.isna(currency)
                 else self._client.currency_to_id(currency),
-                "title": entry["text"].iat[0],
+                "title": entry["description"].iat[0],
                 "taxId": None
                 if pd.isna(entry["tax_code"].iat[0])
                 else self._client.tax_code_to_id(entry["tax_code"].iat[0]),
@@ -854,7 +854,7 @@ class CashCtrlLedger(LedgerEngine):
                         "taxId": None
                         if pd.isna(row["tax_code"])
                         else self._client.tax_code_to_id(row["tax_code"]),
-                        "description": row["text"],
+                        "description": row["description"],
                     }
                 )
 

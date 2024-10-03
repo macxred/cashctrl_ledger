@@ -13,7 +13,7 @@ from consistent_df import assert_frame_equal
 
 
 ACCOUNT_CSV = """
-      group,  account, currency, tax_code, text
+      group,  account, currency, tax_code, description
     /Assets,     9100,      CHF,         , Opening Account
     /Assets,     1172,      CHF,         , Input Tax Adjustment Account
     /Assets,     7900,      CHF,         , Inventory Asset Revenue Account
@@ -52,7 +52,7 @@ SETTINGS = {
             "name": "<values><de>Auf 0.05 runden</de><en>Round to 0.05</en></values>",
             "rounding": 0.05,
             "mode": "HALF_UP",
-            "text": None,
+            "description": None,
             "value": None,
             "referenced": False
         },
@@ -61,7 +61,7 @@ SETTINGS = {
             "name": "<values><de>Auf 1.00 runden</de><en>Round to 1.00</en></values>",
             "rounding": 1.0,
             "mode": "HALF_UP",
-            "text": None,
+            "description": None,
             "value": None,
             "referenced": False
         }

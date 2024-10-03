@@ -24,7 +24,7 @@ from cashctrl_ledger import CashCtrlLedger
 import pandas as pd
 
 TAX_CODES = """
-    id,account,rate,inclusive,text
+    id,account,rate,inclusive,description
     TAX 2.6%,2200,0.026,,TAX 2.6%
     TAX 3.8%,2200,0.038,,TAX 3.8%
     TAX 8.1%,2200,0.081,,TAX 8.1%
@@ -36,7 +36,7 @@ TAX_CODES = """
 # flake8: noqa: E501
 
 ACCOUNTS = """
-    account,currency,text,tax_code,group
+    account,currency,description,tax_code,group
     1000,CHF,<values><de>Kasse</de><en>Cash</en><fr>Caisse</fr><it>Cassa</it></values>,,/Assets/Umlaufvermögen/Flüssige Mittel
     1010,CHF,<values><de>Post</de><en>Postal account</en><fr>Poste</fr><it>Posta</it></values>,,/Assets/Umlaufvermögen/Flüssige Mittel
     1020,CHF,<values><de>Bank</de><en>Bank account</en><fr>Compte courant</fr><it>Conto corrente</it></values>,,/Assets/Umlaufvermögen/Flüssige Mittel
@@ -181,7 +181,7 @@ SETTINGS = {
             "name": "<values><de>Auf 0.05 runden</de><en>Round to 0.05</en></values>",
             "rounding": 0.05,
             "mode": "HALF_UP",
-            "text": None,
+            "description": None,
             "value": None,
             "referenced": False
         },
@@ -190,7 +190,7 @@ SETTINGS = {
             "name": "<values><de>Auf 1.00 runden</de><en>Round to 1.00</en></values>",
             "rounding": 1.0,
             "mode": "HALF_UP",
-            "text": None,
+            "description": None,
             "value": None,
             "referenced": False
         }
