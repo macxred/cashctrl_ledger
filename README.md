@@ -28,7 +28,7 @@ users can perform various accounting operations programmatically, directly from 
 
 ## Key Features:
 This package streamlines the connection between your local ledger system and CashCtrl system.
-It simplifies managing VAT codes, accounts, and ledger entries by keeping your local and CashCtrl
+It simplifies managing tax codes, accounts, and ledger entries by keeping your local and CashCtrl
 data in sync. You can easily add, update, or delete financial records and attachments,
 ensuring everything is consistent across both systems.
 

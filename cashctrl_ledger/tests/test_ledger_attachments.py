@@ -5,19 +5,14 @@ from cashctrl_ledger import CashCtrlLedger
 import pandas as pd
 import pytest
 
-# flake8: noqa: E501
-
 LEDGER_CSV = """
-    id,   date, account, counter_account,  currency, amount,  text,                             document
-    1, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,
-    2, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      file1.txt
-    3, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      subdir/file2.txt
-    4, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      file1.txt
-    5, 2024-05-24, 2100,            2200,       CHF,    100,  pytest single transaction 1,      file_invalid.txt
+    id,   date, account, contra,  currency, amount,  description,                  document
+    1, 2024-05-24, 2100,   2200,       CHF,    100,  pytest single transaction 1,
+    2, 2024-05-24, 2100,   2200,       CHF,    100,  pytest single transaction 1,  file1.txt
+    3, 2024-05-24, 2100,   2200,       CHF,    100,  pytest single transaction 1,  subdir/file2.txt
+    4, 2024-05-24, 2100,   2200,       CHF,    100,  pytest single transaction 1,  file1.txt
+    5, 2024-05-24, 2100,   2200,       CHF,    100,  pytest single transaction 1,  file_invalid.txt
 """
-
-# flake8: enable
-
 LEDGER_ENTRIES = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
 
 
@@ -60,10 +55,10 @@ def ledger_ids():
     entry = pd.DataFrame({
         "date": ["2024-05-24"],
         "account": [2270],
-        "counter_account": [2210],
+        "contra": [2210],
         "amount": [100],
         "currency": ["CHF"],
-        "text": ["test entry"],
+        "description": ["test entry"],
     })
     engine = CashCtrlLedger()
     ledger_ids = [engine.add_ledger_entry(entry) for _ in range(3)]

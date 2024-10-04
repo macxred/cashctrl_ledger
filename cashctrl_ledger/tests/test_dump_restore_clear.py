@@ -13,7 +13,7 @@ from consistent_df import assert_frame_equal
 
 
 ACCOUNT_CSV = """
-      group,  account, currency, vat_code, text
+      group,  account, currency, tax_code, description
     /Assets,     9100,      CHF,         , Opening Account
     /Assets,     1172,      CHF,         , Input Tax Adjustment Account
     /Assets,     7900,      CHF,         , Inventory Asset Revenue Account
@@ -45,14 +45,13 @@ SETTINGS = {
         "DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID": 6960,
         "DEFAULT_CREDITOR_ACCOUNT_ID": 2000
     },
-    "BASE_CURRENCY": "CHF",
+    "REPORTING_CURRENCY": "CHF",
     "DEFAULT_ROUNDINGS":[
         {
             "account": 6961,
             "name": "<values><de>Auf 0.05 runden</de><en>Round to 0.05</en></values>",
             "rounding": 0.05,
             "mode": "HALF_UP",
-            "text": None,
             "value": None,
             "referenced": False
         },
@@ -61,7 +60,6 @@ SETTINGS = {
             "name": "<values><de>Auf 1.00 runden</de><en>Round to 1.00</en></values>",
             "rounding": 1.0,
             "mode": "HALF_UP",
-            "text": None,
             "value": None,
             "referenced": False
         }
@@ -83,7 +81,7 @@ class TestDumpRestoreClear(BaseTestDumpRestoreClear):
         with zipfile.ZipFile(tmp_path / "system.zip", 'r') as archive:
             settings = json.loads(archive.open('settings.json').read().decode('utf-8'))
             roundings = settings.get("DEFAULT_ROUNDINGS", None)
-            base_currency = settings.get("BASE_CURRENCY", None)
+            reporting_currency = settings.get("REPORTING_CURRENCY", None)
             system_settings = settings.get("DEFAULT_SETTINGS", None)
             settings["DEFAULT_SETTINGS"]
 
@@ -100,5 +98,5 @@ class TestDumpRestoreClear(BaseTestDumpRestoreClear):
             roundings = roundings[columns]
 
             assert_frame_equal(default_roundings, roundings, check_like=True)
-            assert base_currency == SETTINGS["BASE_CURRENCY"]
+            assert reporting_currency == SETTINGS["REPORTING_CURRENCY"]
             assert system_settings == SETTINGS["DEFAULT_SETTINGS"]
