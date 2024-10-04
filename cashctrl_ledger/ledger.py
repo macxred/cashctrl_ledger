@@ -323,7 +323,7 @@ class CashCtrlLedger(LedgerEngine):
         the parent class method.
 
         Args:
-            target (pd.DataFrame): DataFrame with an accounts in the pyledger format.
+            target (pd.DataFrame): DataFrame with an account chart in the pyledger format.
             delete (bool, optional): If True, deletes accounts on the remote that are not
                                      present in the target DataFrame.
         """

@@ -20,7 +20,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
     overall financial result.
 
     To use this class, a special `transitory_account` must be defined in the
-    accounts. Residual amounts arising from split transactions are
+    chart of accounts. Residual amounts arising from split transactions are
     recorded in this account. The account is balanced for any group of split
     transactions that together represent a single original transaction.
     """
