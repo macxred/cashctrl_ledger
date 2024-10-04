@@ -156,7 +156,7 @@ class CashCtrlLedger(LedgerEngine):
 
     def add_tax_code(
         self,
-        code: str,
+        id: str,
         rate: float,
         account: str,
         description: str = "",
@@ -165,7 +165,7 @@ class CashCtrlLedger(LedgerEngine):
         """Adds a new tax code to the CashCtrl account.
 
         Args:
-            code (str): The tax code to be added.
+            id (str): The tax code to be added.
             rate (float): The tax rate, must be between 0 and 1.
             account (str): The account identifier to which the tax is applied.
             is_inclusive (bool, optional): Determines whether the tax is calculated as 'NET'
@@ -174,7 +174,7 @@ class CashCtrlLedger(LedgerEngine):
                                   Defaults to "".
         """
         payload = {
-            "name": code,
+            "name": id,
             "percentage": rate * 100,
             "accountId": self._client.account_to_id(account),
             "documentName": description,
@@ -185,7 +185,7 @@ class CashCtrlLedger(LedgerEngine):
 
     def modify_tax_code(
         self,
-        code: str,
+        id: str,
         rate: float,
         account: str,
         description: str = "",
@@ -194,7 +194,7 @@ class CashCtrlLedger(LedgerEngine):
         """Updates an existing tax code in the CashCtrl account with new parameters.
 
         Args:
-            code (str): The tax code to be updated.
+            id (str): The tax code to be updated.
             rate (float): The tax rate, must be between 0 and 1.
             account (str): The account identifier to which the tax is applied.
             is_inclusive (bool, optional): Determines whether the tax is calculated as 'NET'
@@ -203,11 +203,11 @@ class CashCtrlLedger(LedgerEngine):
                                   Defaults to "".
         """
         payload = {
-            "id": self._client.tax_code_to_id(code),
+            "id": self._client.tax_code_to_id(id),
             "percentage": rate * 100,
             "accountId": self._client.account_to_id(account),
             "calcType": "NET" if is_inclusive else "GROSS",
-            "name": code,
+            "name": id,
             "documentName": description,
         }
         self._client.post("tax/update.json", data=payload)
