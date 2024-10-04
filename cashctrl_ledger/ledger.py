@@ -115,7 +115,7 @@ class CashCtrlLedger(LedgerEngine):
             ids = ','.join(str(item['id']) for item in roundings)
             self._client.post("rounding/delete.json", data={"ids": ids})
 
-        # Manually reset accounts TAX to none
+        # Manually reset accounts tax to none
         accounts = self.accounts()
         self.mirror_accounts(accounts.assign(tax_code=pd.NA))
         self.mirror_tax_codes(None, delete=True)
@@ -123,10 +123,10 @@ class CashCtrlLedger(LedgerEngine):
         # TODO: Implement price history, precision settings, and FX adjustments clearing logic
 
     # ----------------------------------------------------------------------
-    # TAX codes
+    # Tax codes
 
     def tax_codes(self) -> pd.DataFrame:
-        """Retrieves TAX codes from the remote CashCtrl account and converts to standard
+        """Retrieves tax codes from the remote CashCtrl account and converts to standard
         pyledger format.
 
         Returns:
@@ -150,7 +150,7 @@ class CashCtrlLedger(LedgerEngine):
         duplicates = set(result.loc[result["id"].duplicated(), "id"])
         if duplicates:
             raise ValueError(
-                f"Duplicated TAX codes in the remote system: '{', '.join(map(str, duplicates))}'"
+                f"Duplicated tax codes in the remote system: '{', '.join(map(str, duplicates))}'"
             )
         return StandaloneLedger.standardize_tax_codes(result)
 
@@ -162,15 +162,15 @@ class CashCtrlLedger(LedgerEngine):
         description: str = "",
         is_inclusive: bool = True,
     ):
-        """Adds a new TAX code to the CashCtrl account.
+        """Adds a new tax code to the CashCtrl account.
 
         Args:
-            code (str): The TAX code to be added.
-            rate (float): The TAX rate, must be between 0 and 1.
-            account (str): The account identifier to which the TAX is applied.
-            is_inclusive (bool, optional): Determines whether the TAX is calculated as 'NET'
+            code (str): The tax code to be added.
+            rate (float): The tax rate, must be between 0 and 1.
+            account (str): The account identifier to which the tax is applied.
+            is_inclusive (bool, optional): Determines whether the tax is calculated as 'NET'
                                         (True, default) or 'GROSS' (False). Defaults to True.
-            description (str, optional): Additional description associated with the TAX code.
+            description (str, optional): Additional description associated with the tax code.
                                   Defaults to "".
         """
         payload = {
@@ -191,15 +191,15 @@ class CashCtrlLedger(LedgerEngine):
         description: str = "",
         is_inclusive: bool = True,
     ):
-        """Updates an existing TAX code in the CashCtrl account with new parameters.
+        """Updates an existing tax code in the CashCtrl account with new parameters.
 
         Args:
-            code (str): The TAX code to be updated.
-            rate (float): The TAX rate, must be between 0 and 1.
-            account (str): The account identifier to which the TAX is applied.
-            is_inclusive (bool, optional): Determines whether the TAX is calculated as 'NET'
+            code (str): The tax code to be updated.
+            rate (float): The tax rate, must be between 0 and 1.
+            account (str): The account identifier to which the tax is applied.
+            is_inclusive (bool, optional): Determines whether the tax is calculated as 'NET'
                                         (True, default) or 'GROSS' (False). Defaults to True.
-            description (str, optional): Additional description associated with the TAX code.
+            description (str, optional): Additional description associated with the tax code.
                                   Defaults to "".
         """
         payload = {
@@ -261,7 +261,7 @@ class CashCtrlLedger(LedgerEngine):
             currency (str): The currency associated with the account.
             description (str): Description associated with the account.
             group (str): The category group to which the account belongs.
-            tax_code (str, optional): The TAX code to be applied to the account, if any.
+            tax_code (str, optional): The tax code to be applied to the account, if any.
         """
         payload = {
             "number": account,
@@ -290,7 +290,7 @@ class CashCtrlLedger(LedgerEngine):
             currency (str): The currency associated with the account.
             description (str): Description associated with the account.
             group (str): The category group to which the account belongs.
-            tax_code (str, optional): The TAX code to be applied to the account, if any.
+            tax_code (str, optional): The tax code to be applied to the account, if any.
         """
         payload = {
             "id": self._client.account_to_id(account),

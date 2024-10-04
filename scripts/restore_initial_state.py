@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"""This script restores the default TAX codes, accounts, and journals in a CashCtrl ledger system.
+"""This script restores the default tax codes, accounts, and journals in a CashCtrl ledger system.
 
 Automatic Execution:
     This script is set to run automatically every night at 3 AM as a GitHub Action.
@@ -25,9 +25,9 @@ import pandas as pd
 
 TAX_CODES = """
     id,account,rate,is_inclusive,description
-    TAX 2.6%,2200,0.026,,TAX 2.6%
-    TAX 3.8%,2200,0.038,,TAX 3.8%
-    TAX 8.1%,2200,0.081,,TAX 8.1%
+    tax 2.6%,2200,0.026,,tax 2.6%
+    tax 3.8%,2200,0.038,,tax 3.8%
+    tax 8.1%,2200,0.081,,tax 8.1%
     Input tax 2.6%,1170,0.026,,Input tax 2.6%
     Input tax 3.8%,1170,0.038,,Input tax 3.8%
     Input tax 8.1%,1170,0.081,,Input tax 8.1%

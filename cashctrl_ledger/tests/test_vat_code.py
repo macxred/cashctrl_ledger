@@ -13,7 +13,7 @@ class TestTaxCodes(BaseTestTaxCodes):
         initial_ledger.clear()
         return initial_ledger
 
-    @pytest.mark.skip(reason="Cashctrl allows creating duplicate TAX codes")
+    @pytest.mark.skip(reason="Cashctrl allows creating duplicate tax codes")
     def test_create_already_existed_raise_error(self):
         pass
 
@@ -25,7 +25,7 @@ class TestTaxCodes(BaseTestTaxCodes):
         assert 8888 not in ledger.accounts()["account"].values
         with pytest.raises(ValueError):
             ledger.add_tax_code(
-                code="TestCode", description="TAX 20%", account=8888, rate=0.02, is_inclusive=True
+                code="TestCode", description="tax 20%", account=8888, rate=0.02, is_inclusive=True
             )
 
     def test_update_tax_with_not_valid_account_raise_error(self, ledger):
@@ -33,7 +33,7 @@ class TestTaxCodes(BaseTestTaxCodes):
         assert 8888 not in ledger.accounts()["account"].values
         with pytest.raises(ValueError):
             ledger.modify_tax_code(
-                code="TestCode", description="TAX 20%", account=8888, rate=0.02, is_inclusive=True
+                code="TestCode", description="tax 20%", account=8888, rate=0.02, is_inclusive=True
             )
 
     def test_delete_tax_non_existent(self, ledger):

@@ -27,7 +27,7 @@ class TestLedger(BaseTestLedger):
         super().test_add_ledger_entry(ledger, ledger_id)
 
     def test_add_ledger_with_non_existing_tax(self, ledger):
-        # Adding a ledger entry with non existing TAX code should raise an error
+        # Adding a ledger entry with non existing tax code should raise an error
         target = self.LEDGER_ENTRIES.query("id == '1'").copy()
         target["tax_code"].iat[0] = "Test_Non_Existent_TAX_code"
         with pytest.raises(ValueError, match="No id found for tax code"):
@@ -78,7 +78,7 @@ class TestLedger(BaseTestLedger):
         ledger_entry = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
         id = ledger.add_ledger_entry(ledger_entry)
 
-        # Updating a ledger with non existent TAX code should raise an error
+        # Updating a ledger with non existent tax code should raise an error
         target = ledger_entry.copy()
         target["id"] = id
         target["tax_code"] = "Test_Non_Existent_TAX_code"
