@@ -29,7 +29,7 @@ class TestLedger(BaseTestLedger):
     def test_add_ledger_with_non_existing_tax(self, ledger):
         # Adding a ledger entry with non existing tax code should raise an error
         target = self.LEDGER_ENTRIES.query("id == '1'").copy()
-        target["tax_code"].iat[0] = "Test_Non_Existent_TAX_code"
+        target.loc[0, "tax_code"] = "Test_Non_Existent_TAX_code"
         with pytest.raises(ValueError, match="No id found for tax code"):
             ledger.add_ledger_entry(target)
 
@@ -88,14 +88,14 @@ class TestLedger(BaseTestLedger):
         # Updating a ledger with non existent account code should raise an error
         target = ledger_entry.copy()
         target["id"] = id
-        target["account"].iat[0] = 333333
+        target.loc[0, "account"] = 333333
         with pytest.raises(ValueError, match="No id found for account"):
             ledger.modify_ledger_entry(target)
 
         # Updating a ledger with non existent currency code should raise an error
         target = ledger_entry.copy()
         target["id"] = id
-        target["currency"].iat[0] = "Non_Existent_Currency"
+        target.loc[0, "currency"] = "Non_Existent_Currency"
         with pytest.raises(ValueError, match="No id found for currency"):
             ledger.modify_ledger_entry(target)
 
