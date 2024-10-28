@@ -884,14 +884,6 @@ class CashCtrlLedger(LedgerEngine):
             raise ValueError("The ledger entry contains no transaction.")
         return payload
 
-    def mirror_ledger(self, target: pd.DataFrame, delete: bool = False):
-        fiscal_period = self._client.get("fiscalperiod/read.json")['data']['id']
-        # self._client.post("fiscalperiod/switch.json", data={"id": ""})
-
-        super().mirror_ledger(target, delete)
-
-        # self._client.post("fiscalperiod/switch.json", data={"id": fiscal_period})
-
     # ----------------------------------------------------------------------
     # Currencies
 
