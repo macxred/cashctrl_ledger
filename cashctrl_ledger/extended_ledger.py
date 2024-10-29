@@ -135,7 +135,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
             new_txn = self._add_fx_adjustment(
                 txn, transitory_account=transitory_account, reporting_currency=reporting_currency
             )
-            result.append(new_txn)
+            result.append(self.standardize_ledger_columns(new_txn))
         if len(result) > 0:
             result = pd.concat(result)
         else:
@@ -317,7 +317,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     fx_adjust["id"] = fx_adjust["id"] + ":fx"
                     fx_adjust["description"] = "Currency adjustments: " + fx_adjust["description"]
                     fx_adjust = fx_adjust[balance != 0]
-                    result = pd.concat([entry, fx_adjust])
+                    result = pd.concat([entry, self.standardize_ledger_columns(fx_adjust)])
                     result["amount"] = self.round_to_precision(
                         result["amount"], result["currency"]
                     )

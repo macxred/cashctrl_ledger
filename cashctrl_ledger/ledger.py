@@ -434,10 +434,8 @@ class CashCtrlLedger(LedgerEngine):
                 "date": individual["dateAdded"].dt.date,
                 "account": individual["debit_account"],
                 "contra": individual["credit_account"],
-                "amount": individual["amount"],
                 "currency": individual["currencyCode"],
-                "description": individual["title"],
-                "tax_code": individual["taxName"],
+                "amount": individual["amount"],
                 "report_amount": self.round_to_precision(
                     np.where(
                         is_fx_adjustment,
@@ -446,6 +444,8 @@ class CashCtrlLedger(LedgerEngine):
                     ),
                     self.reporting_currency,
                 ),
+                "tax_code": individual["taxName"],
+                "description": individual["title"],
                 "document": individual["reference"],
             }
         )
@@ -498,12 +498,12 @@ class CashCtrlLedger(LedgerEngine):
             mapped_collective = pd.DataFrame({
                 "id": collective["id"],
                 "date": collective["date"],
-                "currency": currency,
                 "account": collective["account"],
-                "description": collective["description"],
+                "currency": currency,
                 "amount": self.round_to_precision(foreign_amount, currency),
                 "report_amount": self.round_to_precision(reporting_amount, reporting_currency),
                 "tax_code": collective["taxName"],
+                "description": collective["description"],
                 "document": collective["document"]
             })
             result = pd.concat([
