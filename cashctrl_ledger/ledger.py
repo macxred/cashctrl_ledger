@@ -65,6 +65,28 @@ class CashCtrlLedger(LedgerEngine):
             archive.writestr('tax_codes.csv', self.tax_codes().to_csv(index=False))
             archive.writestr('accounts.csv', self.accounts().to_csv(index=False))
 
+    def restore_from_zip(self, archive_path: str):
+        required_files = {'ledger.csv', 'tax_codes.csv', 'accounts.csv', 'settings.json'}
+
+        with zipfile.ZipFile(archive_path, 'r') as archive:
+            archive_files = set(archive.namelist())
+            missing_files = required_files - archive_files
+            if missing_files:
+                raise FileNotFoundError(
+                    f"Missing required files in the archive: {', '.join(missing_files)}"
+                )
+
+            settings = json.loads(archive.open('settings.json').read().decode('utf-8'))
+            ledger = pd.read_csv(archive.open('ledger.csv'))
+            accounts = pd.read_csv(archive.open('accounts.csv'))
+            tax_codes = pd.read_csv(archive.open('tax_codes.csv'))
+            self.restore(
+                settings=settings,
+                ledger=ledger,
+                tax_codes=tax_codes,
+                accounts=accounts,
+            )
+
     def restore(
         self,
         settings: dict | None = None,
