@@ -19,7 +19,12 @@ from pyledger.constants import (
     LEDGER_SCHEMA,
     ASSETS_SCHEMA
 )
-from .constants import FX_REVALUATION_ACCOUNT_COLUMNS, JOURNAL_ITEM_COLUMNS, SETTINGS_KEYS
+from .constants import (
+    FX_REVALUATION_ACCOUNT_OPTIONAL_COLUMNS,
+    FX_REVALUATION_ACCOUNT_REQUIRED_COLUMNS,
+    JOURNAL_ITEM_COLUMNS,
+    SETTINGS_KEYS
+)
 from consistent_df import unnest, enforce_dtypes, enforce_schema
 
 
@@ -878,21 +883,29 @@ class CashCtrlLedger(LedgerEngine):
         initial_fx_gain_loss_account = get_fx_gain_loss_account(allow_missing=True)
 
         if accounts is None:
-            ex_diff = self._client.get("fiscalperiod/exchangediff.json")["data"]
+            fx_rates = self._client.get("fiscalperiod/exchangediff.json")["data"]
             accounts = pd.DataFrame({
                 "foreign_currency_account": [
-                    self._client.account_from_id(entry['accountId']) for entry in ex_diff
+                    self._client.account_from_id(entry['accountId']) for entry in fx_rates
                 ],
                 "fx_gain_loss_account": initial_fx_gain_loss_account,
-                "exchange_rate": None
             })
 
         # Record FX gain loss on given accounts
-        accounts = enforce_dtypes(accounts, FX_REVALUATION_ACCOUNT_COLUMNS)
+        accounts = enforce_dtypes(
+            accounts,
+            FX_REVALUATION_ACCOUNT_REQUIRED_COLUMNS,
+            FX_REVALUATION_ACCOUNT_OPTIONAL_COLUMNS,
+        )
+        accounts["fx_gain_loss_account"] = (
+            accounts["fx_gain_loss_account"]
+            .fillna(initial_fx_gain_loss_account)
+        )
         for fx_gain_loss_account in accounts["fx_gain_loss_account"].unique():
             set_fx_gain_loss_account(fx_gain_loss_account)
             df = accounts.loc[accounts["fx_gain_loss_account"] == fx_gain_loss_account]
 
+            # TODO: Refactor this part when get_exchange_rate() will be implemented
             def get_exchange_rate(rate: float | None, account: int) -> float:
                 if pd.isna(rate):
                     from_currency = self._client.account_to_currency(account)
@@ -915,6 +928,19 @@ class CashCtrlLedger(LedgerEngine):
 
         # Restore initial setting
         set_fx_gain_loss_account(initial_fx_gain_loss_account, allow_missing=True)
+
+    def FX_valuation(self) -> pd.DataFrame:
+        """Retrieve and process foreign exchange valuation data.
+
+        This method retrieves foreign exchange differences, processes the data into
+        a pandas DataFrame, and maps the `accountId` to the corresponding account identifier.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing the processed foreign exchange valuation data.
+        """
+        df = pd.DataFrame(self._client.get("fiscalperiod/exchangediff.json")["data"])
+        df["account"] = df["accountId"].apply(self._client.account_from_id)
+        return df
 
     # ----------------------------------------------------------------------
     # Currencies
