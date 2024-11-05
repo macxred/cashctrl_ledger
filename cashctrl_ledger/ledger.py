@@ -965,6 +965,11 @@ class CashCtrlLedger(LedgerEngine):
             "Cashctrl doesn't support adding exchange rates through the API."
         )
 
+    def modify_price(self):
+        raise NotImplementedError(
+            "Cashctrl doesn't support modifying exchange rates through the API."
+        )
+
     def delete_price(self):
         raise NotImplementedError(
             "Cashctrl doesn't support deleting exchange rates through the API."
@@ -973,4 +978,24 @@ class CashCtrlLedger(LedgerEngine):
     def price_history(self):
         raise NotImplementedError(
             "Cashctrl doesn't support reading the exchange rate history through the API."
+        )
+
+    def assets(self):
+        raise NotImplementedError(
+            "Cashctrl doesn't support reading assets through the API."
+        )
+
+    def add_asset(self):
+        raise NotImplementedError(
+            "Cashctrl doesn't support adding assets through the API."
+        )
+
+    def modify_asset(self):
+        raise NotImplementedError(
+            "Cashctrl doesn't support modifying exchange rates through the API."
+        )
+
+    def delete_asset(self):
+        raise NotImplementedError(
+            "Cashctrl doesn't support deleting assets through the API."
         )
