@@ -762,7 +762,7 @@ class CashCtrlLedger(LedgerEngine):
                 return entry
             else:
                 amount = round(entry["amount"].item(), 2)
-                base_amount = round(entry["base_currency_amount"].item(), 2)
+                base_amount = round(entry["report_amount"].item(), 2)
                 # TODO: Once precision() is implemented, use `round_to_precision()`
                 fx_rate = round(base_amount / amount, 8)
                 balance = base_amount - round(amount * fx_rate, 2)
@@ -773,9 +773,9 @@ class CashCtrlLedger(LedgerEngine):
                     balancing_txn["id"] = balancing_txn["id"] + ":fx"
                     balancing_txn["currency"] = base_currency
                     balancing_txn["amount"] = balance
-                    balancing_txn["base_currency_amount"] = pd.NA
-                    entry["base_currency_amount"] = (
-                        entry["base_currency_amount"] - balance
+                    balancing_txn["report_amount"] = pd.NA
+                    entry["report_amount"] = (
+                        entry["report_amount"] - balance
                     )
                     result = pd.concat(
                         [
@@ -785,8 +785,8 @@ class CashCtrlLedger(LedgerEngine):
                     )
                     # TODO: Once precision() is implemented, use `round_to_precision()`
                     result["amount"] = result["amount"].round(2)
-                    result["base_currency_amount"] = result[
-                        "base_currency_amount"
+                    result["report_amount"] = result[
+                        "report_amount"
                     ].round(2)
                     return self.standardize_ledger(result)
 
@@ -800,7 +800,7 @@ class CashCtrlLedger(LedgerEngine):
                 return entry
             else:
                 amount = entry["amount"].round(2)
-                base_amount = entry["base_currency_amount"].round(2)
+                base_amount = entry["report_amount"].round(2)
                 balance = np.where(
                     entry["currency"] == base_currency,
                     amount - ((amount / fx_rate).round(2) * fx_rate).round(2),
@@ -814,15 +814,15 @@ class CashCtrlLedger(LedgerEngine):
                     balancing_txn["currency"] = base_currency
                     balancing_txn["amount"] = balance.sum()
                     balancing_txn["account"] = transitory_account
-                    balancing_txn["base_currency_amount"] = pd.NA
+                    balancing_txn["report_amount"] = pd.NA
                     balancing_txn[
                         "text"
                     ] = "Currency adjustments to match CashCtrl FX rate precision"
                     entry["amount"] = entry["amount"] - np.where(
                         is_base_currency, balance, 0
                     )
-                    entry["base_currency_amount"] = (
-                        entry["base_currency_amount"] - balance
+                    entry["report_amount"] = (
+                        entry["report_amount"] - balance
                     )
                     entry = pd.concat(
                         [
@@ -834,7 +834,7 @@ class CashCtrlLedger(LedgerEngine):
                     fx_adjust = entry.copy()
                     is_base_currency = fx_adjust["currency"] == base_currency
                     fx_adjust["amount"] = np.where(is_base_currency, balance, 0.0)
-                    fx_adjust["base_currency_amount"] = np.where(
+                    fx_adjust["report_amount"] = np.where(
                         is_base_currency, pd.NA, balance
                     )
                     fx_adjust["id"] = fx_adjust["id"] + ":fx"
@@ -843,7 +843,7 @@ class CashCtrlLedger(LedgerEngine):
                     result = pd.concat([entry, fx_adjust])
                     # TODO: Once precision() is implemented, use `round_to_precision()`
                     result["amount"] = result["amount"].astype(pd.Float64Dtype()).round(2)
-                    result["base_currency_amount"] = result["base_currency_amount"].astype(
+                    result["report_amount"] = result["report_amount"].astype(
                         pd.Float64Dtype()
                     ).round(2)
                     return self.standardize_ledger(result)
@@ -909,7 +909,7 @@ class CashCtrlLedger(LedgerEngine):
             def get_exchange_rate(rate: float | None, account: int) -> float:
                 if pd.isna(rate):
                     from_currency = self._client.account_to_currency(account)
-                    params = {"from": from_currency, "to": self.base_currency, "date": None}
+                    params = {"from": from_currency, "to": self.reporting_currency, "date": None}
                     response = self._client.request("GET", "currency/exchangerate", params=params)
                     return response.json()
                 else:
