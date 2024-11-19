@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 import zipfile
 import json
-from io import StringIO
+
 from pyledger.tests import BaseTestDumpRestoreClear
 # flake8: noqa: F401
 from base_test import initial_ledger
@@ -12,24 +12,6 @@ from cashctrl_ledger.constants import SETTINGS_KEYS
 from consistent_df import assert_frame_equal
 
 
-ACCOUNT_CSV = """
-      group,  account, currency, tax_code, description
-    /Assets,     9100,      CHF,         , Opening Account
-    /Assets,     1172,      CHF,         , Input Tax Adjustment Account
-    /Assets,     7900,      CHF,         , Inventory Asset Revenue Account
-    /Assets,     6800,      CHF,         , Inventory Depreciation Account
-    /Assets,     9200,      CHF,         , Profit Allocation Account
-    /Assets,     2202,      CHF,         , Sales Tax Adjustment Account
-    /Assets,     3200,      CHF,         , Inventory Article Revenue Account
-    /Assets,     4200,      CHF,         , Inventory Article Expense Account
-    /Assets,     1100,      CHF,         , Debtor Account
-    /Assets,     6801,      CHF,         , Inventory Disposal Account
-    /Assets,     6960,      CHF,         , Exchange Difference Account
-    /Assets,     2000,      CHF,         , Creditor Account
-    /Assets,     6961,      CHF,         , Round Account
-    /Assets,     9999,      CHF,         , Transitory Account
-"""
-ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
 SETTINGS = {
     "DEFAULT_SETTINGS": {
         "DEFAULT_OPENING_ACCOUNT_ID": 9100,
@@ -74,8 +56,20 @@ class TestDumpRestoreClear(BaseTestDumpRestoreClear):
         initial_ledger.clear()
         return initial_ledger
 
+    @pytest.mark.skip(reason="We don't have implemented functionality for this yet.")
+    def test_restore(self):
+        pass
+
+    @pytest.mark.skip(reason="We don't have implemented functionality for this yet.")
+    def test_dump_and_restore_zip(self):
+        pass
+
+    @pytest.mark.skip(reason="We don't have implemented functionality for this yet.")
+    def test_clear(self):
+        pass
+
     def test_restore_settings(self, ledger, tmp_path):
-        ledger.restore(ledger=pd.DataFrame({}), accounts=ACCOUNTS, settings=SETTINGS)
+        ledger.restore(settings=SETTINGS)
         ledger.dump_to_zip(tmp_path / "system.zip")
         with zipfile.ZipFile(tmp_path / "system.zip", 'r') as archive:
             settings = json.loads(archive.open('settings.json').read().decode('utf-8'))

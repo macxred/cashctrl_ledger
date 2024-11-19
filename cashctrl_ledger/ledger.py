@@ -46,12 +46,9 @@ class CashCtrlLedger(LedgerEngine):
             settings["DEFAULT_SETTINGS"] = default_settings
 
             archive.writestr('settings.json', json.dumps(settings))
-            archive.writestr('ledger.csv', self.ledger().to_csv(index=False))
-            archive.writestr('tax_codes.csv', self.tax_codes().to_csv(index=False))
-            archive.writestr('accounts.csv', self.accounts().to_csv(index=False))
 
     def restore_from_zip(self, archive_path: str):
-        required_files = {'ledger.csv', 'tax_codes.csv', 'accounts.csv', 'settings.json'}
+        required_files = {'settings.json'}
 
         with zipfile.ZipFile(archive_path, 'r') as archive:
             archive_files = set(archive.namelist())
@@ -62,23 +59,11 @@ class CashCtrlLedger(LedgerEngine):
                 )
 
             settings = json.loads(archive.open('settings.json').read().decode('utf-8'))
-            ledger = pd.read_csv(archive.open('ledger.csv'))
-            accounts = pd.read_csv(archive.open('accounts.csv'))
-            tax_codes = pd.read_csv(archive.open('tax_codes.csv'))
             self.restore(
                 settings=settings,
-                ledger=ledger,
-                tax_codes=tax_codes,
-                accounts=accounts,
             )
 
-    def restore(
-        self,
-        settings: dict | None = None,
-        tax_codes: pd.DataFrame | None = None,
-        accounts: pd.DataFrame | None = None,
-        ledger: pd.DataFrame | None = None,
-    ):
+    def restore(self, settings: dict | None = None):
         self.clear()
         if settings is not None:
             roundings = settings.get("DEFAULT_ROUNDINGS", None)
@@ -91,14 +76,6 @@ class CashCtrlLedger(LedgerEngine):
 
         if reporting_currency is not None:
             self.reporting_currency = reporting_currency
-        if accounts is not None:
-            self.mirror_accounts(accounts.assign(tax_code=pd.NA), delete=True)
-        if tax_codes is not None:
-            self.mirror_tax_codes(tax_codes, delete=True)
-        if accounts is not None:
-            self.mirror_accounts(accounts, delete=True)
-        if ledger is not None:
-            self.mirror_ledger(ledger, delete=True)
         if system_settings is not None:
             for key in SETTINGS_KEYS:
                 if key in system_settings:
@@ -112,8 +89,6 @@ class CashCtrlLedger(LedgerEngine):
         # and FX adjustments restoration logic
 
     def clear(self):
-        self.mirror_ledger(None, delete=True)
-
         # Clear default System settings
         empty_settings = {key: "" for key in SETTINGS_KEYS}
         self._client.post("setting/update.json", empty_settings)
@@ -121,12 +96,6 @@ class CashCtrlLedger(LedgerEngine):
         if len(roundings):
             ids = ','.join(str(item['id']) for item in roundings)
             self._client.post("rounding/delete.json", data={"ids": ids})
-
-        # Manually reset accounts tax to none
-        accounts = self.accounts()
-        self.mirror_accounts(accounts.assign(tax_code=pd.NA))
-        self.mirror_tax_codes(None, delete=True)
-        self.mirror_accounts(None, delete=True)
         # TODO: Implement price history, precision settings, and FX adjustments clearing logic
 
     # ----------------------------------------------------------------------
