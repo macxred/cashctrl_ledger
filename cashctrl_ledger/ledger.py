@@ -28,89 +28,6 @@ class CashCtrlLedger(LedgerEngine):
     # ----------------------------------------------------------------------
     # File operations
 
-    def dump_to_zip(self, archive_path: str):
-        with zipfile.ZipFile(archive_path, 'w') as archive:
-            settings = {"REPORTING_CURRENCY": self.reporting_currency}
-
-            roundings = self._client.get("rounding/list.json")["data"]
-            for rounding in roundings:
-                rounding["account"] = self._client.account_from_id(rounding["accountId"])
-                rounding.pop("accountId")
-            settings["DEFAULT_ROUNDINGS"] = roundings
-
-            default_settings = {}
-            system_settings = self._client.get("setting/read.json")
-            for key in SETTINGS_KEYS:
-                if key in system_settings:
-                    default_settings[key] = self._client.account_from_id(system_settings[key])
-            settings["DEFAULT_SETTINGS"] = default_settings
-
-            archive.writestr('settings.json', json.dumps(settings))
-            archive.writestr('ledger.csv', self.ledger().to_csv(index=False))
-            archive.writestr('tax_codes.csv', self.tax_codes().to_csv(index=False))
-            archive.writestr('accounts.csv', self.accounts().to_csv(index=False))
-
-    def restore_from_zip(self, archive_path: str):
-        required_files = {'ledger.csv', 'tax_codes.csv', 'accounts.csv', 'settings.json'}
-
-        with zipfile.ZipFile(archive_path, 'r') as archive:
-            archive_files = set(archive.namelist())
-            missing_files = required_files - archive_files
-            if missing_files:
-                raise FileNotFoundError(
-                    f"Missing required files in the archive: {', '.join(missing_files)}"
-                )
-
-            settings = json.loads(archive.open('settings.json').read().decode('utf-8'))
-            ledger = pd.read_csv(archive.open('ledger.csv'))
-            accounts = pd.read_csv(archive.open('accounts.csv'))
-            tax_codes = pd.read_csv(archive.open('tax_codes.csv'))
-            self.restore(
-                settings=settings,
-                ledger=ledger,
-                tax_codes=tax_codes,
-                accounts=accounts,
-            )
-
-    def restore(
-        self,
-        settings: dict | None = None,
-        tax_codes: pd.DataFrame | None = None,
-        accounts: pd.DataFrame | None = None,
-        ledger: pd.DataFrame | None = None,
-    ):
-        self.clear()
-        if settings is not None:
-            roundings = settings.get("DEFAULT_ROUNDINGS", None)
-            reporting_currency = settings.get("REPORTING_CURRENCY", None)
-            system_settings = settings.get("DEFAULT_SETTINGS", None)
-        else:
-            roundings = None
-            reporting_currency = None
-            system_settings = None
-
-        if reporting_currency is not None:
-            self.reporting_currency = reporting_currency
-        if accounts is not None:
-            self.mirror_accounts(accounts.assign(tax_code=pd.NA), delete=True)
-        if tax_codes is not None:
-            self.mirror_tax_codes(tax_codes, delete=True)
-        if accounts is not None:
-            self.mirror_accounts(accounts, delete=True)
-        if ledger is not None:
-            self.mirror_ledger(ledger, delete=True)
-        if system_settings is not None:
-            for key in SETTINGS_KEYS:
-                if key in system_settings:
-                    system_settings[key] = self._client.account_to_id(system_settings[key])
-            self._client.post("setting/update.json", data=system_settings)
-        if roundings is not None:
-            for rounding in roundings:
-                rounding["accountId"] = self._client.account_to_id(rounding["account"])
-                self._client.post("rounding/create.json", data=rounding)
-        # TODO: Implement price history, precision settings,
-        # and FX adjustments restoration logic
-
     def clear(self):
         self.mirror_ledger(None, delete=True)
 
@@ -128,6 +45,45 @@ class CashCtrlLedger(LedgerEngine):
         self.mirror_tax_codes(None, delete=True)
         self.mirror_accounts(None, delete=True)
         # TODO: Implement price history, precision settings, and FX adjustments clearing logic
+
+    # ----------------------------------------------------------------------
+    # Settings
+
+    def settings_list(self) -> dict:
+        roundings = self._client.get("rounding/list.json")["data"]
+        for rounding in roundings:
+            rounding["account"] = self._client.account_from_id(rounding["accountId"])
+            rounding.pop("accountId")
+
+        system_settings = self._client.get("setting/read.json")
+        cash_ctrl_settings = {
+            key: self._client.account_from_id(system_settings[key])
+            for key in SETTINGS_KEYS if key in system_settings
+        }
+
+        return {
+            "REPORTING_CURRENCY": self.reporting_currency,
+            "ROUNDING": roundings,
+            "CASH_CTRL": cash_ctrl_settings
+        }
+
+    def settings_restore(self, settings: dict = {}):
+        # The caller might need to `self.clear()``
+
+        if "REPORTING_CURRENCY" in settings:
+            self.reporting_currency = settings["REPORTING_CURRENCY"]
+
+        if "ROUNDING" in settings:
+            for rounding in settings["ROUNDING"]:
+                rounding["accountId"] = self._client.account_to_id(rounding["account"])
+                self._client.post("rounding/create.json", data=rounding)
+
+        if "CASH_CTRL" in settings:
+            system_settings = {
+                key: self._client.account_to_id(settings["CASH_CTRL"][key])
+                for key in SETTINGS_KEYS if key in settings["CASH_CTRL"]
+            }
+            self._client.post("setting/update.json", data=system_settings)
 
     # ----------------------------------------------------------------------
     # Accounts
