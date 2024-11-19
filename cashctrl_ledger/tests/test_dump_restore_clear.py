@@ -68,24 +68,11 @@ SETTINGS = {
 
 
 class TestDumpRestoreClear(BaseTestDumpRestoreClear):
-    LEDGER_ENTRIES = BaseTestDumpRestoreClear.LEDGER_ENTRIES.query("id.isin([1, 2, 3, 4])")
 
     @pytest.fixture(scope="class")
     def ledger(self, initial_ledger):
         initial_ledger.clear()
         return initial_ledger
-
-    @pytest.mark.skip(reason="We don't have a mechanism to deal with assets in the CashCtrl yet.")
-    def test_restore(self):
-        pass
-
-    @pytest.mark.skip(reason="We don't have a mechanism to deal with assets in the CashCtrl yet.")
-    def test_dump_and_restore_zip(self):
-        pass
-
-    @pytest.mark.skip(reason="We don't have a mechanism to deal with assets in the CashCtrl yet.")
-    def test_clear(self):
-        pass
 
     def test_restore_settings(self, ledger, tmp_path):
         ledger.restore(ledger=pd.DataFrame({}), accounts=ACCOUNTS, settings=SETTINGS)
