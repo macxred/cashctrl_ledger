@@ -45,10 +45,10 @@ class CashCtrlLedger(LedgerEngine):
                     default_settings[key] = self._client.account_from_id(system_settings[key])
             settings["DEFAULT_SETTINGS"] = default_settings
 
-            archive.writestr('settings.json', json.dumps(settings))
+            archive.writestr('settings.yml', json.dumps(settings))
 
     def restore_from_zip(self, archive_path: str):
-        required_files = {'settings.json'}
+        required_files = {'settings.yml'}
 
         with zipfile.ZipFile(archive_path, 'r') as archive:
             archive_files = set(archive.namelist())
@@ -58,7 +58,7 @@ class CashCtrlLedger(LedgerEngine):
                     f"Missing required files in the archive: {', '.join(missing_files)}"
                 )
 
-            settings = json.loads(archive.open('settings.json').read().decode('utf-8'))
+            settings = json.loads(archive.open('settings.yml').read().decode('utf-8'))
             self.restore(
                 settings=settings,
             )

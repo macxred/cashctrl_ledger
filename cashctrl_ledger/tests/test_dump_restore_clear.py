@@ -71,7 +71,7 @@ class TestDumpRestoreClear(BaseTestDumpRestoreClear):
         engine.restore(settings=SETTINGS)
         engine.dump_to_zip(tmp_path / "system.zip")
         with zipfile.ZipFile(tmp_path / "system.zip", 'r') as archive:
-            settings = json.loads(archive.open('settings.json').read().decode('utf-8'))
+            settings = json.loads(archive.open('settings.yml').read().decode('utf-8'))
             roundings = settings.get("DEFAULT_ROUNDINGS", None)
             reporting_currency = settings.get("REPORTING_CURRENCY", None)
             system_settings = settings.get("DEFAULT_SETTINGS", None)
