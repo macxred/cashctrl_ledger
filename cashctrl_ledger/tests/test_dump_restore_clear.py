@@ -4,10 +4,9 @@ import pandas as pd
 import pytest
 import zipfile
 import json
-
 from pyledger.tests import BaseTestDumpRestoreClear
 # flake8: noqa: F401
-from base_test import initial_ledger
+from base_test import initial_engine
 from cashctrl_ledger.constants import SETTINGS_KEYS
 from consistent_df import assert_frame_equal
 
@@ -52,9 +51,9 @@ SETTINGS = {
 class TestDumpRestoreClear(BaseTestDumpRestoreClear):
 
     @pytest.fixture(scope="class")
-    def ledger(self, initial_ledger):
-        initial_ledger.clear()
-        return initial_ledger
+    def engine(self, initial_engine):
+        initial_engine.clear()
+        return initial_engine
 
     @pytest.mark.skip(reason="We don't have implemented functionality for this yet.")
     def test_restore(self):
@@ -68,9 +67,9 @@ class TestDumpRestoreClear(BaseTestDumpRestoreClear):
     def test_clear(self):
         pass
 
-    def test_restore_settings(self, ledger, tmp_path):
-        ledger.restore(settings=SETTINGS)
-        ledger.dump_to_zip(tmp_path / "system.zip")
+    def test_restore_settings(self, engine, tmp_path):
+        engine.restore(settings=SETTINGS)
+        engine.dump_to_zip(tmp_path / "system.zip")
         with zipfile.ZipFile(tmp_path / "system.zip", 'r') as archive:
             settings = json.loads(archive.open('settings.json').read().decode('utf-8'))
             roundings = settings.get("DEFAULT_ROUNDINGS", None)
@@ -80,10 +79,10 @@ class TestDumpRestoreClear(BaseTestDumpRestoreClear):
 
             for key in SETTINGS_KEYS:
                 if system_settings.get(key, None) is not None:
-                    system_settings[key] = ledger._client.account_to_id(system_settings[key])
+                    system_settings[key] = engine._client.account_to_id(system_settings[key])
             if roundings is not None:
                 for rounding in roundings:
-                    rounding["accountId"] = ledger._client.account_to_id(rounding["account"])
+                    rounding["accountId"] = engine._client.account_to_id(rounding["account"])
 
             roundings = pd.DataFrame(roundings)
             default_roundings = pd.DataFrame(SETTINGS["DEFAULT_ROUNDINGS"])
