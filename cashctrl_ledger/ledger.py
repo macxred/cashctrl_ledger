@@ -4,8 +4,10 @@ import datetime
 from typing import Union
 from cashctrl_api import CachedCashCtrlClient
 import pandas as pd
+from .tax_code import TaxCode
 from pyledger import LedgerEngine
 from .constants import SETTINGS_KEYS
+from pyledger.constants import TAX_CODE_SCHEMA
 
 
 class CashCtrlLedger(LedgerEngine):
@@ -21,7 +23,9 @@ class CashCtrlLedger(LedgerEngine):
 
     def __init__(self, client: Union[CachedCashCtrlClient, None] = None):
         super().__init__()
-        self._client = CachedCashCtrlClient() if client is None else client
+        client = CachedCashCtrlClient() if client is None else client
+        self._client = client
+        self._tax_codes = TaxCode(client=client, schema=TAX_CODE_SCHEMA)
 
     # ----------------------------------------------------------------------
     # File operations
