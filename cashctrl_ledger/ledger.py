@@ -51,9 +51,7 @@ class CashCtrlLedger(LedgerEngine):
             "CASH_CTRL": cash_ctrl_settings
         }
 
-    def settings_restore(self, settings: dict = {}):
-        # The caller might need to `self.clear()``
-
+    def settings_modify(self, settings: dict = {}):
         if "REPORTING_CURRENCY" in settings:
             self.reporting_currency = settings["REPORTING_CURRENCY"]
 
