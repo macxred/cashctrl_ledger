@@ -160,7 +160,7 @@ ACCOUNTS = """
 # flake8: enable
 
 SETTINGS = {
-    "DEFAULT_SETTINGS": {
+    "CASH_CTRL": {
         "DEFAULT_OPENING_ACCOUNT_ID": 9100,
         "DEFAULT_INPUT_TAX_ADJUSTMENT_ACCOUNT_ID": 1172,
         "DEFAULT_INVENTORY_ASSET_REVENUE_ACCOUNT_ID": 7900,
@@ -174,7 +174,7 @@ SETTINGS = {
         "DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID": 6960,
         "DEFAULT_CREDITOR_ACCOUNT_ID": 2000
     },
-    "reporting_currency": "CHF",
+    "REPORTING_CURRENCY": "CHF",
     "DEFAULT_ROUNDINGS":[
         {
             "account": 6961,
