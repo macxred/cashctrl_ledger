@@ -202,9 +202,7 @@ def main():
     cashctrl_ledger = CashCtrlLedger()
     tax = pd.read_csv(StringIO(TAX_CODES), skipinitialspace=True)
     accounts = pd.read_csv(StringIO(ACCOUNTS), skipinitialspace=True)
-    cashctrl_ledger.restore(
-        settings=SETTINGS, tax_codes=tax, accounts=accounts, ledger=pd.DataFrame({})
-    )
+    cashctrl_ledger.restore(settings=SETTINGS, tax_codes=tax, accounts=accounts)
 
 
 if __name__ == "__main__":
