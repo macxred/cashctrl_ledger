@@ -34,8 +34,56 @@ class CashCtrlLedger(LedgerEngine):
     # ----------------------------------------------------------------------
     # File operations
 
+    def dump_to_zip(self, archive_path: str):
+        with zipfile.ZipFile(archive_path, 'w') as archive:
+            archive.writestr('settings.json', json.dumps(self.settings_list()))
+            archive.writestr('tax_codes.csv', self.tax_codes.list().to_csv(index=False))
+            archive.writestr('accounts.csv', self.accounts.list().to_csv(index=False))
+
+    def restore_from_zip(self, archive_path: str):
+        required_files = {'tax_codes.csv', 'accounts.csv', 'settings.json'}
+
+        with zipfile.ZipFile(archive_path, 'r') as archive:
+            archive_files = set(archive.namelist())
+            missing_files = required_files - archive_files
+            if missing_files:
+                raise FileNotFoundError(
+                    f"Missing required files in the archive: {', '.join(missing_files)}"
+                )
+
+            settings = json.loads(archive.open('settings.json').read().decode('utf-8'))
+            accounts = pd.read_csv(archive.open('accounts.csv'))
+            tax_codes = pd.read_csv(archive.open('tax_codes.csv'))
+            self.restore(
+                settings=settings,
+                tax_codes=tax_codes,
+                accounts=accounts,
+            )
+
+    def restore(
+        self,
+        settings: dict | None = None,
+        tax_codes: pd.DataFrame | None = None,
+        accounts: pd.DataFrame | None = None,
+    ):
+        if accounts is not None:
+            self.accounts.mirror(accounts.assign(tax_code=pd.NA), delete=True)
+        if tax_codes is not None:
+            self.tax_codes.mirror(tax_codes, delete=True)
+        if accounts is not None:
+            self.accounts.mirror(accounts, delete=True)
+        if settings is not None:
+            self.settings_modify(settings)
+        # TODO: Implement logic for other entities
+
     def clear(self):
         self.settings_clear()
+
+        # Manually reset accounts tax to none
+        accounts = self.accounts.list()
+        self.accounts.mirror(accounts.assign(tax_code=pd.NA))
+        self.tax_codes.mirror(None, delete=True)
+        self.accounts.mirror(None, delete=True)
         # TODO: Implement logic for other entities
 
     # ----------------------------------------------------------------------
