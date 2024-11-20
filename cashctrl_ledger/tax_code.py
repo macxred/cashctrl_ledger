@@ -60,7 +60,8 @@ class TaxCode(ExternalTabularEntity):
             current_row = current.query("id == @row['id']")
             payload = {"id": self._client.tax_code_to_id(row["id"])}
             rate = row["rate"] if "rate" in incoming.columns else current_row["rate"].item()
-            account = row["account"] if "account" in incoming.columns else current_row["account"].item()
+            account = row["account"] if "account" in incoming.columns else \
+                current_row["account"].item()
             payload["name"] = row["id"]
             payload["percentage"] = rate * 100
             payload["accountId"] = self._client.account_to_id(account)
