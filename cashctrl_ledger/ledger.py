@@ -1,13 +1,16 @@
 """Module that implements the pyledger interface by connecting to the CashCtrl API."""
 
 import datetime
+import json
 from typing import Union
+import zipfile
 from cashctrl_api import CachedCashCtrlClient
 import pandas as pd
 from .tax_code import TaxCode
+from .accounts import Account
 from pyledger import LedgerEngine
 from .constants import SETTINGS_KEYS
-from pyledger.constants import TAX_CODE_SCHEMA
+from pyledger.constants import TAX_CODE_SCHEMA, ACCOUNT_SCHEMA
 
 
 class CashCtrlLedger(LedgerEngine):
@@ -26,6 +29,7 @@ class CashCtrlLedger(LedgerEngine):
         client = CachedCashCtrlClient() if client is None else client
         self._client = client
         self._tax_codes = TaxCode(client=client, schema=TAX_CODE_SCHEMA)
+        self._accounts = Account(client=client, schema=ACCOUNT_SCHEMA)
 
     # ----------------------------------------------------------------------
     # File operations
