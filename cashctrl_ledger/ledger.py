@@ -4,8 +4,6 @@ import datetime
 from typing import Union
 from cashctrl_api import CachedCashCtrlClient
 import pandas as pd
-import zipfile
-import json
 from pyledger import LedgerEngine
 from .constants import SETTINGS_KEYS
 
@@ -29,22 +27,8 @@ class CashCtrlLedger(LedgerEngine):
     # File operations
 
     def clear(self):
-        self.mirror_ledger(None, delete=True)
-
-        # Clear default System settings
-        empty_settings = {key: "" for key in SETTINGS_KEYS}
-        self._client.post("setting/update.json", empty_settings)
-        roundings = self._client.get("rounding/list.json")["data"]
-        if len(roundings):
-            ids = ','.join(str(item['id']) for item in roundings)
-            self._client.post("rounding/delete.json", data={"ids": ids})
-
-        # Manually reset accounts tax to none
-        accounts = self.accounts()
-        self.mirror_accounts(accounts.assign(tax_code=pd.NA))
-        self.mirror_tax_codes(None, delete=True)
-        self.mirror_accounts(None, delete=True)
-        # TODO: Implement price history, precision settings, and FX adjustments clearing logic
+        self.settings_clear()
+        # TODO: Implement logic for other entities
 
     # ----------------------------------------------------------------------
     # Settings
@@ -84,6 +68,14 @@ class CashCtrlLedger(LedgerEngine):
                 for key in SETTINGS_KEYS if key in settings["CASH_CTRL"]
             }
             self._client.post("setting/update.json", data=system_settings)
+
+    def settings_clear(self):
+        empty_settings = {key: "" for key in SETTINGS_KEYS}
+        self._client.post("setting/update.json", empty_settings)
+        roundings = self._client.get("rounding/list.json")["data"]
+        if len(roundings):
+            ids = ','.join(str(item['id']) for item in roundings)
+            self._client.post("rounding/delete.json", data={"ids": ids})
 
     # ----------------------------------------------------------------------
     # Accounts
