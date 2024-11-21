@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 from pyledger.tests import BaseTestAccounts
 # flake8: noqa: F401
-from base_test import initial_ledger
+from base_test import initial_engine
 from requests.exceptions import RequestException
 
 
@@ -31,9 +31,9 @@ class TestAccounts(BaseTestAccounts):
     TAX_CODES = TAX_CODES[~(TAX_CODES["id"] == "EXEMPT")]
 
     @pytest.fixture()
-    def engine(self, initial_ledger):
-        initial_ledger.clear()
-        return initial_ledger
+    def engine(self, initial_engine):
+        initial_engine.clear()
+        return initial_engine
 
     def test_account_accessor_mutators(self, engine):
         super().test_account_accessor_mutators(engine, ignore_row_order=True)

@@ -4,7 +4,7 @@ import pytest
 import pandas as pd
 from pyledger.tests import BaseTestTaxCodes
 # flake8: noqa: F401
-from base_test import initial_ledger
+from base_test import initial_engine
 
 
 class TestTaxCodes(BaseTestTaxCodes):
@@ -20,9 +20,9 @@ class TestTaxCodes(BaseTestTaxCodes):
 
 
     @pytest.fixture(scope="class")
-    def engine(self, initial_ledger):
-        initial_ledger.clear()
-        return initial_ledger
+    def engine(self, initial_engine):
+        initial_engine.clear()
+        return initial_engine
 
     def test_tax_codes_accessor_mutators(self, engine):
         super().test_tax_codes_accessor_mutators(engine, ignore_row_order=True)
