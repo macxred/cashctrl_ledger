@@ -19,7 +19,7 @@ ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
 
 class TestAccounts(BaseTestAccounts):
     ACCOUNTS = BaseTestAccounts.ACCOUNTS.copy()
-    # In CashCtrl it is not possible to create root nodes, use default group
+    # Set the default root node for CashCtrl. In CashCtrl it is not possible to create root nodes
     ACCOUNTS.loc[:, "group"] = "/Assets"
     # TODO: Remove when Assets will be implemented
     ACCOUNTS.loc[ACCOUNTS["currency"] == "JPY", "currency"] = "USD"
