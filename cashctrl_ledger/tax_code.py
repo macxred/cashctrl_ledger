@@ -2,7 +2,7 @@
 
 import pandas as pd
 from consistent_df import enforce_schema
-from .cashctrl_accounuting_entity import CashCtrlAccountingEntity
+from .cashctrl_accounting_entity import CashCtrlAccountingEntity
 
 
 class TaxCode(CashCtrlAccountingEntity):
