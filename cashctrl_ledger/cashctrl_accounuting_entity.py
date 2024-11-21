@@ -1,11 +1,11 @@
-"""Abstract base class for storing tabular entities in CashCtrl."""
+"""Provides a base class for storing tabular accounting entities in CashCtrl."""
 
 from pyledger import AccountingEntity
 from cashctrl_api import CashCtrlClient
 
 
 class CashCtrlAccountingEntity(AccountingEntity):
-    """Abstract base class for storing tabular entities in CashCtrl."""
+    """Abstract base class for storing tabular accounting entities in CashCtrl."""
 
     _client: CashCtrlClient = None
 
@@ -15,8 +15,7 @@ class CashCtrlAccountingEntity(AccountingEntity):
 
         Args:
             client (CashCtrlClient): The client instance used to interact with the CashCtrl API.
-            *args: Additional positional arguments passed to the superclass.
-            **kwargs: Additional keyword arguments passed to the superclass.
+            *args, **kwargs: Additional arguments passed to the superclass.
         """
         self._client = client
         super().__init__(*args, **kwargs)
