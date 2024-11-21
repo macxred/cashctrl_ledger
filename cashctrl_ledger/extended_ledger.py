@@ -32,6 +32,20 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         super().__init__()
         self.transitory_account = transitory_account
 
+    def clear(self):
+        transitory_account = self._client.account_to_id(
+            self._transitory_account, allow_missing=True
+        )
+        if transitory_account is None:
+            self.accounts.add([{
+                "account": self._transitory_account,
+                "currency": self.reporting_currency,
+                "description": "temp transitory account",
+                "tax_code": None,
+                "group": "/Assets",
+            }])
+        super().clear()
+
     # ----------------------------------------------------------------------
     # Accounts
 
@@ -66,4 +80,12 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
 
     @transitory_account.setter
     def transitory_account(self, value: int):
+        if value not in set(self._client.list_accounts()["number"]):
+            self.accounts.add([{
+                "account": value,
+                "tax_code": None,
+                "group": "/Assets",
+                "description": "Transitory account",
+                "currency": self.reporting_currency
+            }])
         self._transitory_account = value
