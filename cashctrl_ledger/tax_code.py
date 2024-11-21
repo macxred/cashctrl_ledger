@@ -1,11 +1,11 @@
 """Implements tax_code accessors and mutators for CashCtrl."""
 
 import pandas as pd
-from pyledger import ExternalTabularEntity
 from consistent_df import enforce_schema
+from .cashctrl_accounuting_entity import CashCtrlAccountingEntity
 
 
-class TaxCode(ExternalTabularEntity):
+class TaxCode(CashCtrlAccountingEntity):
     """Represents a TaxCode entity within an external accounting system.
 
     Provides methods to list, add, update, and delete tax codes

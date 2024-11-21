@@ -2,11 +2,11 @@
 
 from typing import Dict, List
 import pandas as pd
-from pyledger import ExternalTabularEntity
 from consistent_df import enforce_schema, unnest
+from .cashctrl_accounuting_entity import CashCtrlAccountingEntity
 
 
-class Account(ExternalTabularEntity):
+class Account(CashCtrlAccountingEntity):
     """Represents a Account entity within an external accounting system.
 
     Provides methods to list, add, update, and delete, mirror accounts
