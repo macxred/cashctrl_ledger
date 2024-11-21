@@ -9,8 +9,8 @@ from base_test import initial_ledger
 
 class TestTaxCodes(BaseTestTaxCodes):
     ACCOUNTS = BaseTestTaxCodes.ACCOUNTS.copy()
-    # In CashCtrl it is not possible to create root nodes, use default group
-    ACCOUNTS["group"] = "/Assets"
+    # Set the default root node for CashCtrl. In CashCtrl it is not possible to create root nodes
+    ACCOUNTS.loc[:, "group"] = "/Assets"
     # TODO: Remove when Assets will be implemented
     ACCOUNTS.loc[ACCOUNTS["currency"] == "JPY", "currency"] = "USD"
 
