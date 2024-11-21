@@ -1,4 +1,4 @@
-"""Implements accounts accessors and mutators for CashCtrl."""
+"""Provides a class for storing Account entity in CashCtrl."""
 
 from typing import Dict, List
 import pandas as pd
@@ -7,23 +7,17 @@ from .cashctrl_accounting_entity import CashCtrlAccountingEntity
 
 
 class Account(CashCtrlAccountingEntity):
-    """Represents a Account entity within an external accounting system.
-
-    Provides methods to list, add, update, and delete, mirror accounts
-    in the external system via the client interface.
-    """
+    """Class for storing Account entity in CashCtrl"""
 
     def list(self) -> pd.DataFrame:
         accounts = self._client.list_accounts()
-        result = pd.DataFrame(
-            {
-                "account": accounts["number"],
-                "currency": accounts["currencyCode"],
-                "description": accounts["name"],
-                "tax_code": accounts["taxName"],
-                "group": accounts["path"],
-            }
-        )
+        result = pd.DataFrame({
+            "account": accounts["number"],
+            "currency": accounts["currencyCode"],
+            "description": accounts["name"],
+            "tax_code": accounts["taxName"],
+            "group": accounts["path"],
+        })
         return self.standardize(result)
 
     def add(self, data: pd.DataFrame):
@@ -33,8 +27,7 @@ class Account(CashCtrlAccountingEntity):
                 "number": row["account"],
                 "currencyId": self._client.currency_to_id(row["currency"]),
                 "name": row["description"],
-                "taxId": None
-                if pd.isna(row["tax_code"])
+                "taxId": None if pd.isna(row["tax_code"])
                 else self._client.tax_code_to_id(row["tax_code"]),
                 "categoryId": self._client.account_category_to_id(row["group"]),
             }
@@ -48,11 +41,16 @@ class Account(CashCtrlAccountingEntity):
         reduced_schema = self._schema.query("column in @cols")
         incoming = enforce_schema(data, reduced_schema, keep_extra_columns=True)
         current = self.list()
+
         for _, row in incoming.iterrows():
-            current_row = current.query("account == @row['account']")
+            existing = current.query("account == @row['account']")
+
+            # Specify required fields for CashCtrl
             payload = {"id": self._client.account_to_id(row["account"])}
-            group = row["group"] if "group" in incoming.columns else current_row["group"].item()
+            group = row["group"] if "group" in incoming.columns else existing["group"].item()
             payload["categoryId"] = self._client.account_category_to_id(group)
+
+            # Specify optional fields for CashCtrl
             if "account" in incoming.columns:
                 payload["number"] = row["account"]
             if "currency" in incoming.columns:
