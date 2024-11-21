@@ -1,4 +1,4 @@
-"""Implements tax_code accessors and mutators for CashCtrl."""
+"""Provides a class for storing Tax Code entity in CashCtrl."""
 
 import pandas as pd
 from consistent_df import enforce_schema
@@ -6,11 +6,7 @@ from .cashctrl_accounting_entity import CashCtrlAccountingEntity
 
 
 class TaxCode(CashCtrlAccountingEntity):
-    """Represents a TaxCode entity within an external accounting system.
-
-    Provides methods to list, add, update, and delete tax codes
-    in the external system via the client interface.
-    """
+    """Class for storing Tax Code entity in CashCtrl"""
 
     def list(self) -> pd.DataFrame:
         tax_rates = self._client.list_tax_rates()
@@ -18,15 +14,13 @@ class TaxCode(CashCtrlAccountingEntity):
         account_map = accounts.set_index("id")["number"].to_dict()
         if not tax_rates["accountId"].isin(account_map).all():
             raise ValueError("Unknown 'accountId' in CashCtrl tax rates.")
-        result = pd.DataFrame(
-            {
-                "id": tax_rates["name"],
-                "description": tax_rates["documentName"],
-                "account": tax_rates["accountId"].map(account_map),
-                "rate": tax_rates["percentage"] / 100,
-                "is_inclusive": ~tax_rates["isGrossCalcType"],
-            }
-        )
+        result = pd.DataFrame({
+            "id": tax_rates["name"],
+            "description": tax_rates["documentName"],
+            "account": tax_rates["accountId"].map(account_map),
+            "rate": tax_rates["percentage"] / 100,
+            "is_inclusive": ~tax_rates["isGrossCalcType"],
+        })
 
         duplicates = set(result.loc[result["id"].duplicated(), "id"])
         if duplicates:
@@ -56,15 +50,20 @@ class TaxCode(CashCtrlAccountingEntity):
         reduced_schema = self._schema.query("column in @cols")
         incoming = enforce_schema(data, reduced_schema, keep_extra_columns=True)
         current = self.list()
+
         for _, row in incoming.iterrows():
-            current_row = current.query("id == @row['id']")
-            payload = {"id": self._client.tax_code_to_id(row["id"])}
-            rate = row["rate"] if "rate" in incoming.columns else current_row["rate"].item()
+            existing = current.query("id == @row['id']")
+            rate = row["rate"] if "rate" in incoming.columns else existing["rate"].item()
             account = row["account"] if "account" in incoming.columns else \
-                current_row["account"].item()
+                existing["account"].item()
+
+            # Specify required fields for CashCtrl
+            payload = {"id": self._client.tax_code_to_id(row["id"])}
             payload["name"] = row["id"]
             payload["percentage"] = rate * 100
             payload["accountId"] = self._client.account_to_id(account)
+
+            # Specify optional fields for CashCtrl
             if "is_inclusive" in incoming.columns:
                 payload["calcType"] = "NET" if row["is_inclusive"] else "GROSS"
             if "description" in incoming.columns:
