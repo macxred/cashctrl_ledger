@@ -34,8 +34,8 @@ class TestAccounts(BaseTestAccounts):
         initial_engine.clear()
         return initial_engine
 
-    def test_account_accessor_mutators(self, engine):
-        super().test_account_accessor_mutators(engine, ignore_row_order=True)
+    def test_account_accessor_mutators(self, restored_engine):
+        super().test_account_accessor_mutators(restored_engine, ignore_row_order=True)
 
     def test_add_existing_account_raise_error(self, engine):
         """Override base test to include `group` field, required for CashCtrl."""
