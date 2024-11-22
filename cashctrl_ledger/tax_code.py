@@ -1,4 +1,4 @@
-"""Provides a class for storing Tax Code entity in CashCtrl."""
+"""Provides a class with tax_code accessors and mutators for CashCtrl."""
 
 import pandas as pd
 from consistent_df import enforce_schema
@@ -6,7 +6,7 @@ from .cashctrl_accounting_entity import CashCtrlAccountingEntity
 
 
 class TaxCode(CashCtrlAccountingEntity):
-    """Class for storing Tax Code entity in CashCtrl"""
+    """Provides tax code accessors and mutators for CashCtrl."""
 
     def list(self) -> pd.DataFrame:
         tax_rates = self._client.list_tax_rates()
@@ -52,12 +52,11 @@ class TaxCode(CashCtrlAccountingEntity):
         current = self.list()
 
         for _, row in incoming.iterrows():
+            # Specify required fields for CashCtrl
             existing = current.query("id == @row['id']")
             rate = row["rate"] if "rate" in incoming.columns else existing["rate"].item()
             account = row["account"] if "account" in incoming.columns else \
                 existing["account"].item()
-
-            # Specify required fields for CashCtrl
             payload = {"id": self._client.tax_code_to_id(row["id"])}
             payload["name"] = row["id"]
             payload["percentage"] = rate * 100

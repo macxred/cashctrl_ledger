@@ -1,4 +1,4 @@
-"""Provides a class for storing Account entity in CashCtrl."""
+"""Provides a class with account accessors and mutators for CashCtrl."""
 
 from typing import Dict, List
 import pandas as pd
@@ -7,7 +7,7 @@ from .cashctrl_accounting_entity import CashCtrlAccountingEntity
 
 
 class Account(CashCtrlAccountingEntity):
-    """Class for storing Account entity in CashCtrl"""
+    """Provides account accessors and mutators for CashCtrl."""
 
     def list(self) -> pd.DataFrame:
         accounts = self._client.list_accounts()
