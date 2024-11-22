@@ -23,8 +23,6 @@ class TestAccounts(BaseTestAccounts):
     ACCOUNTS.loc[:, "group"] = "/Assets"
     # TODO: Remove when Assets will be implemented
     ACCOUNTS.loc[ACCOUNTS["currency"] == "JPY", "currency"] = "USD"
-    # TODO: Remove when error with .ne() will be fixed
-    ACCOUNTS.loc[:, "tax_code"] = pd.NA
 
     TAX_CODES = BaseTestAccounts.TAX_CODES.copy()
     # In CashCtrl it is not possible to create TAX CODE without specified account
