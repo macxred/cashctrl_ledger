@@ -16,7 +16,8 @@ class TestTaxCodes(BaseTestTaxCodes):
 
     TAX_CODES = BaseTestTaxCodes.TAX_CODES.copy()
     # In CashCtrl it is not possible to create TAX CODE without specified account
-    TAX_CODES = TAX_CODES[~(TAX_CODES["id"] == "EXEMPT")]
+    account = TAX_CODES.query("id == 'IN_STD'")["account"].values[0]
+    TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = account
 
 
     @pytest.fixture(scope="class")
@@ -28,7 +29,7 @@ class TestTaxCodes(BaseTestTaxCodes):
         super().test_tax_codes_accessor_mutators(engine, ignore_row_order=True)
 
     @pytest.mark.skip(reason="Cashctrl allows creating duplicate VAT codes")
-    def test_create_existing__tax_code_raise_error(self):
+    def test_create_existing_tax_code_raise_error(self):
         pass
 
     def test_update_nonexistent_tax_code_raise_error(self, engine):

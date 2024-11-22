@@ -28,7 +28,8 @@ class TestAccounts(BaseTestAccounts):
 
     TAX_CODES = BaseTestAccounts.TAX_CODES.copy()
     # In CashCtrl it is not possible to create TAX CODE without specified account
-    TAX_CODES = TAX_CODES[~(TAX_CODES["id"] == "EXEMPT")]
+    account = TAX_CODES.query("id == 'IN_STD'")["account"].values[0]
+    TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = account
 
     @pytest.fixture()
     def engine(self, initial_engine):
@@ -37,11 +38,6 @@ class TestAccounts(BaseTestAccounts):
 
     def test_account_accessor_mutators(self, engine):
         super().test_account_accessor_mutators(engine, ignore_row_order=True)
-
-    def test_add_existing_account_raise_error(self, engine):
-        super().test_add_existing_account_raise_error(
-            engine, error_class=RequestException, error_message="This number is already used"
-        )
 
     def test_add_existing_account_raise_error(self, engine):
         account = {
