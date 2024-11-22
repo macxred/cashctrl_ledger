@@ -40,6 +40,7 @@ class TestAccounts(BaseTestAccounts):
         super().test_account_accessor_mutators(engine, ignore_row_order=True)
 
     def test_add_existing_account_raise_error(self, engine):
+        """Override base test to include `group` field, required for CashCtrl."""
         account = {
             "account": 77777, "currency": "CHF", "description": "test account", "group": "/Assets"
         }
@@ -127,8 +128,8 @@ class TestAccounts(BaseTestAccounts):
             })
 
     def test_mirror_accounts_with_root_category(self, engine):
-        """This test ensures that root categories remain untouched, and all new accounts categories
-        expected to be created are done so before any existing accounts are mirrored.
+        """Test ensure new account categories are created before mirroring and root nodes
+        remain untouched, as CashCtrl allows creating accounts only with existing categories.
         """
         engine.restore(accounts=ACCOUNTS, settings=self.SETTINGS)
         initial_accounts = engine.accounts.list()
