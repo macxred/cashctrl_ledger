@@ -66,6 +66,7 @@ class CashCtrlLedger(LedgerEngine):
         tax_codes: pd.DataFrame | None = None,
         accounts: pd.DataFrame | None = None,
     ):
+        self.clear()
         if accounts is not None:
             self.accounts.mirror(accounts.assign(tax_code=pd.NA), delete=True)
         if tax_codes is not None:
