@@ -1,166 +1,118 @@
-def accounts(self) -> pd.DataFrame:
-    """Retrieves the accounts from a remote CashCtrl instance,
-    formatted to the pyledger schema.
+"""Provides a class with account accessors and mutators for CashCtrl."""
 
-    Returns:
-        pd.DataFrame: A DataFrame with the accounts in pyledger format.
-    """
-    accounts = self._client.list_accounts()
-    result = pd.DataFrame(
-        {
+from typing import Dict, List
+import pandas as pd
+from consistent_df import enforce_schema, unnest
+from .cashctrl_accounting_entity import CashCtrlAccountingEntity
+
+
+class Account(CashCtrlAccountingEntity):
+    """Provides account accessors and mutators for CashCtrl."""
+
+    def list(self) -> pd.DataFrame:
+        accounts = self._client.list_accounts()
+        result = pd.DataFrame({
             "account": accounts["number"],
             "currency": accounts["currencyCode"],
             "description": accounts["name"],
             "tax_code": accounts["taxName"],
             "group": accounts["path"],
-        }
-    )
-    return self.standardize_accounts(result)
+        })
+        return self.standardize(result)
 
-def add_account(
-    self,
-    account: str,
-    currency: str,
-    description: str,
-    group: str,
-    tax_code: Union[str, None] = None,
-):
-    """Adds a new account to the remote CashCtrl instance.
-
-    Args:
-        account (str): The account number or identifier to be added.
-        currency (str): The currency associated with the account.
-        description (str): Description associated with the account.
-        group (str): The category group to which the account belongs.
-        tax_code (str, optional): The tax code to be applied to the account, if any.
-    """
-    payload = {
-        "number": account,
-        "currencyId": self._client.currency_to_id(currency),
-        "name": description,
-        "taxId": None
-        if pd.isna(tax_code)
-        else self._client.tax_code_to_id(tax_code),
-        "categoryId": self._client.account_category_to_id(group),
-    }
-    self._client.post("account/create.json", data=payload)
-    self._client.invalidate_accounts_cache()
-
-def modify_account(
-    self,
-    account: str,
-    currency: str,
-    description: str,
-    group: str,
-    tax_code: Union[str, None] = None,
-):
-    """Updates an existing account in the remote CashCtrl instance.
-
-    Args:
-        account (str): The account number or identifier to be added.
-        currency (str): The currency associated with the account.
-        description (str): Description associated with the account.
-        group (str): The category group to which the account belongs.
-        tax_code (str, optional): The tax code to be applied to the account, if any.
-    """
-    payload = {
-        "id": self._client.account_to_id(account),
-        "number": account,
-        "currencyId": self._client.currency_to_id(currency),
-        "name": description,
-        "taxId": None
-        if pd.isna(tax_code)
-        else self._client.tax_code_to_id(tax_code),
-        "categoryId": self._client.account_category_to_id(group),
-    }
-    self._client.post("account/update.json", data=payload)
-    self._client.invalidate_accounts_cache()
-
-def delete_accounts(self, accounts: List[int] = [], allow_missing: bool = False):
-    ids = []
-    for account in accounts:
-        id = self._client.account_to_id(account, allow_missing)
-        if id is not None:
-            ids.append(str(id))
-    if len(ids):
-        self._client.post("account/delete.json", {"ids": ", ".join(ids)})
+    def add(self, data: pd.DataFrame):
+        incoming = self.standardize(pd.DataFrame(data))
+        for _, row in incoming.iterrows():
+            payload = {
+                "number": row["account"],
+                "currencyId": self._client.currency_to_id(row["currency"]),
+                "name": row["description"],
+                "taxId": None if pd.isna(row["tax_code"])
+                else self._client.tax_code_to_id(row["tax_code"]),
+                "categoryId": self._client.account_category_to_id(row["group"]),
+            }
+            self._client.post("account/create.json", data=payload)
         self._client.invalidate_accounts_cache()
 
-def mirror_accounts(self, target: pd.DataFrame, delete: bool = False):
-    """Synchronizes remote CashCtrl accounts with a desired target state
-    provided as a DataFrame.
+    def modify(self, data: pd.DataFrame) -> None:
+        data = pd.DataFrame(data)
+        cols = set(self._schema["column"]).intersection(data.columns)
+        cols = cols.union(self._schema.query("id")["column"])
+        reduced_schema = self._schema.query("column in @cols")
+        incoming = enforce_schema(data, reduced_schema, keep_extra_columns=True)
+        current = self.list()
 
-    Updates existing categories before creating accounts and then invokes
-    the parent class method.
+        for _, row in incoming.iterrows():
+            existing = current.query("account == @row['account']")
 
-    Args:
-        target (pd.DataFrame): DataFrame with an account chart in the pyledger format.
-        delete (bool, optional): If True, deletes accounts on the remote that are not
-                                  present in the target DataFrame.
-    """
-    target_df = StandaloneLedger.standardize_accounts(target).reset_index()
-    current_state = self.accounts().reset_index()
+            # Specify required fields for CashCtrl
+            payload = {"id": self._client.account_to_id(row["account"])}
+            group = row["group"] if "group" in incoming.columns else existing["group"].item()
+            payload["categoryId"] = self._client.account_category_to_id(group)
 
-    # Delete superfluous accounts on remote
-    if delete:
-        self.delete_accounts(
-            set(current_state["account"]).difference(set(target_df["account"]))
+            # Specify optional fields for CashCtrl
+            if "account" in incoming.columns:
+                payload["number"] = row["account"]
+            if "currency" in incoming.columns:
+                payload["currencyId"] = self._client.currency_to_id(row["currency"])
+            if "description" in incoming.columns:
+                payload["name"] = row["description"]
+            if "tax_code" in incoming.columns:
+                payload["taxId"] = None if pd.isna(row["tax_code"]) else \
+                    self._client.tax_code_to_id(row["tax_code"])
+            self._client.post("account/update.json", data=payload)
+        self._client.invalidate_accounts_cache()
+
+    def delete(self, id: pd.DataFrame, allow_missing: bool = False) -> None:
+        incoming = enforce_schema(pd.DataFrame(id), self._schema.query("id"))
+        ids = []
+        for account in incoming["account"]:
+            id = self._client.account_to_id(account, allow_missing)
+            if id is not None:
+                ids.append(str(id))
+        if len(ids):
+            self._client.post("account/delete.json", {"ids": ", ".join(ids)})
+            self._client.invalidate_accounts_cache()
+
+    def mirror(self, target: pd.DataFrame, delete: bool = False):
+        """Synchronizes remote CashCtrl accounts with a desired target state
+        provided as a DataFrame.
+
+        Updates existing categories before creating accounts and then invokes
+        the parent class method.
+
+        Args:
+            target (pd.DataFrame): DataFrame with an account chart in the pyledger format.
+            delete (bool, optional): If True, deletes accounts on the remote that are not
+                                    present in the target DataFrame.
+        """
+        current = self.list()
+        target = self.standardize(target)
+
+        # Delete superfluous accounts on remote
+        if delete:
+            self.delete(current[~current["account"].isin(target["account"])])
+
+        # Update account categories
+        def get_nodes_list(path: str) -> List[str]:
+            parts = path.strip("/").split("/")
+            return ["/" + "/".join(parts[:i]) for i in range(1, len(parts) + 1)]
+
+        def account_groups(df: pd.DataFrame) -> Dict[str, str]:
+            if df is None or df.empty:
+                return {}
+
+            df = df.copy()
+            df["nodes"] = [
+                pd.DataFrame({"items": get_nodes_list(path)}) for path in df["group"]
+            ]
+            df = unnest(df, key="nodes")
+            return df.groupby("items")["account"].agg("min").to_dict()
+
+        self._client.update_categories(
+            resource="account",
+            target=account_groups(target),
+            delete=delete,
+            ignore_account_root_nodes=True,
         )
-
-    # Update account categories
-    def get_nodes_list(path: str) -> List[str]:
-        parts = path.strip("/").split("/")
-        return ["/" + "/".join(parts[:i]) for i in range(1, len(parts) + 1)]
-
-    def account_groups(df: pd.DataFrame) -> Dict[str, str]:
-        if df is None or df.empty:
-            return {}
-
-        df = df.copy()
-        df["nodes"] = [
-            pd.DataFrame({"items": get_nodes_list(path)}) for path in df["group"]
-        ]
-        df = unnest(df, key="nodes")
-        return df.groupby("items")["account"].agg("min").to_dict()
-
-    self._client.update_categories(
-        resource="account",
-        target=account_groups(target),
-        delete=delete,
-        ignore_account_root_nodes=True,
-    )
-    super().mirror_accounts(target, delete)
-
-def _single_account_balance(
-    self, account: int, date: Union[datetime.date, None] = None
-) -> dict:
-    """Calculate the balance of a single account in both account currency
-    and reporting currency.
-
-    Args:
-        account (int): The account number.
-        date (datetime.date, optional): The date for the balance. Defaults to None,
-            in which case the balance on the last day of the current fiscal period is returned.
-
-    Returns:
-        dict: A dictionary with the balance in the account currency and the reporting currency.
-    """
-    account_id = self._client.account_to_id(account)
-    params = {"id": account_id, "date": date}
-    response = self._client.request("GET", "account/balance", params=params)
-    balance = float(response.text)
-
-    account_currency = self._client.account_to_currency(account)
-    if self.reporting_currency == account_currency:
-        reporting_currency_balance = balance
-    else:
-        response = self._client.get(
-            "fiscalperiod/exchangediff.json", params={"date": date}
-        )
-        exchange_diff = pd.DataFrame(response["data"])
-        reporting_currency_balance = exchange_diff.loc[
-            exchange_diff["accountId"] == account_id, "dcBalance"
-        ].item()
-
-    return {account_currency: balance, "reporting_currency": reporting_currency_balance}
-
+        super().mirror(target, delete)
