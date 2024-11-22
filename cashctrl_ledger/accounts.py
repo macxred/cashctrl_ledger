@@ -75,16 +75,19 @@ class Account(CashCtrlAccountingEntity):
             self._client.invalidate_accounts_cache()
 
     def mirror(self, target: pd.DataFrame, delete: bool = False):
-        """Synchronizes remote CashCtrl accounts with a desired target state
-        provided as a DataFrame.
+        """Synchronize remote CashCtrl accounts with the target DataFrame.
 
-        Updates existing categories before creating accounts and then invokes
-        the parent class method.
+        Updates categories first, then invokes the parent class method.
+        - Creates categories present in the target but not on the remote.
+        - If `delete=True`, deletes remote categories not present in the target.
+
+        CashCtrl has pre-defined root categories that cannot be altered.
+        - Existing root categories are never erased, even if orphaned.
+        - Mirroring accounts with non-existing root categories raises an error.
 
         Args:
             target (pd.DataFrame): DataFrame with an account chart in the pyledger format.
-            delete (bool, optional): If True, deletes accounts on the remote that are not
-                                    present in the target DataFrame.
+            delete (bool, optional): If True, deletes remote accounts not present in the target.
         """
         current = self.list()
         target = self.standardize(target)

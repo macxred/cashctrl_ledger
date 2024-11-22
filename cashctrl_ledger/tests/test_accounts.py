@@ -118,9 +118,10 @@ class TestAccounts(BaseTestAccounts):
                 "group": "/ABC",
             })
 
-    def test_mirror_accounts_with_new_categories(self, engine):
-        """Test that new categories are properly created and deleted
-        when mirroring accounts, except for the root category.
+    def test_mirror_accounts_updates_category_tree(self, engine):
+        """
+        Ensures that new categories are created and orphaned categories,
+        except root nodes, are deleted when mirroring accounts.
         """
         ACCOUNT_CSV = """
             group,                 account, currency, tax_code, description
@@ -133,12 +134,12 @@ class TestAccounts(BaseTestAccounts):
         initial_accounts = engine.accounts.list()
         initial_categories = engine._client.list_categories("account", include_system=True)
         initial_categories = initial_categories["path"].to_list()
-        expected_groups = ACCOUNTS["group"].to_list()
-        assert not set(expected_groups).issubset(initial_categories), (
+        expected_categories = ACCOUNTS["group"].to_list()
+        assert not set(expected_categories).issubset(initial_categories), (
             "Expected categories already exists"
         )
 
-        # Should create new categories when mirroring accounts
+        # Ensure target categories not present on remote are created when mirroring
         engine.accounts.mirror(ACCOUNTS, delete=True)
         accounts = engine.accounts.list()
         categories = engine._client.list_categories("account", include_system=True)
@@ -146,30 +147,34 @@ class TestAccounts(BaseTestAccounts):
         assert not accounts[accounts["group"].str.startswith("/Balance")].empty, (
             "Accounts with '/Balance' root category was not created'"
         )
-        assert set(expected_groups).issubset(categories), "Expected categories were not created"
+        assert set(expected_categories).issubset(categories), (
+            "Expected categories were not created"
+        )
 
-        # Mirroring initial accounts should erase created leaf categories within /Balance node
+        # Ensure orphaned categories except root nodes are deleted when mirroring
         engine.accounts.mirror(initial_accounts, delete=True)
         accounts = engine.accounts.list()
         categories = engine._client.list_categories("account", include_system=True)
         categories = categories["path"].to_list()
         assert_frame_equal(initial_accounts, accounts)
-        assert len(set(initial_categories) - set(categories)) == 0, (
-            "Some created categories were not deleted"
+        assert set(initial_categories) == set(categories), (
+            "Some orphaned categories were not deleted"
         )
         assert "/Balance" in set(categories), (
             "Mirroring initial accounts should not delete root '/Balance' category"
         )
 
+
     def test_mirror_accounts_new_root_category_raise_error(self, engine):
-        """CashCtrl does not allow to create new root categories"""
-        ACCOUNT_CSV = """
-            group,    account, currency, tax_code, description
-            /NewRoot,    9995,      EUR,         , Test EUR Bank Account
-        """
-        ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
+        """CashCtrl does not allow to add new root categories."""
+        ACCOUNT = pd.DataFrame([{
+            "group": "/NewRoot",
+            "account": 9995,
+            "currency": "USD",
+            "description": "Account with custom root category"
+        }])
         with pytest.raises(ValueError, match="Cannot create new root nodes"):
-            engine.accounts.mirror(ACCOUNTS, delete=True)
+            engine.accounts.mirror(ACCOUNT, delete=True)
 
     @pytest.mark.skip(reason="Need to implement all entities to run this tests")
     def test_account_balance(self):
