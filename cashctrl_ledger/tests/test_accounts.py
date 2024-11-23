@@ -11,16 +11,19 @@ from consistent_df import assert_frame_equal
 
 
 class TestAccounts(BaseTestAccounts):
+    """Test suite for the Account accessor and mutator methods."""
+
     ACCOUNTS = BaseTestAccounts.ACCOUNTS.copy()
-    # Set the default root node for CashCtrl. In CashCtrl it is not possible to create root nodes
+    # Set the default root node, as CashCtrl does not allow the creation of root nodes
     ACCOUNTS.loc[:, "group"] = "/Assets"
     # TODO: Remove when Assets will be implemented
     ACCOUNTS.loc[ACCOUNTS["currency"] == "JPY", "currency"] = "USD"
 
     TAX_CODES = BaseTestAccounts.TAX_CODES.copy()
-    # In CashCtrl it is not possible to create TAX CODE without specified account
-    account = TAX_CODES.query("id == 'IN_STD'")["account"].values[0]
-    TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = account
+    # Assign a default account to TAX_CODES where account is missing,
+    # CashCtrl does not support tax codes without accounts assigned
+    default_account = TAX_CODES.query("id == 'IN_STD'")["account"].values[0]
+    TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = default_account
 
     @pytest.fixture()
     def engine(self, initial_engine):
@@ -48,7 +51,7 @@ class TestAccounts(BaseTestAccounts):
             engine, error_class=ValueError, error_message="No id found for account"
         )
 
-    def test_add_account_with_invalid_currency_error(self, engine):
+    def test_add_account_with_invalid_currency_raises_error(self, engine):
         with pytest.raises(ValueError):
             engine.accounts.add({
                 "account": 1142,
@@ -68,7 +71,7 @@ class TestAccounts(BaseTestAccounts):
                 "group": "/Assets/Anlagevermögen",
             })
 
-    def test_add_account_with_invalid_group_raise_error(self, engine):
+    def test_add_account_with_invalid_tax_raises_error(self, engine):
         with pytest.raises(ValueError):
             engine.accounts.add({
                 "account": 999999,
@@ -78,7 +81,7 @@ class TestAccounts(BaseTestAccounts):
                 "group": "/Assets/Anlagevermögen/ABC",
             })
 
-    def test_update_non_existing_account_raise_error(self, engine):
+    def test_update_nonexistent_account_raises_error(self, engine):
         with pytest.raises(ValueError):
             engine.accounts.modify({
                 "account": 1147,
@@ -88,7 +91,7 @@ class TestAccounts(BaseTestAccounts):
                 "group": "/Assets/Anlagevermögen",
             })
 
-    def test_modify_account_with_invalid_currency_error(self, engine):
+    def test_modify_account_with_invalid_currency_raises_error(self, engine):
         with pytest.raises(ValueError):
             engine.accounts.modify({
                 "account": 1148,
@@ -98,7 +101,7 @@ class TestAccounts(BaseTestAccounts):
                 "group": "/Assets/Anlagevermögen",
             })
 
-    def test_modify_account_with_invalid_tax_raise_error(self, engine):
+    def test_modify_account_with_invalid_tax_raises_error(self, engine):
         with pytest.raises(ValueError):
             engine.accounts.modify({
                 "account": 1149,
@@ -108,7 +111,7 @@ class TestAccounts(BaseTestAccounts):
                 "group": "/Assets/Anlagevermögen",
             })
 
-    def test_modify_account_with_invalid_group_raise_error(self, engine):
+    def test_modify_account_with_invalid_group_raises_error(self, engine):
         with pytest.raises(ValueError):
             engine.accounts.modify({
                 "account": 1149,
@@ -145,7 +148,7 @@ class TestAccounts(BaseTestAccounts):
         categories = engine._client.list_categories("account", include_system=True)
         categories = categories["path"].to_list()
         assert not accounts[accounts["group"].str.startswith("/Balance")].empty, (
-            "Accounts with '/Balance' root category was not created'"
+            "Accounts with '/Balance' root category were not created"
         )
         assert set(expected_categories).issubset(categories), (
             "Expected categories were not created"
@@ -165,7 +168,7 @@ class TestAccounts(BaseTestAccounts):
         )
 
 
-    def test_mirror_accounts_new_root_category_raise_error(self, engine):
+    def test_mirror_accounts_new_root_category_raises_error(self, engine):
         """CashCtrl does not allow to add new root categories."""
         ACCOUNT = pd.DataFrame([{
             "group": "/NewRoot",
@@ -176,6 +179,6 @@ class TestAccounts(BaseTestAccounts):
         with pytest.raises(ValueError, match="Cannot create new root nodes"):
             engine.accounts.mirror(ACCOUNT, delete=True)
 
-    @pytest.mark.skip(reason="Need to implement all entities to run this tests")
+    @pytest.mark.skip(reason="Need to implement all entities to run this test")
     def test_account_balance(self):
         pass
