@@ -150,9 +150,10 @@ class TestAccounts(BaseTestAccounts):
         assert not accounts[accounts["group"].str.startswith("/Balance")].empty, (
             "Accounts with '/Balance' root category were not created"
         )
-        assert set(expected_categories).issubset(categories), (
-            "Expected categories were not created"
+        expected = pd.concat(
+            [ACCOUNTS, accounts.query("account not in @ACCOUNTS['account']")], ignore_index=True
         )
+        assert_frame_equal(expected, accounts, ignore_row_order=True, check_like=True)
 
         # Ensure orphaned categories except root nodes are deleted when mirroring
         engine.accounts.mirror(initial_accounts, delete=True)
@@ -166,7 +167,6 @@ class TestAccounts(BaseTestAccounts):
         assert "/Balance" in set(categories), (
             "Mirroring initial accounts should not delete root '/Balance' category"
         )
-
 
     def test_mirror_accounts_new_root_category_raises_error(self, engine):
         """CashCtrl does not allow to add new root categories."""
