@@ -34,7 +34,7 @@ class Account(CashCtrlAccountingEntity):
             self._client.post("account/create.json", data=payload)
         self._client.invalidate_accounts_cache()
 
-    def modify(self, data: pd.DataFrame) -> None:
+    def modify(self, data: pd.DataFrame):
         data = pd.DataFrame(data)
         cols = set(self._schema["column"]).intersection(data.columns)
         cols = cols.union(self._schema.query("id")["column"])
@@ -75,16 +75,19 @@ class Account(CashCtrlAccountingEntity):
             self._client.invalidate_accounts_cache()
 
     def mirror(self, target: pd.DataFrame, delete: bool = False):
-        """Synchronizes remote CashCtrl accounts with a desired target state
-        provided as a DataFrame.
+        """Synchronize remote CashCtrl accounts with the target DataFrame.
 
-        Updates existing categories before creating accounts and then invokes
-        the parent class method.
+        Updates categories first, then invokes the parent class method.
+        - Creates categories present in the target but not on the remote.
+        - If `delete=True`, deletes remote categories not present in the target.
+
+        CashCtrl has pre-defined root categories that cannot be altered.
+        - Existing root categories are never erased, even if orphaned.
+        - Mirroring accounts with non-existing root categories raises an error.
 
         Args:
             target (pd.DataFrame): DataFrame with an account chart in the pyledger format.
-            delete (bool, optional): If True, deletes accounts on the remote that are not
-                                    present in the target DataFrame.
+            delete (bool, optional): If True, deletes remote accounts not present in the target.
         """
         current = self.list()
         target = self.standardize(target)
@@ -94,25 +97,24 @@ class Account(CashCtrlAccountingEntity):
             self.delete(current[~current["account"].isin(target["account"])])
 
         # Update account categories
-        def get_nodes_list(path: str) -> List[str]:
-            parts = path.strip("/").split("/")
-            return ["/" + "/".join(parts[:i]) for i in range(1, len(parts) + 1)]
-
-        def account_groups(df: pd.DataFrame) -> Dict[str, str]:
-            if df is None or df.empty:
-                return {}
-
-            df = df.copy()
-            df["nodes"] = [
-                pd.DataFrame({"items": get_nodes_list(path)}) for path in df["group"]
-            ]
-            df = unnest(df, key="nodes")
-            return df.groupby("items")["account"].agg("min").to_dict()
-
         self._client.update_categories(
             resource="account",
-            target=account_groups(target),
+            target=self._account_groups(target),
             delete=delete,
             ignore_account_root_nodes=True,
         )
         super().mirror(target, delete)
+
+    def _get_nodes_list(self, path: str) -> List[str]:
+        """Split a path into a list of node paths."""
+        parts = path.strip("/").split("/")
+        return ["/" + "/".join(parts[:i]) for i in range(1, len(parts) + 1)]
+
+    def _account_groups(self, df: pd.DataFrame) -> Dict[str, str]:
+        """Find lowest account number associated with each node in the group tree."""
+        if df is None or df.empty:
+            return {}
+        df = df.copy()
+        df["nodes"] = [pd.DataFrame({"items": self._get_nodes_list(path)}) for path in df["group"]]
+        df = unnest(df, key="nodes")
+        return df.groupby("items")["account"].agg("min").to_dict()

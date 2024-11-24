@@ -7,27 +7,23 @@ from pyledger.tests import BaseTestAccounts
 # flake8: noqa: F401
 from base_test import initial_engine
 from requests.exceptions import RequestException
-
-
-ACCOUNT_CSV = """
-    group,         account, currency, tax_code, description
-    /Balance,         9990,      EUR,         , Test EUR Bank Account
-    /Balance/Node,    9993,      EUR,         , Transitory Account EUR
-"""
-ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
+from consistent_df import assert_frame_equal
 
 
 class TestAccounts(BaseTestAccounts):
+    """Test suite for the Account accessor and mutator methods."""
+
     ACCOUNTS = BaseTestAccounts.ACCOUNTS.copy()
-    # Set the default root node for CashCtrl. In CashCtrl it is not possible to create root nodes
+    # Set the default root node, as CashCtrl does not allow the creation of root nodes
     ACCOUNTS.loc[:, "group"] = "/Assets"
     # TODO: Remove when Assets will be implemented
     ACCOUNTS.loc[ACCOUNTS["currency"] == "JPY", "currency"] = "USD"
 
     TAX_CODES = BaseTestAccounts.TAX_CODES.copy()
-    # In CashCtrl it is not possible to create TAX CODE without specified account
-    account = TAX_CODES.query("id == 'IN_STD'")["account"].values[0]
-    TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = account
+    # Assign a default account to TAX_CODES where account is missing,
+    # CashCtrl does not support tax codes without accounts assigned
+    default_account = TAX_CODES.query("id == 'IN_STD'")["account"].values[0]
+    TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = default_account
 
     @pytest.fixture()
     def engine(self, initial_engine):
@@ -55,7 +51,7 @@ class TestAccounts(BaseTestAccounts):
             engine, error_class=ValueError, error_message="No id found for account"
         )
 
-    def test_add_account_with_invalid_currency_error(self, engine):
+    def test_add_account_with_invalid_currency_raises_error(self, engine):
         with pytest.raises(ValueError):
             engine.accounts.add({
                 "account": 1142,
@@ -75,7 +71,7 @@ class TestAccounts(BaseTestAccounts):
                 "group": "/Assets/Anlagevermögen",
             })
 
-    def test_add_account_with_invalid_group_raise_error(self, engine):
+    def test_add_account_with_invalid_tax_raises_error(self, engine):
         with pytest.raises(ValueError):
             engine.accounts.add({
                 "account": 999999,
@@ -85,7 +81,7 @@ class TestAccounts(BaseTestAccounts):
                 "group": "/Assets/Anlagevermögen/ABC",
             })
 
-    def test_update_non_existing_account_raise_error(self, engine):
+    def test_update_nonexistent_account_raises_error(self, engine):
         with pytest.raises(ValueError):
             engine.accounts.modify({
                 "account": 1147,
@@ -95,7 +91,7 @@ class TestAccounts(BaseTestAccounts):
                 "group": "/Assets/Anlagevermögen",
             })
 
-    def test_modify_account_with_invalid_currency_error(self, engine):
+    def test_modify_account_with_invalid_currency_raises_error(self, engine):
         with pytest.raises(ValueError):
             engine.accounts.modify({
                 "account": 1148,
@@ -105,7 +101,7 @@ class TestAccounts(BaseTestAccounts):
                 "group": "/Assets/Anlagevermögen",
             })
 
-    def test_modify_account_with_invalid_tax_raise_error(self, engine):
+    def test_modify_account_with_invalid_tax_raises_error(self, engine):
         with pytest.raises(ValueError):
             engine.accounts.modify({
                 "account": 1149,
@@ -115,7 +111,7 @@ class TestAccounts(BaseTestAccounts):
                 "group": "/Assets/Anlagevermögen",
             })
 
-    def test_modify_account_with_invalid_group_raise_error(self, engine):
+    def test_modify_account_with_invalid_group_raises_error(self, engine):
         with pytest.raises(ValueError):
             engine.accounts.modify({
                 "account": 1149,
@@ -125,44 +121,75 @@ class TestAccounts(BaseTestAccounts):
                 "group": "/ABC",
             })
 
-    def test_mirror_accounts_with_root_category(self, engine):
-        """Test ensure new account categories are created before mirroring and root nodes
-        remain untouched, as CashCtrl allows creating accounts only with existing categories.
+    def test_mirror_accounts_updates_category_tree(self, engine):
         """
-        engine.restore(accounts=ACCOUNTS, settings=self.SETTINGS)
+        Ensures that new categories are created and orphaned categories,
+        except root nodes, are deleted when mirroring accounts.
+        """
+        ACCOUNT_CSV = """
+            group,                 account, currency, tax_code, description
+            /Balance,                 9990,      EUR,         , Test EUR Bank Account
+            /Balance/Node,            9993,      EUR,         , Transitory Account EUR
+            /Balance/Node/Subnode,    9994,      CHF,         , Transitory Account CHF
+        """
+        ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
+
         initial_accounts = engine.accounts.list()
-        expected = initial_accounts[~initial_accounts["group"].str.startswith("/Balance")]
         initial_categories = engine._client.list_categories("account", include_system=True)
-        categories_dict = initial_categories.set_index("path")["number"].to_dict()
-
-        assert not initial_accounts[initial_accounts["group"].str.startswith("/Balance")].empty, (
-            "There are no remote accounts placed in /Balance node"
+        initial_categories = initial_categories["path"].to_list()
+        expected_categories = ACCOUNTS["group"].to_list()
+        assert not set(expected_categories).issubset(initial_categories), (
+            "Expected categories already exists"
         )
 
-        engine.accounts.mirror(expected.copy(), delete=True)
-        mirrored_df = engine.accounts.list()
-        updated_categories = engine._client.list_categories("account", include_system=True)
-        updated_categories_dict = updated_categories.set_index("path")["number"].to_dict()
-        difference = set(categories_dict.keys()) - set(updated_categories_dict.keys())
-        initial_sub_nodes = [
-            key for key in difference if key.startswith("/Balance") and key != "/Balance"
-        ]
-
-        assert mirrored_df[mirrored_df["group"].str.startswith("/Balance")].empty, (
-            "Accounts placed in /Balance node were not deleted"
+        # Ensure target categories not present on remote are created when mirroring
+        engine.accounts.mirror(ACCOUNTS, delete=True)
+        accounts = engine.accounts.list()
+        categories = engine._client.list_categories("account", include_system=True)
+        categories = categories["path"].to_list()
+        assert not accounts[accounts["group"].str.startswith("/Balance")].empty, (
+            "Accounts with '/Balance' root category were not created"
         )
-        assert len(initial_sub_nodes) > 0, "Sub-nodes were not deleted"
-        assert updated_categories_dict["/Balance"] == categories_dict["/Balance"], (
-            "Root node /Balance was deleted"
+        expected = pd.concat(
+            [ACCOUNTS, accounts.query("account not in @ACCOUNTS['account']")], ignore_index=True
+        )
+        assert_frame_equal(expected, accounts, ignore_row_order=True, check_like=True)
+
+        # Ensure orphaned categories except root nodes are deleted when mirroring
+        engine.accounts.mirror(initial_accounts, delete=True)
+        accounts = engine.accounts.list()
+        categories = engine._client.list_categories("account", include_system=True)
+        categories = categories["path"].to_list()
+        assert_frame_equal(initial_accounts, accounts)
+        assert set(initial_categories) == set(categories), (
+            "Some orphaned categories were not deleted"
+        )
+        assert "/Balance" in set(categories), (
+            "Mirroring initial accounts should not delete root '/Balance' category"
         )
 
-        engine.accounts.mirror(initial_accounts.copy(), delete=True)
-        mirrored_df = engine.accounts.list()
-        updated_categories = engine._client.list_categories("account", include_system=True)
-        updated_categories_dict = initial_categories.set_index("path")["number"].to_dict()
-        pd.testing.assert_frame_equal(initial_accounts, mirrored_df)
-        assert updated_categories_dict == categories_dict, "Some categories were not restored"
+        # Ensure orphaned categories except default root nodes are deleted when mirroring
+        engine.accounts.mirror(pd.DataFrame({}), delete=True)
+        accounts = engine.accounts.list()
+        categories = engine._client.list_categories("account", include_system=True)
+        categories = categories["path"].to_list()
+        assert accounts.empty, "Mirror empty accounts should erase all of them"
+        root_categories = ['/Assets', '/Balance', '/Expense', '/Liabilities', '/Revenue']
+        assert set(root_categories) == set(categories), (
+            "Mirroring empty state should leave only root categories"
+        )
 
-    @pytest.mark.skip(reason="Need to implement all entities to run this tests")
+    def test_mirror_accounts_new_root_category_raises_error(self, engine):
+        """CashCtrl does not allow to add new root categories."""
+        ACCOUNT = pd.DataFrame([{
+            "group": "/NewRoot",
+            "account": 9995,
+            "currency": "USD",
+            "description": "Account with custom root category"
+        }])
+        with pytest.raises(ValueError, match="Cannot create new root nodes"):
+            engine.accounts.mirror(ACCOUNT, delete=True)
+
+    @pytest.mark.skip(reason="Need to implement all entities to run this test")
     def test_account_balance(self):
         pass
