@@ -168,6 +168,17 @@ class TestAccounts(BaseTestAccounts):
             "Mirroring initial accounts should not delete root '/Balance' category"
         )
 
+        # Ensure orphaned categories except default root nodes are deleted when mirroring
+        engine.accounts.mirror(pd.DataFrame({}), delete=True)
+        accounts = engine.accounts.list()
+        categories = engine._client.list_categories("account", include_system=True)
+        categories = categories["path"].to_list()
+        assert accounts.empty, "Mirror empty accounts should erase all of them"
+        root_categories = ['/Assets', '/Balance', '/Expense', '/Liabilities', '/Revenue']
+        assert set(root_categories) == set(categories), (
+            "Mirroring empty state should leave only root categories"
+        )
+
     def test_mirror_accounts_new_root_category_raises_error(self, engine):
         """CashCtrl does not allow to add new root categories."""
         ACCOUNT = pd.DataFrame([{
