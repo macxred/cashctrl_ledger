@@ -2,17 +2,18 @@
 
 import datetime
 import json
-from typing import Union
+from typing import Dict, List, Tuple, Union
 import zipfile
 from cashctrl_api import CachedCashCtrlClient
+import numpy as np
 import pandas as pd
 from pathlib import Path
 from .tax_code import TaxCode
 from .accounts import Account
-from pyledger import LedgerEngine
-from .constants import SETTINGS_KEYS
+from pyledger import LedgerEngine, CSVAccountingEntity
 from pyledger.constants import TAX_CODE_SCHEMA, ACCOUNT_SCHEMA, PRICE_SCHEMA
-from pyledger import CSVAccountingEntity
+from .constants import JOURNAL_ITEM_COLUMNS, SETTINGS_KEYS
+from consistent_df import unnest, enforce_dtypes
 
 
 class CashCtrlLedger(LedgerEngine):
@@ -181,6 +182,497 @@ class CashCtrlLedger(LedgerEngine):
             ].item()
 
         return {account_currency: balance, "reporting_currency": reporting_currency_balance}
+
+        # ----------------------------------------------------------------------
+    # Ledger
+
+    def ledger(self) -> pd.DataFrame:
+        """Retrieves ledger entries from the remote CashCtrl account and converts
+        the entries to standard pyledger format.
+
+        Returns:
+            pd.DataFrame: A DataFrame with LedgerEngine.ledger() column schema.
+        """
+        ledger = self._client.list_journal_entries()
+
+        # Individual ledger entries represent a single transaction and
+        # map to a single row in the resulting data frame.
+        individual = ledger[ledger["type"] != "COLLECTIVE"]
+
+        # Map to credit and debit account number and account currency
+        cols = {"id": "creditId", "currencyCode": "credit_currency", "number": "credit_account"}
+        account_map = self._client.list_accounts()[cols.keys()].rename(columns=cols)
+        individual = pd.merge(individual, account_map, "left", on="creditId", validate="m:1")
+        cols = {"id": "debitId", "currencyCode": "debit_currency", "number": "debit_account"}
+        account_map = self._client.list_accounts()[cols.keys()].rename(columns=cols)
+        individual = pd.merge(individual, account_map, "left", on="debitId", validate="m:1")
+
+        # Identify foreign currency adjustment transactions
+        currency = individual["currencyCode"]
+        reporting_currency = self.reporting_currency
+        is_fx_adjustment = (
+            (currency == reporting_currency)
+            & (
+                (currency != individual["credit_currency"])
+                | (currency != individual["debit_currency"])
+            )
+        )
+
+        result = pd.DataFrame(
+            {
+                "id": individual["id"],
+                "date": individual["dateAdded"].dt.date,
+                "account": individual["debit_account"],
+                "contra": individual["credit_account"],
+                "currency": individual["currencyCode"],
+                "amount": individual["amount"],
+                "report_amount": self.round_to_precision(
+                    np.where(
+                        is_fx_adjustment,
+                        pd.NA,
+                        individual["amount"] * individual["currencyRate"],
+                    ),
+                    self.reporting_currency,
+                ),
+                "tax_code": individual["taxName"],
+                "description": individual["title"],
+                "document": individual["reference"],
+            }
+        )
+
+        # Collective ledger entries represent a group of transactions and
+        # map to multiple rows in the resulting data frame with the same id.
+        collective_ids = ledger.loc[ledger["type"] == "COLLECTIVE", "id"]
+        if len(collective_ids) > 0:
+
+            # Fetch individual legs (line 'items') of collective transaction
+            def fetch_journal(id: int) -> pd.DataFrame:
+                res = self._client.get("journal/read.json", params={"id": id})["data"]
+                return pd.DataFrame(
+                    {
+                        "id": [res["id"]],
+                        "document": res["reference"],
+                        "date": [pd.to_datetime(res["dateAdded"]).date()],
+                        "currency": [res["currencyCode"]],
+                        "rate": [res["currencyRate"]],
+                        "items": [enforce_dtypes(pd.DataFrame(res["items"]), JOURNAL_ITEM_COLUMNS)],
+                        "fx_rate": [res["currencyRate"]],
+                    }
+                )
+            dfs = pd.concat([fetch_journal(id) for id in collective_ids])
+            collective = unnest(dfs, "items")
+
+            # Map to account number and account currency
+            cols = {"id": "accountId", "currencyCode": "account_currency", "number": "account"}
+            account_map = self._client.list_accounts()[cols.keys()].rename(columns=cols)
+            collective = pd.merge(collective, account_map, "left", on="accountId", validate="m:1")
+
+            # Identify reporting currency or foreign currency adjustment transactions
+            reporting_currency = self.reporting_currency
+            is_fx_adjustment = (collective["account_currency"] != reporting_currency) & (
+                collective["currency"].isna() | (collective["currency"] == reporting_currency)
+            )
+
+            amount = collective["debit"].fillna(0) - collective["credit"].fillna(0)
+            currency = collective["account_currency"]
+            reporting_amount = np.where(
+                currency == reporting_currency,
+                pd.NA,
+                np.where(is_fx_adjustment, amount, amount * collective["fx_rate"]),
+            )
+            foreign_amount = np.where(
+                currency == reporting_currency,
+                amount * collective["fx_rate"],
+                np.where(is_fx_adjustment, 0, amount),
+            )
+            mapped_collective = pd.DataFrame({
+                "id": collective["id"],
+                "date": collective["date"],
+                "account": collective["account"],
+                "currency": currency,
+                "amount": self.round_to_precision(foreign_amount, currency),
+                "report_amount": self.round_to_precision(reporting_amount, reporting_currency),
+                "tax_code": collective["taxName"],
+                "description": collective["description"],
+                "document": collective["document"]
+            })
+            result = pd.concat([
+                self.standardize_ledger_columns(result),
+                self.standardize_ledger_columns(mapped_collective),
+            ])
+
+        return self.standardize_ledger(result)
+
+    def ledger_entry(self):
+        """Not implemented yet."""
+        raise NotImplementedError
+
+    def add_ledger_entry(self, entry: pd.DataFrame) -> str:
+        """Adds a new ledger entry to the remote CashCtrl instance.
+
+        Args:
+            entry (pd.DataFrame): DataFrame with ledger entry in pyledger schema.
+
+        Returns:
+            str: The Id of created ledger entry.
+        """
+        payload = self._map_ledger_entry(entry)
+        res = self._client.post("journal/create.json", data=payload)
+        self._client.invalidate_journal_cache()
+        return str(res["insertId"])
+
+    def modify_ledger_entry(self, entry: pd.DataFrame):
+        """Adds a new ledger entry to the remote CashCtrl instance.
+
+        Args:
+            entry (pd.DataFrame): DataFrame with ledger entry in pyledger schema.
+        """
+        payload = self._map_ledger_entry(entry)
+        if entry["id"].nunique() != 1:
+            raise ValueError("Id needs to be unique in all rows of a collective booking.")
+        payload["id"] = entry["id"].iat[0]
+        self._client.post("journal/update.json", data=payload)
+        self._client.invalidate_journal_cache()
+
+    def delete_ledger_entries(self, ids: List[str] = []):
+        self._client.post("journal/delete.json", {"ids": ",".join([str(id) for id in ids])})
+        self._client.invalidate_journal_cache()
+
+    def standardize_ledger(self, ledger: pd.DataFrame) -> pd.DataFrame:
+        """Standardizes the ledger DataFrame to conform to CashCtrl format.
+
+        Args:
+            ledger (pd.DataFrame): The ledger DataFrame to be standardized.
+
+        Returns:
+            pd.DataFrame: The standardized ledger DataFrame.
+        """
+        df = super().standardize_ledger(ledger)
+        # In CashCtrl, attachments are stored at the transaction level rather than
+        # for each individual line item within collective transactions. To ensure
+        # consistency between equivalent transactions, we fill any missing (NA)
+        # document paths with non-missing paths from other line items in the same
+        # transaction.
+        df["document"] = df.groupby("id")["document"].ffill()
+        df["document"] = df.groupby("id")["document"].bfill()
+
+        # Split collective transaction line items with both debit and credit into
+        # two items with a single account each
+        is_collective = df["id"].duplicated(keep=False)
+        items_to_split = (
+            is_collective & df["account"].notna() & df["contra"].notna()
+        )
+        if items_to_split.any():
+            new = df.loc[items_to_split].copy()
+            new["account"] = new["contra"]
+            new.loc[:, "contra"] = pd.NA
+            for col in ["amount", "report_amount"]:
+                new[col] = np.where(
+                    new[col].isna() | (new[col] == 0), new[col], -1 * new[col]
+                )
+            df.loc[items_to_split, "contra"] = pd.NA
+            df = pd.concat([df, new])
+
+        # TODO: move this code block to parent class
+        # Swap accounts if a contra but no account is provided,
+        # or if individual transaction amount is negative
+        swap_accounts = df["contra"].notna() & (
+            (df["amount"] < 0) | df["account"].isna()
+        )
+        if swap_accounts.any():
+            initial_account = df.loc[swap_accounts, "account"]
+            df.loc[swap_accounts, "account"] = df.loc[
+                swap_accounts, "contra"
+            ]
+            df.loc[swap_accounts, "contra"] = initial_account
+            df.loc[swap_accounts, "amount"] = -1 * df.loc[swap_accounts, "amount"]
+            df.loc[swap_accounts, "report_amount"] = (
+                -1 * df.loc[swap_accounts, "report_amount"]
+            )
+
+        return df
+
+    def attach_ledger_files(self, detach: bool = False):
+        """Updates the attachments of all ledger entries based on the file paths specified
+        in the 'reference' field of each journal entry. If a file with the specified path
+        exists in the remote CashCtrl account, it will be attached to the corresponding
+        ledger entry.
+
+        Note: The 'reference' field in CashCtrl corresponds to the 'document' column in pyledger.
+
+        Args:
+            detach (bool, optional): If True, any files currently attached to ledger entries that do
+                        not have a valid reference path or whose reference path does not
+                        match an actual file will be detached. Defaults to False.
+        """
+        # Map ledger entries to their actual and targeted attachments
+        attachments = self._get_ledger_attachments()
+        ledger = self._client.list_journal_entries()
+        ledger["id"] = ledger["id"].astype("string[python]")
+        ledger["reference"] = "/" + ledger["reference"]
+        files = self._client.list_files()
+        df = pd.DataFrame(
+            {
+                "ledger_id": ledger["id"],
+                "target_attachment": np.where(
+                    ledger["reference"].isin(files["path"]), ledger["reference"], pd.NA
+                ),
+                "actual_attachments": [
+                    attachments.get(id, []) for id in ledger["id"]
+                ],
+            }
+        )
+
+        # Update attachments to align with the target attachments
+        for id, target, actual in zip(
+            df["ledger_id"], df["target_attachment"], df["actual_attachments"]
+        ):
+            if pd.isna(target):
+                if actual and detach:
+                    self._client.post(
+                        "journal/update_attachments.json", data={"id": id, "fileIds": ""}
+                    )
+            elif (len(actual) != 1) or (actual[0] != target):
+                file_id = self._client.file_path_to_id(target)
+                self._client.post(
+                    "journal/update_attachments.json",
+                    data={"id": id, "fileIds": file_id},
+                )
+        self._client.invalidate_journal_cache()
+
+    def _get_ledger_attachments(self, allow_missing=True) -> Dict[str, List[str]]:
+        """Retrieves paths of files attached to CashCtrl ledger entries.
+
+        Args:
+            allow_missing (bool, optional): If True, return None if the file has no path,
+                e.g. for files in the recycle bin. Otherwise raise a ValueError. Defaults to True.
+
+        Returns:
+            Dict[str, List[str]]: A Dict that contains ledger ids with attached
+            files as keys and a list of file paths as values.
+        """
+        ledger = self._client.list_journal_entries()
+        result = {}
+        for id in ledger.loc[ledger["attachmentCount"] > 0, "id"]:
+            res = self._client.get("journal/read.json", params={"id": id})["data"]
+            paths = [
+                self._client.file_id_to_path(
+                    attachment["fileId"], allow_missing=allow_missing
+                )
+                for attachment in res["attachments"]
+            ]
+            if len(paths):
+                result[str(id)] = paths
+        return result
+
+    def _collective_transaction_currency_and_rate(
+        self, entry: pd.DataFrame, suppress_error: bool = False
+    ) -> Tuple[str, float]:
+        """Extract a single currency and exchange rate from a collective transaction in pyledger
+        format.
+
+        - If all entries are in the reporting currency, return the reporting currency
+          and an exchange rate of 1.0.
+        - If more than one non-reporting currencies are present, raise a ValueError.
+        - Otherwise, return the unique non-reporting currency and an exchange rate that converts all
+        given non-reporting-currency amounts within the rounding precision to the reporting
+        currency amounts. Raise a ValueError if no such exchange rate exists.
+
+        In CashCtrl, collective transactions can be denominated in the accounting system's reporting
+        currency and at most one additional foreign currency. This additional currency, if any,
+        and a unique exchange rate to the reporting currency are recorded with the transaction.
+        If all individual entries are denominated in the reporting currency, the reporting currency
+        is set as the transaction currency.
+
+        Individual entries can be linked to accounts denominated in the transaction's currency
+        or the reporting currency. If in the reporting currency, the entry's amount is multiplied
+        by the transaction's exchange rate when recorded in the account.
+
+        This differs from pyledger, where each leg of a transaction specifies both foreign and
+        reporting currency amounts. The present method facilitates mapping from CashCtrl to pyledger
+        format.
+
+        Args:
+            entry (pd.DataFrame): The DataFrame representing individual entries of a collective
+                                  transaction with columns 'currency', 'amount',
+                                  and 'report_amount'.
+            suppress_error (bool): If True, suppresses ValueError when incoherent FX rates are
+                                   found, otherwise raises ValueError. Defaults to False.
+
+        Returns:
+            Tuple[str, float]: The single currency and the corresponding exchange rate.
+
+        Raises:
+            ValueError: If more than one non-reporting currency is present or if no
+                        coherent exchange rate is found.
+            ValueError: If there are incoherent FX rates in the collective booking
+                        and suppress_error is False.
+        """
+        if not isinstance(entry, pd.DataFrame) or entry.empty:
+            raise ValueError("`entry` must be a pd.DataFrame with at least one row.")
+        if "id" in entry.columns:
+            id = entry["id"].iat[0]
+        else:
+            id = ""
+        expected_columns = ["currency", "amount", "report_amount"]
+        if not set(expected_columns).issubset(entry.columns):
+            missing = [col for col in expected_columns if col not in entry.columns]
+            raise ValueError(f"Missing required column(s) {missing}: {id}.")
+
+        # Check if all entries are denominated in reporting currency
+        reporting_currency = self.reporting_currency
+        is_reporting_txn = (
+            entry["currency"].isna()
+            | (entry["currency"] == reporting_currency)
+            | (entry["amount"] == 0)
+        )
+        if all(is_reporting_txn):
+            return reporting_currency, 1.0
+
+        # Extract the sole non-reporting currency
+        fx_entries = entry.loc[~is_reporting_txn]
+        if fx_entries["currency"].nunique() != 1:
+            raise ValueError(
+                "CashCtrl allows only the reporting currency plus a single foreign currency in "
+                f"a collective booking: {id}."
+            )
+        currency = fx_entries["currency"].iat[0]
+
+        # Define precision parameters for exchange rate calculation
+        precision = self.precision(reporting_currency)
+        fx_rate_precision = 1e-8  # Precision for exchange rates in CashCtrl
+
+        # Calculate the range of acceptable exchange rates
+        reporting_amount = fx_entries["report_amount"]
+        tolerance = (fx_entries["amount"] * fx_rate_precision).clip(lower=precision / 2)
+        lower_bound = reporting_amount - tolerance * np.where(reporting_amount < 0, -1, 1)
+        upper_bound = reporting_amount + tolerance * np.where(reporting_amount < 0, -1, 1)
+        min_fx_rate = (lower_bound / fx_entries["amount"]).max()
+        max_fx_rate = (upper_bound / fx_entries["amount"]).min()
+
+        # Select the exchange rate within the acceptable range closest to the preferred rate
+        # derived from the largest absolute amount
+        max_abs_amount = fx_entries["amount"].abs().max()
+        is_max_abs = fx_entries["amount"].abs() == max_abs_amount
+        fx_rates = fx_entries["report_amount"] / fx_entries["amount"]
+        preferred_rate = fx_rates.loc[is_max_abs].median()
+        if min_fx_rate <= max_fx_rate:
+            fx_rate = min(max(preferred_rate, min_fx_rate), max_fx_rate)
+        elif suppress_error:
+            fx_rate = round(preferred_rate, 8)
+        else:
+            raise ValueError("Incoherent FX rates in collective booking.")
+
+        # Confirm fx_rate converts amounts to the expected reporting currency amount
+        if not suppress_error:
+            rounded_amounts = self.round_to_precision(
+                fx_entries["amount"] * fx_rate, self.reporting_currency,
+            )
+            expected_rounded_amounts = self.round_to_precision(
+                fx_entries["report_amount"], self.reporting_currency
+            )
+            if rounded_amounts != expected_rounded_amounts:
+                raise ValueError("Incoherent FX rates in collective booking.")
+
+        return currency, fx_rate
+
+    def _map_ledger_entry(self, entry: pd.DataFrame) -> dict:
+        """Converts a single ledger entry to a data structure for upload to CashCtrl.
+
+        Args:
+            entry (pd.DataFrame): DataFrame with ledger entry in pyledger schema.
+
+        Returns:
+            dict: A data structure to post as json to the CashCtrl REST API.
+        """
+        entry = self.standardize_ledger(entry)
+        reporting_currency = self.reporting_currency
+
+        # Individual ledger entry
+        if len(entry) == 1:
+            amount = entry["amount"].iat[0]
+            reporting_amount = entry["report_amount"].iat[0]
+            currency = entry["currency"].iat[0]
+            if amount == 0 and not pd.isna(reporting_amount) and reporting_amount != 0:
+                # Foreign currency adjustment: Solely changes in reporting currency amount
+                currency = reporting_currency
+                amount = reporting_amount
+                fx_rate = 1
+            else:
+                amount = entry["amount"].iat[0]
+                if currency == self.reporting_currency or amount == 0:
+                    fx_rate = 1
+                else:
+                    fx_rate = reporting_amount / amount
+            payload = {
+                "dateAdded": entry["date"].iat[0],
+                "amount": amount,
+                "debitId": self._client.account_to_id(entry["account"].iat[0]),
+                "creditId": self._client.account_to_id(entry["contra"].iat[0]),
+                "currencyId": None
+                if pd.isna(currency)
+                else self._client.currency_to_id(currency),
+                "title": entry["description"].iat[0],
+                "taxId": None
+                if pd.isna(entry["tax_code"].iat[0])
+                else self._client.tax_code_to_id(entry["tax_code"].iat[0]),
+                "currencyRate": fx_rate,
+                "reference": None
+                if pd.isna(entry["document"].iat[0])
+                else entry["document"].iat[0],
+            }
+
+        # Collective ledger entry
+        elif len(entry) > 1:
+            # Individual transaction entries (line items)
+            items = []
+            currency, fx_rate = self._collective_transaction_currency_and_rate(entry)
+            for _, row in entry.iterrows():
+                if currency == reporting_currency and row["currency"] != currency:
+                    amount = row["report_amount"]
+                elif row["currency"] == currency:
+                    amount = row["amount"]
+                elif row["currency"] == reporting_currency:
+                    amount = row["amount"] / fx_rate
+                else:
+                    raise ValueError(
+                        "Currencies other than reporting or transaction currency are not "
+                        "allowed in CashCtrl collective transactions."
+                    )
+                amount = self.round_to_precision(amount, currency)
+                items.append(
+                    {
+                        "accountId": self._client.account_to_id(row["account"]),
+                        "credit": -amount if amount < 0 else None,
+                        "debit": amount if amount >= 0 else None,
+                        "taxId": None
+                        if pd.isna(row["tax_code"])
+                        else self._client.tax_code_to_id(row["tax_code"]),
+                        "description": row["description"],
+                    }
+                )
+
+            # Transaction-level attributes
+            date = entry["date"].dropna().unique()
+            document = entry["document"].dropna().unique()
+            if len(date) == 0:
+                raise ValueError("Date is not specified in collective booking.")
+            elif len(date) > 1:
+                raise ValueError("Date needs to be unique in a collective booking.")
+            if len(document) > 1:
+                raise ValueError(
+                    "CashCtrl allows only one reference in a collective booking."
+                )
+            payload = {
+                "dateAdded": date[0].strftime("%Y-%m-%d"),
+                "currencyId": self._client.currency_to_id(currency),
+                "reference": document[0] if len(document) == 1 else None,
+                "currencyRate": fx_rate,
+                "items": items,
+            }
+        else:
+            raise ValueError("The ledger entry contains no transaction.")
+        return payload
 
     # ----------------------------------------------------------------------
     # Currencies
