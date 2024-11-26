@@ -5,6 +5,8 @@ directly represented in CahCtrl.
 import numpy as np
 import pandas as pd
 from .ledger import CashCtrlLedger
+from .ledger_entity import Ledger
+from pyledger.constants import LEDGER_SCHEMA
 
 
 class ExtendedCashCtrlLedger(CashCtrlLedger):
@@ -32,6 +34,16 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
 
     def __init__(self, transitory_account: int, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._ledger = Ledger(
+            client=self._client,
+            schema=LEDGER_SCHEMA,
+            list=self._ledger_list,
+            add=self._ledger_add,
+            modify=self._ledger_modify,
+            delete=self._ledger_delete,
+            standardize=self._ledger_standardize,
+            prepare_for_mirroring=self.sanitize_ledger
+        )
         self.transitory_account = transitory_account
 
     def clear(self):
@@ -112,6 +124,8 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         Returns:
             pd.DataFrame: The modified ledger DataFrame.
         """
+        ledger = self.ledger.standardize(ledger)
+
         # Number of currencies other than reporting currency
         reporting_currency = self.reporting_currency
         n_currency = ledger[["id", "currency"]][ledger["currency"] != reporting_currency]
@@ -120,7 +134,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         # Split entries with multiple currencies into separate entries for each currency
         ids = n_currency.index[n_currency > 1]
         if len(ids) > 0:
-            multi_currency = self.standardize_ledger(ledger[ledger["id"].isin(ids)])
+            multi_currency = self.ledger.standardize(ledger[ledger["id"].isin(ids)])
             multi_currency = self.split_multi_currency_transactions(multi_currency)
             others = ledger[~ledger["id"].isin(ids)]
             df = pd.concat([others, multi_currency], ignore_index=True)
@@ -134,14 +148,13 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
             new_txn = self._add_fx_adjustment(
                 txn, transitory_account=transitory_account, reporting_currency=reporting_currency
             )
-            result.append(self.standardize_ledger_columns(new_txn))
+            result.append(self.ledger.standardize(new_txn))
         if len(result) > 0:
             result = pd.concat(result)
         else:
             result = df
 
-        # Invoke parent class method
-        return super().sanitize_ledger(result)
+        return result
 
     def split_multi_currency_transactions(self, ledger: pd.DataFrame,
                                           transitory_account: int | None = None) -> pd.DataFrame:
@@ -197,7 +210,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 result.append(clearing_txn)
 
         result = pd.concat(result, ignore_index=True)
-        return self.standardize_ledger(result)
+        return self.ledger.standardize(result)
 
     def _add_fx_adjustment(
         self, entry: pd.DataFrame, transitory_account: int, reporting_currency: str
@@ -248,8 +261,8 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     )
                     result = pd.concat(
                         [
-                            self.standardize_ledger_columns(entry),
-                            self.standardize_ledger_columns(balancing_txn),
+                            self.ledger.standardize(entry),
+                            self.ledger.standardize(balancing_txn),
                         ]
                     )
                     result["amount"] = self.round_to_precision(
@@ -258,7 +271,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     result["report_amount"] = self.round_to_precision(
                         result["report_amount"], reporting_currency
                     )
-                    return self.standardize_ledger(result)
+                    return self.ledger.standardize(result)
 
         elif len(entry) > 1:
             # Collective transaction: multiple rows in the ledger data frame
@@ -302,8 +315,8 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     )
                     entry = pd.concat(
                         [
-                            self.standardize_ledger_columns(entry),
-                            self.standardize_ledger_columns(balancing_txn),
+                            self.ledger.standardize(entry),
+                            self.ledger.standardize(balancing_txn),
                         ]
                     )
                     balance = np.append(balance, -1 * balance.sum())
@@ -316,14 +329,14 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     fx_adjust["id"] = fx_adjust["id"] + ":fx"
                     fx_adjust["description"] = "Currency adjustments: " + fx_adjust["description"]
                     fx_adjust = fx_adjust[balance != 0]
-                    result = pd.concat([entry, self.standardize_ledger_columns(fx_adjust)])
+                    result = pd.concat([entry, self.ledger.standardize(fx_adjust)])
                     result["amount"] = self.round_to_precision(
                         result["amount"], result["currency"]
                     )
                     result["report_amount"] = self.round_to_precision(
                         result["report_amount"], reporting_currency
                     )
-                    return self.standardize_ledger(result)
+                    return self.ledger.standardize(result)
 
         else:
             raise ValueError("Expecting at least one `entry` row.")
