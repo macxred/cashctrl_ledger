@@ -2,6 +2,7 @@
 directly represented in CahCtrl.
 """
 
+from typing import Any
 from .ledger import CashCtrlLedger
 
 
@@ -28,8 +29,8 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
     # ----------------------------------------------------------------------
     # Constructor
 
-    def __init__(self, transitory_account: int):
-        super().__init__()
+    def __init__(self, transitory_account: int, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
         self.transitory_account = transitory_account
 
     def clear(self):
