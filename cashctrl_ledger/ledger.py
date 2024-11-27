@@ -6,11 +6,13 @@ from typing import Union
 import zipfile
 from cashctrl_api import CachedCashCtrlClient
 import pandas as pd
+from pathlib import Path
 from .tax_code import TaxCode
 from .accounts import Account
 from pyledger import LedgerEngine
 from .constants import SETTINGS_KEYS
-from pyledger.constants import TAX_CODE_SCHEMA, ACCOUNT_SCHEMA
+from pyledger.constants import TAX_CODE_SCHEMA, ACCOUNT_SCHEMA, PRICE_SCHEMA
+from pyledger import CSVAccountingEntity
 
 
 class CashCtrlLedger(LedgerEngine):
@@ -24,12 +26,17 @@ class CashCtrlLedger(LedgerEngine):
     # ----------------------------------------------------------------------
     # Constructor
 
-    def __init__(self, client: Union[CachedCashCtrlClient, None] = None):
+    def __init__(
+        self,
+        client: Union[CachedCashCtrlClient, None] = None,
+        price_history_path: Path = Path.cwd() / "price_history.csv"
+    ):
         super().__init__()
         client = CachedCashCtrlClient() if client is None else client
         self._client = client
         self._tax_codes = TaxCode(client=client, schema=TAX_CODE_SCHEMA)
         self._accounts = Account(client=client, schema=ACCOUNT_SCHEMA)
+        self._price_history = CSVAccountingEntity(schema=PRICE_SCHEMA, path=price_history_path)
 
     # ----------------------------------------------------------------------
     # File operations
