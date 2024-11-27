@@ -15,3 +15,4 @@ def initial_engine(tmp_path_factory):
     yield ledger
 
     ledger.restore_from_zip(tmp_path / "ledger.zip")
+    ledger.accounts.delete([{"account": 9999}])
