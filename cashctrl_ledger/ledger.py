@@ -228,22 +228,3 @@ class CashCtrlLedger(LedgerEngine):
 
     def precision(self, ticker: str, date: datetime.date = None) -> float:
         return self._precision.get(ticker, 0.01)
-
-    def price(self, currency: str, date: datetime.date = None) -> float:
-        """
-        Retrieves the price (exchange rate) of a given currency in terms
-        of the reporting currency.
-
-        Args:
-            currency (str): The currency code to retrieve the price for.
-            date (datetime.date, optional): The date for which the price is
-                requested. Defaults to None, which retrieves the latest price.
-
-        Returns:
-            float: The exchange rate between the currency and the reporting currency.
-        """
-        return self._client.get_exchange_rate(
-            from_currency=currency,
-            to_currency=self.reporting_currency,
-            date=date
-        )
