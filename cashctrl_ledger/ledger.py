@@ -113,12 +113,12 @@ class CashCtrlLedger(LedgerEngine):
             self.tax_codes.mirror(tax_codes, delete=True)
         if accounts is not None:
             self.accounts.mirror(accounts, delete=True)
-        if ledger is not None:
-            self.ledger.mirror(ledger, delete=True)
         if settings is not None:
             self.settings_modify(settings)
         if price_history is not None:
             self.price_history.mirror(price_history, delete=True)
+        if ledger is not None:
+            self.ledger.mirror(ledger, delete=True)
         # TODO: Implement logic for other entities
 
     def clear(self):
