@@ -4,7 +4,6 @@ import pytest
 # flake8: noqa: F401
 from base_test import initial_engine
 from pyledger.tests import BaseTestLedger
-from cashctrl_ledger import ExtendedCashCtrlLedger
 
 
 class TestLedger(BaseTestLedger):
@@ -50,15 +49,15 @@ class TestLedger(BaseTestLedger):
 
     # "18": Broken transaction amounts - API call failed. Total debit (0.00) and total credit (5.55) must be equal.
 
-    engine = ExtendedCashCtrlLedger(9999)
     LEDGER_ENTRIES = LEDGER_ENTRIES.query("id not in @exclude_ids")
-    LEDGER_ENTRIES = engine.sanitize_ledger(LEDGER_ENTRIES)
 
-    @pytest.fixture(scope="class")
+    @pytest.fixture()
     def engine(self, initial_engine):
         initial_engine.restore(settings=self.SETTINGS)
+        # Hack: when updating reporting currency transitory account currency should be updated
         initial_engine.transitory_account = 9999
         return initial_engine
 
     def test_ledger_accessor_mutators(self, restored_engine):
+        self.LEDGER_ENTRIES = restored_engine.sanitize_ledger(self.LEDGER_ENTRIES)
         super().test_ledger_accessor_mutators(restored_engine, ignore_row_order=True)
