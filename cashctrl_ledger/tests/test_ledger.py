@@ -4,6 +4,7 @@ import pytest
 # flake8: noqa: F401
 from base_test import initial_engine
 from pyledger.tests import BaseTestLedger
+from cashctrl_ledger import ExtendedCashCtrlLedger
 
 
 class TestLedger(BaseTestLedger):
@@ -41,7 +42,9 @@ class TestLedger(BaseTestLedger):
     # "22", 23: self._client.account_to_id(entry["contra"].iat[0]) - ledger.py L:640
     # *** ValueError: No id found for account: <NA> - Broken transaction amounts
 
+    engine = ExtendedCashCtrlLedger(9999)
     LEDGER_ENTRIES = LEDGER_ENTRIES.query("id not in @exclude_ids")
+    LEDGER_ENTRIES = engine.sanitize_ledger(LEDGER_ENTRIES)
 
     @pytest.fixture(scope="class")
     def engine(self, initial_engine):
