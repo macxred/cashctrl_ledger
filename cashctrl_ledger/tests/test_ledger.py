@@ -21,26 +21,34 @@ class TestLedger(BaseTestLedger):
     TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = default_account
 
     LEDGER_ENTRIES = BaseTestLedger.LEDGER_ENTRIES.copy()
-    exclude_ids = ["1", "3", "8", "9", "10", "16", "17", "18", "22", "23", "24"]
+    exclude_ids = ["1", "23", "10", "3", "9", "18"]
     # flake8: noqa: E501
-    # "1", "10", "24": CashCtrl allows only the reporting currency plus a single foreign currency
-    # in a collective booking: 1.
-    # - Test is right, code is broken. We should also call sanitize for add/modify method.
+    # "23": Transaction with CHF currency is correctly sanitized, but when reading - CHF is converted to USD and amount is recalculated to USD
+    # LEDGER_ENTRIES = LEDGER_ENTRIES.query("id == '23'")
+    # "1": Same as above - JPY converted to the USD
+    # "10": Same as above - EUR converted to the USD
+    # LEDGER_ENTRIES = LEDGER_ENTRIES.query("id == '1'")
 
     # "3": API call failed. Total debit (20 000.00) and total credit (40 000.00) must be equal. - Broken on our side (in code)
-    # "8": API call failed. Total debit (999.99) and total credit (888.88) must be equal. - Broken transaction amounts
-    # "18": API call failed. Total debit (0.00) and total credit (5.55) must be equal. - Broken transaction amounts
+    # Probably broken in standardize method in this part '# Split collective transaction line items with both debit and credit into two items with a single account each'
+    # Before standardize:
+    # (Pdb) ledger
+    #     id       date  account  contra currency    amount  report_amount tax_code         description                               document
+    #     5  3 2024-04-12     <NA>    1000      USD  21288.24           <NA>     <NA>  Convert USD to EUR  2024/transfers/2024-04-12_USD-EUR.pdf
+    #     6  3 2024-04-12     1010    1000      EUR   20000.0       21288.24     <NA>  Convert USD to EUR  2024/transfers/2024-04-12_USD-EUR.pdf
+    #     (Pdb) cont
+    # After:
+    # (Pdb) ledger
+    #     id       date  account  contra currency    amount  report_amount tax_code         description                               document
+    #     5  3 2024-04-12     1000    <NA>      USD -21288.24           <NA>     <NA>  Convert USD to EUR  2024/transfers/2024-04-12_USD-EUR.pdf
+    #     6  3 2024-04-12     1010    <NA>      EUR   20000.0       21288.24     <NA>  Convert USD to EUR  2024/transfers/2024-04-12_USD-EUR.pdf
+    #     6  3 2024-04-12     1000    <NA>      EUR  -20000.0      -21288.24     <NA>  Convert USD to EUR  2024/transfers/2024-04-12_USD-EUR.pdf
+    # LEDGER_ENTRIES = LEDGER_ENTRIES.query("id == '3'")
 
-    # "9": Problem with report_amount - values are NA and calculations within
-    # _collective_transaction_currency_and_rate failed
+    # "9": requests.exceptions.RequestException: API call failed. Total debit (2 500.00) and total credit (500.00) must be equal.
+    # LEDGER_ENTRIES = LEDGER_ENTRIES.query("id == '9'")
 
-    # "16": Add one extra line
-
-    # "17": API call failed. amount: The amount must be positive.
-    # Please switch debit and credit instead. - Broken on our side (in code)
-
-    # "22", 23: self._client.account_to_id(entry["contra"].iat[0]) - ledger.py L:640
-    # *** ValueError: No id found for account: <NA> - Broken transaction amounts
+    # "18": Broken transaction amounts - API call failed. Total debit (0.00) and total credit (5.55) must be equal.
 
     engine = ExtendedCashCtrlLedger(9999)
     LEDGER_ENTRIES = LEDGER_ENTRIES.query("id not in @exclude_ids")
@@ -51,3 +59,6 @@ class TestLedger(BaseTestLedger):
         initial_engine.restore(settings=self.SETTINGS)
         initial_engine.transitory_account = 9999
         return initial_engine
+
+    def test_ledger_accessor_mutators(self, restored_engine):
+        super().test_ledger_accessor_mutators(restored_engine, ignore_row_order=True)
