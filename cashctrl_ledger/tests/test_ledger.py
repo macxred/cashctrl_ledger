@@ -1,9 +1,11 @@
 """Unit tests for ledger accessor, mutator, and mirror methods."""
 
 import pytest
+import pandas as pd
 # flake8: noqa: F401
 from base_test import initial_engine
 from pyledger.tests import BaseTestLedger
+from io import StringIO
 
 
 class TestLedger(BaseTestLedger):
@@ -62,13 +64,24 @@ class TestLedger(BaseTestLedger):
         self.LEDGER_ENTRIES = restored_engine.sanitize_ledger(self.LEDGER_ENTRIES)
         super().test_ledger_accessor_mutators(restored_engine, ignore_row_order=True)
 
-    def test_split_multi_currency_transactions(self, ledger):
+    MULTI_CURRENCY_ENTRIES_CSV = """
+        id,     date,  account, contra, currency,     amount, report_amount, tax_code,   description,                     document
+        1, 2024-06-26,       ,   9991,      USD,  100000.00,      90000.00,         ,   Convert 100k USD to EUR @ 0.9375,
+        1, 2024-06-26,   9990,       ,      EUR,   93750.00,      90000.00,         ,   Convert 100k USD to EUR @ 0.9375,
+        2, 2024-06-26,       ,   9991,      USD,  200000.00,     180000.00,         ,   Convert 200k USD to EUR and CHF,
+        2, 2024-06-26,   9990,       ,      EUR,   93750.00,      90000.00,         ,   Convert 200k USD to EUR and CHF,
+        2, 2024-06-26,   9992,       ,      CHF,   90000.00,      90000.00,         ,   Convert 200k USD to EUR and CHF,
+    """
+    MULTI_CURRENCY_ENTRIES = pd.read_csv(StringIO(MULTI_CURRENCY_ENTRIES_CSV), skipinitialspace=True)
+
+    def test_split_multi_currency_transactions(self, engine):
+        engine.reporting_currency = "CHF"
         transitory_account = 9995
-        txn = ledger.standardize_ledger(self.LEDGER_ENTRIES.query("id == '15'"))
-        spit_txn = ledger.split_multi_currency_transactions(
+        txn = engine.ledger.standardize(self.MULTI_CURRENCY_ENTRIES.query("id == 1"))
+        spit_txn = engine.split_multi_currency_transactions(
             txn, transitory_account=transitory_account
         )
-        is_reporting_currency = spit_txn["currency"] == ledger.reporting_currency
+        is_reporting_currency = spit_txn["currency"] == engine.reporting_currency
         spit_txn.loc[is_reporting_currency, "report_amount"] = spit_txn.loc[
             is_reporting_currency, "amount"
         ]
@@ -83,13 +96,14 @@ class TestLedger(BaseTestLedger):
             "Expecting transitory account to be balanced"
         )
 
-    def test_split_several_multi_currency_transactions(self, ledger):
+    def test_split_several_multi_currency_transactions(self, engine):
+        engine.reporting_currency = "CHF"
         transitory_account = 9995
-        txn = ledger.standardize_ledger(self.LEDGER_ENTRIES.query("id.isin(['15', '16'])"))
-        spit_txn = ledger.split_multi_currency_transactions(
+        txn = engine.ledger.standardize(self.MULTI_CURRENCY_ENTRIES.query("id.isin([1, 2])"))
+        spit_txn = engine.split_multi_currency_transactions(
             txn, transitory_account=transitory_account
         )
-        is_reporting_currency = spit_txn["currency"] == ledger.reporting_currency
+        is_reporting_currency = spit_txn["currency"] == engine.reporting_currency
         spit_txn.loc[is_reporting_currency, "report_amount"] = spit_txn.loc[
             is_reporting_currency, "amount"
         ]
