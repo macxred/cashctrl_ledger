@@ -61,3 +61,48 @@ class TestLedger(BaseTestLedger):
     def test_ledger_accessor_mutators(self, restored_engine):
         self.LEDGER_ENTRIES = restored_engine.sanitize_ledger(self.LEDGER_ENTRIES)
         super().test_ledger_accessor_mutators(restored_engine, ignore_row_order=True)
+
+    def test_split_multi_currency_transactions(self, ledger):
+        transitory_account = 9995
+        txn = ledger.standardize_ledger(self.LEDGER_ENTRIES.query("id == '15'"))
+        spit_txn = ledger.split_multi_currency_transactions(
+            txn, transitory_account=transitory_account
+        )
+        is_reporting_currency = spit_txn["currency"] == ledger.reporting_currency
+        spit_txn.loc[is_reporting_currency, "report_amount"] = spit_txn.loc[
+            is_reporting_currency, "amount"
+        ]
+        assert len(spit_txn) == len(txn) + 2, "Expecting two new lines when transaction is split"
+        assert sum(spit_txn["account"] == transitory_account) == 2, (
+            "Expecting two transactions on transitory account"
+        )
+        assert all(spit_txn.groupby("id")["report_amount"].sum() == 0), (
+            "Expecting split transactions to be balanced"
+        )
+        assert spit_txn.query("account == @transitory_account")["report_amount"].sum() == 0, (
+            "Expecting transitory account to be balanced"
+        )
+
+    def test_split_several_multi_currency_transactions(self, ledger):
+        transitory_account = 9995
+        txn = ledger.standardize_ledger(self.LEDGER_ENTRIES.query("id.isin(['15', '16'])"))
+        spit_txn = ledger.split_multi_currency_transactions(
+            txn, transitory_account=transitory_account
+        )
+        is_reporting_currency = spit_txn["currency"] == ledger.reporting_currency
+        spit_txn.loc[is_reporting_currency, "report_amount"] = spit_txn.loc[
+            is_reporting_currency, "amount"
+        ]
+        id_currency_pairs = (txn["id"] + txn["currency"]).nunique()
+        assert len(spit_txn) == len(txn) + id_currency_pairs, (
+            "Expecting one new line per currency and transaction"
+        )
+        assert sum(spit_txn["account"] == transitory_account) == id_currency_pairs, (
+            "Expecting one transaction on transitory account per id and currency"
+        )
+        assert all(spit_txn.groupby("id")["report_amount"].sum() == 0), (
+            "Expecting split transactions to be balanced"
+        )
+        assert spit_txn.query("account == @transitory_account")["report_amount"].sum() == 0, (
+            "Expecting transitory account to be balanced"
+        )
