@@ -11,8 +11,11 @@ def initial_engine(tmp_path_factory):
     )
 
     ledger.dump_to_zip(tmp_path / "ledger.zip")
+    # Hack to create JPY currency
+    currency_id = ledger._client.post("currency/create.json", {"code": "JPY"})["insertId"]
 
     yield ledger
 
     ledger.restore_from_zip(tmp_path / "ledger.zip")
     ledger.accounts.delete([{"account": 9999}])
+    ledger._client.post("currency/delete.json", {"ids": currency_id})
