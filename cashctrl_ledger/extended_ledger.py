@@ -5,8 +5,6 @@ directly represented in CahCtrl.
 import numpy as np
 import pandas as pd
 from .ledger import CashCtrlLedger
-from .ledger_entity import Ledger
-from pyledger.constants import LEDGER_SCHEMA
 
 
 class ExtendedCashCtrlLedger(CashCtrlLedger):
@@ -34,16 +32,6 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
 
     def __init__(self, transitory_account: int, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._ledger = Ledger(
-            client=self._client,
-            schema=LEDGER_SCHEMA,
-            list=self._ledger_list,
-            add=self._ledger_add,
-            modify=self._ledger_modify,
-            delete=self._ledger_delete,
-            standardize=self._ledger_standardize,
-            prepare_for_mirroring=self.sanitize_ledger
-        )
         self.transitory_account = transitory_account
 
     def clear(self):

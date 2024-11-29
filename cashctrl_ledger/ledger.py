@@ -60,7 +60,8 @@ class CashCtrlLedger(LedgerEngine):
             add=self._ledger_add,
             modify=self._ledger_modify,
             delete=self._ledger_delete,
-            standardize=self._ledger_standardize
+            standardize=self._ledger_standardize,
+            prepare_for_mirroring=self.sanitize_ledger
         )
 
     # ----------------------------------------------------------------------
