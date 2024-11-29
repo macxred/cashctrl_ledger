@@ -64,6 +64,7 @@ class TestLedger(BaseTestLedger):
         return initial_engine
 
     def test_ledger_accessor_mutators(self, restored_engine):
+        # TODO: Remove after resolving all issues with skipped transactions.
         self.LEDGER_ENTRIES = restored_engine.sanitize_ledger(self.LEDGER_ENTRIES)
         super().test_ledger_accessor_mutators(restored_engine, ignore_row_order=True)
 
@@ -72,7 +73,6 @@ class TestLedger(BaseTestLedger):
         pass
 
     def test_add_ledger_with_illegal_attributes(self, restored_engine):
-        pass
         ledger_entry = self.LEDGER_ENTRIES.query("id == '2'")
 
         # Add with non existent Tax code should raise an error
@@ -126,7 +126,7 @@ class TestLedger(BaseTestLedger):
         # Delete the ledger entry created above
         restored_engine.ledger.delete([{"id": id}])
 
-    @pytest.mark.skip(reason="We don't have mechanism to allow missing ids")
+    @pytest.mark.skip(reason="We don't have a mechanism to allow missing ids.")
     def test_delete_entry_allow_missing(self):
         pass
 

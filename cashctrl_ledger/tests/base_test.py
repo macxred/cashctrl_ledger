@@ -10,7 +10,7 @@ def initial_engine(tmp_path_factory):
         price_history_path=tmp_path / "price_history.csv"
     )
     engine.dump_to_zip(tmp_path / "ledger.zip")
-    # Hack to create JPY currency
+    # TODO: refactor logic for creating "JPY" currency within #89 issue
     currency_id = engine._client.post("currency/create.json", {"code": "JPY"})["insertId"]
 
     yield engine
