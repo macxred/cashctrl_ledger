@@ -28,7 +28,7 @@ class CashCtrlLedger(LedgerEngine):
 
     def __init__(
         self,
-        client: Union[CachedCashCtrlClient, None] = None,
+        client: CachedCashCtrlClient | None = None,
         price_history_path: Path = Path.cwd() / "price_history.csv"
     ):
         super().__init__()
