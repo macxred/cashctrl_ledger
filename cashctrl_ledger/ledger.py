@@ -12,7 +12,13 @@ from .tax_code import TaxCode
 from .accounts import Account
 from .ledger_entity import Ledger
 from pyledger import LedgerEngine, CSVAccountingEntity
-from pyledger.constants import TAX_CODE_SCHEMA, ACCOUNT_SCHEMA, PRICE_SCHEMA, LEDGER_SCHEMA
+from pyledger.constants import (
+    TAX_CODE_SCHEMA,
+    ACCOUNT_SCHEMA,
+    PRICE_SCHEMA,
+    LEDGER_SCHEMA,
+    ASSETS_SCHEMA
+)
 from .constants import JOURNAL_ITEM_COLUMNS, SETTINGS_KEYS
 from consistent_df import unnest, enforce_dtypes, enforce_schema
 
@@ -45,7 +51,8 @@ class CashCtrlLedger(LedgerEngine):
     def __init__(
         self,
         client: CachedCashCtrlClient | None = None,
-        price_history_path: Path = Path.cwd() / "price_history.csv"
+        price_history_path: Path = Path.cwd() / "price_history.csv",
+        assets_path: Path = Path.cwd() / "assets.csv",
     ):
         super().__init__()
         client = CachedCashCtrlClient() if client is None else client
@@ -53,6 +60,7 @@ class CashCtrlLedger(LedgerEngine):
         self._tax_codes = TaxCode(client=client, schema=TAX_CODE_SCHEMA)
         self._accounts = Account(client=client, schema=ACCOUNT_SCHEMA)
         self._price_history = CSVAccountingEntity(schema=PRICE_SCHEMA, path=price_history_path)
+        self._assets = CSVAccountingEntity(schema=ASSETS_SCHEMA, path=assets_path)
         self._ledger = Ledger(
             client=client,
             schema=LEDGER_SCHEMA,
@@ -74,9 +82,12 @@ class CashCtrlLedger(LedgerEngine):
             archive.writestr('accounts.csv', self.accounts.list().to_csv(index=False))
             archive.writestr('price_history.csv', self.price_history.list().to_csv(index=False))
             archive.writestr('ledger.csv', self.ledger.list().to_csv(index=False))
+            archive.writestr('assets.csv', self.price_history.list().to_csv(index=False))
 
     def restore_from_zip(self, archive_path: str):
-        required_files = {'tax_codes.csv', 'accounts.csv', 'settings.json', 'price_history.csv'}
+        required_files = {
+            'tax_codes.csv', 'accounts.csv', 'settings.json', 'price_history.csv', 'assets.csv'
+        }
 
         with zipfile.ZipFile(archive_path, 'r') as archive:
             archive_files = set(archive.namelist())
@@ -91,12 +102,14 @@ class CashCtrlLedger(LedgerEngine):
             tax_codes = pd.read_csv(archive.open('tax_codes.csv'))
             price_history = pd.read_csv(archive.open('price_history.csv'))
             ledger = pd.read_csv(archive.open('ledger.csv'))
+            assets = pd.read_csv(archive.open('assets.csv'))
             self.restore(
                 settings=settings,
                 tax_codes=tax_codes,
                 accounts=accounts,
                 price_history=price_history,
                 ledger=ledger,
+                assets=assets,
             )
 
     def restore(
@@ -106,6 +119,7 @@ class CashCtrlLedger(LedgerEngine):
         accounts: pd.DataFrame | None = None,
         price_history: pd.DataFrame | None = None,
         ledger: pd.DataFrame | None = None,
+        assets: pd.DataFrame | None = None,
     ):
         self.clear()
         if accounts is not None:
@@ -116,10 +130,13 @@ class CashCtrlLedger(LedgerEngine):
             self.accounts.mirror(accounts, delete=True)
         if settings is not None:
             self.settings_modify(settings)
+        if assets is not None:
+            self.assets.mirror(assets, delete=True)
         if price_history is not None:
             self.price_history.mirror(price_history, delete=True)
         if ledger is not None:
             self.ledger.mirror(ledger, delete=True)
+
         # TODO: Implement logic for other entities
 
     def clear(self):
@@ -132,6 +149,7 @@ class CashCtrlLedger(LedgerEngine):
         self.tax_codes.mirror(None, delete=True)
         self.accounts.mirror(None, delete=True)
         self.price_history.mirror(None, delete=True)
+        self.assets.mirror(None, delete=True)
         # TODO: Implement logic for other entities
 
     # ----------------------------------------------------------------------
@@ -755,6 +773,3 @@ class CashCtrlLedger(LedgerEngine):
             self._client.post("currency/create.json", data=payload)
 
         self._client.invalidate_currencies_cache()
-
-    def precision(self, ticker: str, date: datetime.date = None) -> float:
-        return self._precision.get(ticker, 0.01)
