@@ -345,9 +345,9 @@ class CashCtrlLedger(LedgerEngine):
             entry = incoming.query("id == @id")
             payload = self._map_ledger_entry(entry)
             res = self._client.post("journal/create.json", data=payload)
-            ids.append({"id": str(res["insertId"])})
+            ids.append(str(res["insertId"]))
             self._client.invalidate_journal_cache()
-        return ids[0] if ids else {}
+        return ids
 
     def _ledger_modify(self, data: pd.DataFrame):
         incoming = self.ledger.standardize(data)

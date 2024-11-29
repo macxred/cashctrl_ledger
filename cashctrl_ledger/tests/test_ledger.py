@@ -100,7 +100,7 @@ class TestLedger(BaseTestLedger):
 
     def test_update_ledger_with_illegal_attributes(self, restored_engine):
         ledger_entry = self.LEDGER_ENTRIES.query("id == '2'")
-        id = restored_engine.ledger.add(ledger_entry)["id"]
+        id = restored_engine.ledger.add(ledger_entry)[0]
 
         # Updating a ledger with non existent tax code should raise an error
         target = ledger_entry.copy()

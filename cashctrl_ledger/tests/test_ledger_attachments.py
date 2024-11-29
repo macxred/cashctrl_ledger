@@ -61,7 +61,7 @@ def ledger_ids():
         "description": ["test entry"],
     })
     engine = CashCtrlLedger()
-    ledger_ids = [engine.ledger.add(entry)["id"] for _ in range(3)]
+    ledger_ids = [engine.ledger.add(entry)[0] for _ in range(3)]
 
     yield ledger_ids
 
@@ -76,7 +76,7 @@ def ledger_attached_ids():
     """
     cashctrl = CashCtrlLedger()
     ledger_ids = [
-        cashctrl.ledger.add(LEDGER_ENTRIES.query(f"id == {id}"))["id"]
+        cashctrl.ledger.add(LEDGER_ENTRIES.query(f"id == {id}"))[0]
         for id in LEDGER_ENTRIES["id"]
     ]
 
