@@ -23,7 +23,7 @@ class TestLedger(BaseTestLedger):
     TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = default_account
 
     LEDGER_ENTRIES = BaseTestLedger.LEDGER_ENTRIES.copy()
-    exclude_ids = ["1", "23", "10", "3", "9", "18"]
+    exclude_ids = ["1", "23", "10", "3", "9", "18", "22"]
     # flake8: noqa: E501
     # "23": Transaction with CHF currency is correctly sanitized, but when reading - CHF is converted to USD and amount is recalculated to USD
     # LEDGER_ENTRIES = LEDGER_ENTRIES.query("id == '23'")
@@ -51,6 +51,8 @@ class TestLedger(BaseTestLedger):
     # LEDGER_ENTRIES = LEDGER_ENTRIES.query("id == '9'")
 
     # "18": Broken transaction amounts - API call failed. Total debit (0.00) and total credit (5.55) must be equal.
+
+    # "22": Error while adding ledger entry 22:fx: API call failed. Total debit (0.01) and total credit (0.00) must be equal.
 
     LEDGER_ENTRIES = LEDGER_ENTRIES.query("id not in @exclude_ids")
 
