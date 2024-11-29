@@ -43,7 +43,7 @@ class Ledger(LedgerEntity, CashCtrlAccountingEntity):
         self._add = add
         self._modify = modify
         self._delete = delete
-        self.standardize = standardize
+        self._standardize = standardize
 
     def list(self) -> pd.DataFrame:
         return self._list()
@@ -56,3 +56,7 @@ class Ledger(LedgerEntity, CashCtrlAccountingEntity):
 
     def delete(self, id: pd.DataFrame, allow_missing: bool = False) -> None:
         self._delete(id, allow_missing)
+
+    def standardize(self, data, keep_extra_columns=False):
+        data = super().standardize(data, keep_extra_columns)
+        return self._standardize(data)

@@ -366,7 +366,7 @@ class CashCtrlLedger(LedgerEngine):
         )
         self._client.invalidate_journal_cache()
 
-    def _ledger_standardize(self, data: pd.DataFrame) -> pd.DataFrame:
+    def _ledger_standardize(self, df: pd.DataFrame) -> pd.DataFrame:
         """Standardizes the ledger DataFrame to conform to CashCtrl format.
 
         Args:
@@ -375,17 +375,6 @@ class CashCtrlLedger(LedgerEngine):
         Returns:
             pd.DataFrame: The standardized ledger DataFrame.
         """
-        df = enforce_schema(data, LEDGER_SCHEMA, keep_extra_columns=False)
-        # Add id column if missing: Entries without a date share id of the last entry with a date
-        if df["id"].isna().all():
-            id_type = LEDGER_SCHEMA.query("column == 'id'")['dtype'].item()
-            df["id"] = df["date"].notna().cumsum().astype(id_type)
-
-        # Fill missing (NA) dates
-        df["date"] = df.groupby("id")["date"].ffill()
-        df["date"] = df.groupby("id")["date"].bfill()
-        df["date"] = df["date"].dt.tz_localize(None).dt.floor('D')
-
         # Drop redundant report_amount for transactions in reporting currency
         set_na = (
             (df["currency"] == self.reporting_currency)
@@ -396,13 +385,6 @@ class CashCtrlLedger(LedgerEngine):
         # Set reporting amount to 0 for transactions not in reporting currency with 0 amount
         mask = (df["currency"] != self.reporting_currency) & (df["amount"] == 0)
         df.loc[mask, "report_amount"] = 0
-
-        # Remove leading and trailing spaces in strings, convert -0.0 to 0.0
-        for col in df.columns:
-            if pd.StringDtype.is_dtype(df[col]):
-                df[col] = df[col].str.strip()
-            elif pd.Float64Dtype.is_dtype(df[col]):
-                df.loc[df[col].notna() & (df[col] == 0), col] = 0.0
 
         # In CashCtrl, attachments are stored at the transaction level rather than
         # for each individual line item within collective transactions. To ensure
