@@ -28,8 +28,8 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
     # ----------------------------------------------------------------------
     # Constructor
 
-    def __init__(self, transitory_account: int):
-        super().__init__()
+    def __init__(self, transitory_account: int, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.transitory_account = transitory_account
 
     def clear(self):
