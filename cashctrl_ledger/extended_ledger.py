@@ -244,7 +244,8 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 if pd.isna(entry["report_amount"].item()):
                     rate = self.price(entry["currency"].item(), date=entry["date"].item())
                     entry["report_amount"] = self.round_to_precision(
-                        entry["amount"] * rate, entry["currency"].item(), date=entry["date"].item()
+                        entry["amount"] * rate[1], entry["currency"].item(),
+                        date=entry["date"].item()
                     )
                 reporting_amount = self.round_to_precision(
                     entry["report_amount"].item(), reporting_currency
