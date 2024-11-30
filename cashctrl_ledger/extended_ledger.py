@@ -230,6 +230,8 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
             else:
                 amount = self.round_to_precision(entry["amount"].item(), entry["currency"].item())
                 if pd.isna(entry["report_amount"].item()):
+                    # TODO: Check wehther this is needed when debugging skipped transactions
+                    # https://github.com/macxred/cashctrl_ledger/pull/88#discussion_r1863475186
                     rate = self.price(entry["currency"].item(), date=entry["date"].item())
                     entry["report_amount"] = self.round_to_precision(
                         entry["amount"] * rate[1], entry["currency"].item(),
