@@ -61,12 +61,12 @@ def ledger_ids():
         "description": ["test entry"],
     })
     engine = CashCtrlLedger()
-    ledger_ids = [engine.add_ledger_entry(entry) for _ in range(3)]
+    ledger_ids = [engine.ledger.add(entry)[0] for _ in range(3)]
 
     yield ledger_ids
 
     # Restore original ledger state
-    engine.delete_ledger_entries(ledger_ids)
+    engine.ledger.delete({"id": ledger_ids})
 
 
 @pytest.fixture(scope="module")
@@ -76,14 +76,14 @@ def ledger_attached_ids():
     """
     cashctrl = CashCtrlLedger()
     ledger_ids = [
-        cashctrl.add_ledger_entry(LEDGER_ENTRIES.query(f"id == {id}"))
+        cashctrl.ledger.add(LEDGER_ENTRIES.query(f"id == {id}"))[0]
         for id in LEDGER_ENTRIES["id"]
     ]
 
     yield ledger_ids
 
     # Restore original ledger state
-    cashctrl.delete_ledger_entries(ledger_ids)
+    cashctrl.ledger.delete({"id": ledger_ids})
 
 
 def sort_dict_values(items):

@@ -10,10 +10,11 @@ import pandas as pd
 from pathlib import Path
 from .tax_code import TaxCode
 from .accounts import Account
+from .ledger_entity import Ledger
 from pyledger import LedgerEngine, CSVAccountingEntity
-from pyledger.constants import TAX_CODE_SCHEMA, ACCOUNT_SCHEMA, PRICE_SCHEMA
+from pyledger.constants import TAX_CODE_SCHEMA, ACCOUNT_SCHEMA, PRICE_SCHEMA, LEDGER_SCHEMA
 from .constants import JOURNAL_ITEM_COLUMNS, SETTINGS_KEYS
-from consistent_df import unnest, enforce_dtypes
+from consistent_df import unnest, enforce_dtypes, enforce_schema
 
 
 class CashCtrlLedger(LedgerEngine):
@@ -23,6 +24,20 @@ class CashCtrlLedger(LedgerEngine):
     See README on https://github.com/macxred/cashctrl_ledger for overview and
     usage examples.
     """
+
+    # TODO: remove when assets are implemented
+    _precision = {
+        "AUD": 0.01,
+        "CAD": 0.01,
+        "CHF": 0.01,
+        "EUR": 0.01,
+        "GBP": 0.01,
+        "JPY": 1.00,
+        "NZD": 0.01,
+        "NOK": 0.01,
+        "SEK": 0.01,
+        "USD": 0.01,
+    }
 
     # ----------------------------------------------------------------------
     # Constructor
@@ -38,6 +53,16 @@ class CashCtrlLedger(LedgerEngine):
         self._tax_codes = TaxCode(client=client, schema=TAX_CODE_SCHEMA)
         self._accounts = Account(client=client, schema=ACCOUNT_SCHEMA)
         self._price_history = CSVAccountingEntity(schema=PRICE_SCHEMA, path=price_history_path)
+        self._ledger = Ledger(
+            client=client,
+            schema=LEDGER_SCHEMA,
+            list=self._ledger_list,
+            add=self._ledger_add,
+            modify=self._ledger_modify,
+            delete=self._ledger_delete,
+            standardize=self._ledger_standardize,
+            prepare_for_mirroring=self.sanitize_ledger
+        )
 
     # ----------------------------------------------------------------------
     # File operations
@@ -48,6 +73,7 @@ class CashCtrlLedger(LedgerEngine):
             archive.writestr('tax_codes.csv', self.tax_codes.list().to_csv(index=False))
             archive.writestr('accounts.csv', self.accounts.list().to_csv(index=False))
             archive.writestr('price_history.csv', self.price_history.list().to_csv(index=False))
+            archive.writestr('ledger.csv', self.ledger.list().to_csv(index=False))
 
     def restore_from_zip(self, archive_path: str):
         required_files = {'tax_codes.csv', 'accounts.csv', 'settings.json', 'price_history.csv'}
@@ -64,11 +90,13 @@ class CashCtrlLedger(LedgerEngine):
             accounts = pd.read_csv(archive.open('accounts.csv'))
             tax_codes = pd.read_csv(archive.open('tax_codes.csv'))
             price_history = pd.read_csv(archive.open('price_history.csv'))
+            ledger = pd.read_csv(archive.open('ledger.csv'))
             self.restore(
                 settings=settings,
                 tax_codes=tax_codes,
                 accounts=accounts,
                 price_history=price_history,
+                ledger=ledger,
             )
 
     def restore(
@@ -77,6 +105,7 @@ class CashCtrlLedger(LedgerEngine):
         tax_codes: pd.DataFrame | None = None,
         accounts: pd.DataFrame | None = None,
         price_history: pd.DataFrame | None = None,
+        ledger: pd.DataFrame | None = None,
     ):
         self.clear()
         if accounts is not None:
@@ -89,9 +118,12 @@ class CashCtrlLedger(LedgerEngine):
             self.settings_modify(settings)
         if price_history is not None:
             self.price_history.mirror(price_history, delete=True)
+        if ledger is not None:
+            self.ledger.mirror(ledger, delete=True)
         # TODO: Implement logic for other entities
 
     def clear(self):
+        self.ledger.mirror(None, delete=True)
         self.settings_clear()
 
         # Manually reset accounts tax to none
@@ -186,7 +218,7 @@ class CashCtrlLedger(LedgerEngine):
         # ----------------------------------------------------------------------
     # Ledger
 
-    def ledger(self) -> pd.DataFrame:
+    def _ledger_list(self) -> pd.DataFrame:
         """Retrieves ledger entries from the remote CashCtrl account and converts
         the entries to standard pyledger format.
 
@@ -297,48 +329,44 @@ class CashCtrlLedger(LedgerEngine):
                 "document": collective["document"]
             })
             result = pd.concat([
-                self.standardize_ledger_columns(result),
-                self.standardize_ledger_columns(mapped_collective),
+                self.ledger.standardize(result),
+                self.ledger.standardize(mapped_collective),
             ])
 
-        return self.standardize_ledger(result)
+        return self.ledger.standardize(result).reset_index(drop=True)
 
     def ledger_entry(self):
         """Not implemented yet."""
         raise NotImplementedError
 
-    def add_ledger_entry(self, entry: pd.DataFrame) -> str:
-        """Adds a new ledger entry to the remote CashCtrl instance.
+    def _ledger_add(self, data: pd.DataFrame) -> str:
+        ids = []
+        incoming = self.ledger.standardize(data)
+        for id in incoming["id"].unique():
+            entry = incoming.query("id == @id")
+            payload = self._map_ledger_entry(entry)
+            res = self._client.post("journal/create.json", data=payload)
+            ids.append(str(res["insertId"]))
+            self._client.invalidate_journal_cache()
+        return ids
 
-        Args:
-            entry (pd.DataFrame): DataFrame with ledger entry in pyledger schema.
+    def _ledger_modify(self, data: pd.DataFrame):
+        incoming = self.ledger.standardize(data)
+        for id in incoming["id"].unique():
+            entry = incoming.query("id == @id")
+            payload = self._map_ledger_entry(entry)
+            payload["id"] = id
+            self._client.post("journal/update.json", data=payload)
+            self._client.invalidate_journal_cache()
 
-        Returns:
-            str: The Id of created ledger entry.
-        """
-        payload = self._map_ledger_entry(entry)
-        res = self._client.post("journal/create.json", data=payload)
-        self._client.invalidate_journal_cache()
-        return str(res["insertId"])
-
-    def modify_ledger_entry(self, entry: pd.DataFrame):
-        """Adds a new ledger entry to the remote CashCtrl instance.
-
-        Args:
-            entry (pd.DataFrame): DataFrame with ledger entry in pyledger schema.
-        """
-        payload = self._map_ledger_entry(entry)
-        if entry["id"].nunique() != 1:
-            raise ValueError("Id needs to be unique in all rows of a collective booking.")
-        payload["id"] = entry["id"].iat[0]
-        self._client.post("journal/update.json", data=payload)
-        self._client.invalidate_journal_cache()
-
-    def delete_ledger_entries(self, ids: List[str] = []):
-        self._client.post("journal/delete.json", {"ids": ",".join([str(id) for id in ids])})
+    def _ledger_delete(self, id: pd.DataFrame, allow_missing=False):
+        incoming = enforce_schema(pd.DataFrame(id), LEDGER_SCHEMA.query("id"))
+        self._client.post(
+            "journal/delete.json", {"ids": ",".join([str(id) for id in incoming["id"]])}
+        )
         self._client.invalidate_journal_cache()
 
-    def standardize_ledger(self, ledger: pd.DataFrame) -> pd.DataFrame:
+    def _ledger_standardize(self, df: pd.DataFrame) -> pd.DataFrame:
         """Standardizes the ledger DataFrame to conform to CashCtrl format.
 
         Args:
@@ -347,7 +375,17 @@ class CashCtrlLedger(LedgerEngine):
         Returns:
             pd.DataFrame: The standardized ledger DataFrame.
         """
-        df = super().standardize_ledger(ledger)
+        # Drop redundant report_amount for transactions in reporting currency
+        set_na = (
+            (df["currency"] == self.reporting_currency)
+            & (df["report_amount"].isna() | (df["report_amount"] == df["amount"]))
+        )
+        df.loc[set_na, "report_amount"] = pd.NA
+
+        # Set reporting amount to 0 for transactions not in reporting currency with 0 amount
+        mask = (df["currency"] != self.reporting_currency) & (df["amount"] == 0)
+        df.loc[mask, "report_amount"] = 0
+
         # In CashCtrl, attachments are stored at the transaction level rather than
         # for each individual line item within collective transactions. To ensure
         # consistency between equivalent transactions, we fill any missing (NA)
@@ -585,7 +623,7 @@ class CashCtrlLedger(LedgerEngine):
         Returns:
             dict: A data structure to post as json to the CashCtrl REST API.
         """
-        entry = self.standardize_ledger(entry)
+        entry = self.ledger.standardize(entry)
         reporting_currency = self.reporting_currency
 
         # Individual ledger entry
