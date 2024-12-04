@@ -19,7 +19,12 @@ from pyledger.constants import (
     LEDGER_SCHEMA,
     ASSETS_SCHEMA
 )
-from .constants import JOURNAL_ITEM_COLUMNS, SETTINGS_KEYS
+from .constants import (
+    FX_REVALUATION_ACCOUNT_OPTIONAL_COLUMNS,
+    FX_REVALUATION_ACCOUNT_REQUIRED_COLUMNS,
+    JOURNAL_ITEM_COLUMNS,
+    SETTINGS_KEYS
+)
 from consistent_df import unnest, enforce_dtypes, enforce_schema
 
 
@@ -729,6 +734,213 @@ class CashCtrlLedger(LedgerEngine):
         else:
             raise ValueError("The ledger entry contains no transaction.")
         return payload
+
+    def _add_fx_adjustment(
+        self, entry: pd.DataFrame, transitory_account: int, base_currency: str
+    ) -> pd.DataFrame:
+        """Ensure amounts conform to CashCtrl's eight-digit FX rate precision.
+
+        Adjusts the base currency amounts of a ledger entry to match CashCtrl's
+        eight-digit precision for exchange rates. Adds balancing ledger entries
+        if adjusted amounts differ from the original, ensuring the sum of all
+        entries remains consistent with the original entry.
+
+        Args:
+            entry (pd.DataFrame): Ledger entry data.
+            transitory_account (int): Account for balancing transactions.
+            base_currency (str): Base currency for adjustments.
+
+        Returns:
+            pd.DataFrame: Adjusted ledger entries with FX adjustments.
+        """
+        if len(entry) == 1:
+            # Individual transaction: one row in the ledger data frame
+            if (
+                entry["amount"].item() == 0
+                or entry["currency"].item() == base_currency
+            ):
+                return entry
+            else:
+                amount = round(entry["amount"].item(), 2)
+                base_amount = round(entry["report_amount"].item(), 2)
+                # TODO: Once precision() is implemented, use `round_to_precision()`
+                fx_rate = round(base_amount / amount, 8)
+                balance = base_amount - round(amount * fx_rate, 2)
+                if balance == 0.0:
+                    return entry
+                else:
+                    balancing_txn = entry.copy()
+                    balancing_txn["id"] = balancing_txn["id"] + ":fx"
+                    balancing_txn["currency"] = base_currency
+                    balancing_txn["amount"] = balance
+                    balancing_txn["report_amount"] = pd.NA
+                    entry["report_amount"] = (
+                        entry["report_amount"] - balance
+                    )
+                    result = pd.concat(
+                        [
+                            self.standardize_ledger_columns(entry),
+                            self.standardize_ledger_columns(balancing_txn),
+                        ]
+                    )
+                    # TODO: Once precision() is implemented, use `round_to_precision()`
+                    result["amount"] = result["amount"].round(2)
+                    result["report_amount"] = result[
+                        "report_amount"
+                    ].round(2)
+                    return self.standardize_ledger(result)
+
+        elif len(entry) > 1:
+            # Collective transaction: multiple row in the ledger data frame
+            currency, fx_rate = self._collective_transaction_currency_and_rate(
+                entry, suppress_error=True
+            )
+            fx_rate = round(fx_rate, 8)
+            if currency == base_currency:
+                return entry
+            else:
+                amount = entry["amount"].round(2)
+                base_amount = entry["report_amount"].round(2)
+                balance = np.where(
+                    entry["currency"] == base_currency,
+                    amount - ((amount / fx_rate).round(2) * fx_rate).round(2),
+                    base_amount - (amount * fx_rate).round(2),
+                )
+                if all(balance == 0.0):
+                    return entry
+                else:
+                    is_base_currency = entry["currency"] == base_currency
+                    balancing_txn = entry.head(1).copy()
+                    balancing_txn["currency"] = base_currency
+                    balancing_txn["amount"] = balance.sum()
+                    balancing_txn["account"] = transitory_account
+                    balancing_txn["report_amount"] = pd.NA
+                    balancing_txn[
+                        "text"
+                    ] = "Currency adjustments to match CashCtrl FX rate precision"
+                    entry["amount"] = entry["amount"] - np.where(
+                        is_base_currency, balance, 0
+                    )
+                    entry["report_amount"] = (
+                        entry["report_amount"] - balance
+                    )
+                    entry = pd.concat(
+                        [
+                            self.standardize_ledger_columns(entry),
+                            self.standardize_ledger_columns(balancing_txn),
+                        ]
+                    )
+                    balance = np.append(balance, -1 * balance.sum())
+                    fx_adjust = entry.copy()
+                    is_base_currency = fx_adjust["currency"] == base_currency
+                    fx_adjust["amount"] = np.where(is_base_currency, balance, 0.0)
+                    fx_adjust["report_amount"] = np.where(
+                        is_base_currency, pd.NA, balance
+                    )
+                    fx_adjust["id"] = fx_adjust["id"] + ":fx"
+                    fx_adjust["text"] = "Currency adjustments: " + fx_adjust["text"]
+                    fx_adjust = fx_adjust[balance != 0]
+                    result = pd.concat([entry, fx_adjust])
+                    # TODO: Once precision() is implemented, use `round_to_precision()`
+                    result["amount"] = result["amount"].astype(pd.Float64Dtype()).round(2)
+                    result["report_amount"] = result["report_amount"].astype(
+                        pd.Float64Dtype()
+                    ).round(2)
+                    return self.standardize_ledger(result)
+
+        else:
+            raise ValueError("Expecting at least one `entry` row.")
+
+    def FX_revaluation(self, accounts: pd.DataFrame = None, date: datetime.date = None):
+        """Record foreign exchange gains or losses.
+
+        Revalue given foreign currency accounts based on the provided exchange
+        rates (if not provided, use all foreign currency accounts)
+        and record the revaluation gain/losses.
+
+        Args:
+            accounts (pd.DataFrame, optional): DataFrame with the following columns:
+                - 'foreign_currency_account' (int): The account to revalue.
+                - 'exchange_rate' (float): The exchange rate to apply.
+                - 'fx_gain_loss_account' (int): The account in which to record FX gain/loss.
+            date (datetime.date, optional): The date for the revaluation.
+                Defaults to the last day of the current accounting year.
+        """
+
+        def get_fx_gain_loss_account(allow_missing=False) -> int:
+            """Retrieves the FX gain/loss account from the settings."""
+            settings = self._client.get("setting/read.json")
+            account_id = settings.get("DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID", None)
+            return self._client.account_from_id(account_id, allow_missing=allow_missing)
+
+        def set_fx_gain_loss_account(account: int, allow_missing=False):
+            """Sets the FX gain/loss account in the settings."""
+            account_id = self._client.account_to_id(account, allow_missing=allow_missing)
+            payload = {"DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID": account_id}
+            self._client.post("setting/update.json", params=payload)
+
+        # Get initial setting
+        initial_fx_gain_loss_account = get_fx_gain_loss_account(allow_missing=True)
+
+        if accounts is None:
+            fx_rates = self._client.get("fiscalperiod/exchangediff.json")["data"]
+            accounts = pd.DataFrame({
+                "foreign_currency_account": [
+                    self._client.account_from_id(entry['accountId']) for entry in fx_rates
+                ],
+                "fx_gain_loss_account": initial_fx_gain_loss_account,
+            })
+
+        # Record FX gain loss on given accounts
+        accounts = enforce_dtypes(
+            accounts,
+            FX_REVALUATION_ACCOUNT_REQUIRED_COLUMNS,
+            FX_REVALUATION_ACCOUNT_OPTIONAL_COLUMNS,
+        )
+        accounts["fx_gain_loss_account"] = (
+            accounts["fx_gain_loss_account"]
+            .fillna(initial_fx_gain_loss_account)
+        )
+        for fx_gain_loss_account in accounts["fx_gain_loss_account"].unique():
+            set_fx_gain_loss_account(fx_gain_loss_account)
+            df = accounts.loc[accounts["fx_gain_loss_account"] == fx_gain_loss_account]
+
+            # TODO: Refactor this part when get_exchange_rate() will be implemented
+            def get_exchange_rate(rate: float | None, account: int) -> float:
+                if pd.isna(rate):
+                    from_currency = self._client.account_to_currency(account)
+                    params = {"from": from_currency, "to": self.reporting_currency, "date": None}
+                    response = self._client.request("GET", "currency/exchangerate", params=params)
+                    return response.json()
+                else:
+                    return rate
+
+            exchange_diff = [
+                {
+                    "accountId": self._client.account_to_id(account),
+                    "currencyRate": get_exchange_rate(rate=rate, account=account),
+                }
+                for account, rate in zip(df["foreign_currency_account"], df["exchange_rate"])
+            ]
+
+            payload = {"date": date, "exchangeDiff": exchange_diff}
+            self._client.post("fiscalperiod/bookexchangediff.json", params=payload)
+
+        # Restore initial setting
+        set_fx_gain_loss_account(initial_fx_gain_loss_account, allow_missing=True)
+
+    def FX_valuation(self) -> pd.DataFrame:
+        """Retrieve and process foreign exchange valuation data.
+
+        This method retrieves foreign exchange differences, processes the data into
+        a pandas DataFrame, and maps the `accountId` to the corresponding account identifier.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing the processed foreign exchange valuation data.
+        """
+        df = pd.DataFrame(self._client.get("fiscalperiod/exchangediff.json")["data"])
+        df["account"] = df["accountId"].apply(self._client.account_from_id)
+        return df
 
     # ----------------------------------------------------------------------
     # Currencies

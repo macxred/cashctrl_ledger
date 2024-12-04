@@ -8,7 +8,6 @@ JOURNAL_ITEM_COLUMNS = {
     "taxName": "string[python]",
 }
 
-
 SETTINGS_KEYS = [
     "DEFAULT_OPENING_ACCOUNT_ID",
     "DEFAULT_INPUT_TAX_ADJUSTMENT_ACCOUNT_ID",
@@ -23,3 +22,12 @@ SETTINGS_KEYS = [
     "DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID",
     "DEFAULT_CREDITOR_ACCOUNT_ID"
 ]
+
+FX_REVALUATION_ACCOUNT_REQUIRED_COLUMNS = {
+    "foreign_currency_account": "int",
+    "fx_gain_loss_account": "Int64",
+}
+
+FX_REVALUATION_ACCOUNT_OPTIONAL_COLUMNS = {
+    "exchange_rate": "Float64",
+}
