@@ -357,7 +357,7 @@ class CashCtrlLedger(LedgerEngine):
         """Not implemented yet."""
         raise NotImplementedError
 
-    def _ledger_add(self, data: pd.DataFrame) -> str:
+    def _ledger_add(self, data: pd.DataFrame) -> list[str]:
         ids = []
         incoming = self.ledger.standardize(data)
         for id in incoming["id"].unique():
