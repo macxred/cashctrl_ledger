@@ -357,9 +357,65 @@ class CashCtrlLedger(LedgerEngine):
         """Not implemented yet."""
         raise NotImplementedError
 
+    def fiscal_period_list():
+        """Get list of all fiscal periods
+
+        Raise an exception if incoherent data (gaps in the fiscal periods, etc.)
+        """
+        current_fiscal_periods = self._client.get("fiscalperiod/list.json")['data']
+        current_fiscal_periods = pd.DataFrame(current_fiscal_periods)
+        current_fiscal_periods['start'] = current_fiscal_periods['start'].astype('datetime64[ns]')
+        current_fiscal_periods['end'] = current_fiscal_periods['end'].astype('datetime64[ns]')
+
+        # Ensure there are no gaps bewteen fiscal periods
+        # (i.e. a new periods starts on the day after the previous period's end)
+        fp = current_fiscal_periods
+        if (
+            not all(fp["end"].query(end != max(end)).add_datetime(days=-1).isin(fp["start"]))
+            or not all(fp["start"].query(start != min(end)).add_datetime(days=1).isin(fp["end"]))
+        ):
+            raise Exception("Gaps between fiscal periods.")
+
+
+    def fiscal_period_add(start, end, name):
+        # Create fiscal periods for missing years
+        for year in missing_years:
+            self._client.post(
+                "fiscalperiod/create.json",
+                data={
+                    "isCustom": True,
+                    "start": start,
+                    "end": end,
+                    "name": name
+                }
+            )
+
+    def ensure_fiscal_periods_exist(self, start: datetime.date, end: datetime.date):
+        """
+        Ensures that fiscal periods exist for the years of the provided dates.
+        Creates new fiscal periods for any years not already covered.
+        Args:
+            dates (pd.Series): Pandas Series of dates to ensure fiscal periods for.
+        """
+        start = pd.to_datetime(start)
+        end = pd.to_datetime(end)
+        fiscal_periods = self.get_fiscal_periods()
+        while start <= fiscal_periods["start"].min():
+            last_covered = fiscal_periods["start"].min()
+            fiscal_period_add(
+                start=last_covered.replace(year = last_covered.year - 1),
+                end=last_covered.datediff(days=-1),
+                name=last_covered.datediff(days=-1).year
+            )
+            fiscal_periods = self.get_fiscal_periods()
+
+        while end >= fiscal_periods["end"].max():
+            # add one year
+
     def _ledger_add(self, data: pd.DataFrame) -> str:
         ids = []
         incoming = self.ledger.standardize(data)
+        self.ensure_fiscal_periods(data["date"])
         for id in incoming["id"].unique():
             entry = incoming.query("id == @id")
             payload = self._map_ledger_entry(entry)
