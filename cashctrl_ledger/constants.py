@@ -1,5 +1,9 @@
 """This module contains constants used throughout the application."""
 
+import pandas as pd
+from io import StringIO
+
+
 JOURNAL_ITEM_COLUMNS = {
     "accountId": "int",
     "description": "string[python]",
@@ -23,3 +27,13 @@ SETTINGS_KEYS = [
     "DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID",
     "DEFAULT_CREDITOR_ACCOUNT_ID"
 ]
+
+
+FISCAL_PERIOD_SCHEMA_CSV = """
+    column,              dtype,   mandatory,       id
+        id,              Int64,        True,     True
+     start,     datetime64[ns],        True,     False
+       end,     datetime64[ns],        True,     False
+      name,     string[python],        True,      False
+"""
+FISCAL_PERIOD_SCHEMA = pd.read_csv(StringIO(FISCAL_PERIOD_SCHEMA_CSV), skipinitialspace=True)
