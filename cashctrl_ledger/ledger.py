@@ -19,7 +19,11 @@ from pyledger.constants import (
     LEDGER_SCHEMA,
     ASSETS_SCHEMA
 )
-from .constants import JOURNAL_ITEM_COLUMNS, SETTINGS_KEYS
+from .constants import (
+    FX_REVALUATION_SCHEMA_CSV,
+    JOURNAL_ITEM_COLUMNS,
+    SETTINGS_KEYS
+)
 from consistent_df import unnest, enforce_dtypes, enforce_schema
 
 
@@ -729,6 +733,49 @@ class CashCtrlLedger(LedgerEngine):
         else:
             raise ValueError("The ledger entry contains no transaction.")
         return payload
+
+def book_revaluations(self, revaluations: pd.DataFrame) -> pd.DataFrame:
+    """Book foreign exchange revaluations."""
+
+    def get_fx_gain_loss_account(allow_missing=False) -> int:
+        """Retrieves the FX gain/loss account from the settings."""
+        settings = self._client.get("setting/read.json")
+        account_id = settings.get("DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID", None)
+        return self._client.account_from_id(account_id, allow_missing=allow_missing)
+
+    def set_fx_gain_loss_account(account: int, allow_missing=False):
+        """Sets the FX gain/loss account in the settings."""
+        account_id = self._client.account_to_id(account, allow_missing=allow_missing)
+        payload = {"DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID": account_id}
+        self._client.post("setting/update.json", params=payload)
+
+    initial_fx_gain_loss_account = get_fx_gain_loss_account(allow_missing=True)
+
+    revaluations = revaluations.copy().sort_values(by=["date"])
+    for row in revaluations.to_dict('records'):
+        if row['credit'] == row['debit']:
+            raise ValueError("CashCtrl allows to solely specify a single account")
+
+        accounts = self.account_range(row['account'])
+        accounts = set(accounts['add']) - set(accounts['subtract'])
+        fx_gain_loss_account = row['credit'] if pd.isna(row['credit']) else row['debit']
+        set_fx_gain_loss_account(fx_gain_loss_account) # TODO: if amount > 0 else row['debit']
+        exchange_diff = [
+            {
+                "accountId": self._client.account_to_id(account),
+                "currencyRate": self.price(
+                    ticker=self.account_currency(account),
+                    date=row['date'],
+                    currency=self.reporting_currency
+                )[1]
+            }
+            for account in accounts
+        ]
+        payload = {"date": row["date"], "exchangeDiff": exchange_diff}
+        self._client.post("fiscalperiod/bookexchangediff.json", params=payload)
+
+    # Restore initial setting
+    set_fx_gain_loss_account(initial_fx_gain_loss_account, allow_missing=True)
 
     # ----------------------------------------------------------------------
     # Currencies
