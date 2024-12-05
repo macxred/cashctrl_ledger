@@ -19,7 +19,11 @@ from pyledger.constants import (
     LEDGER_SCHEMA,
     ASSETS_SCHEMA
 )
-from .constants import JOURNAL_ITEM_COLUMNS, SETTINGS_KEYS
+from .constants import (
+    FX_REVALUATION_SCHEMA_CSV,
+    JOURNAL_ITEM_COLUMNS,
+    SETTINGS_KEYS
+)
 from consistent_df import unnest, enforce_dtypes, enforce_schema
 
 
@@ -729,6 +733,115 @@ class CashCtrlLedger(LedgerEngine):
         else:
             raise ValueError("The ledger entry contains no transaction.")
         return payload
+
+    def book_revaluations(self, revaluations: pd.DataFrame) -> pd.DataFrame:
+        """Method that converts revaluations to the CashCtrl format and book them.
+
+        Args:
+            revaluations (pd.DataFrame): DataFrame with the LedgerEngine.Revaluations schema.
+        """
+        for row in revaluations.to_dict('records'):
+            if row['credit'] == row['debit']:
+                raise ValueError("CashCtrl allows to solely specify a single account")
+            accounts = self.account_range(row['account'])
+            accounts = set(accounts['add']) - set(accounts['subtract'])
+            df = pd.DataFrame({
+                "foreign_currency_account": list(accounts),
+                "currency": [self.account_currency(account) for account in accounts],
+                "fx_gain_loss_account": row['credit'] # TODO: if amount > 0 else row['debit']
+            })
+            # Todo above specify condition, but credit and debit should be the same, so what to do?
+            # I believe:
+                # - take any if they are the same
+                # - if one of them is null take present
+                # - but what if they are different
+
+            df = df.loc[df['currency'] != self.reporting_currency, :]
+            fx_rate = {}
+            for currency in df['currency'].unique():
+                price = self.price(currency, date=row['date'], currency=self.reporting_currency)
+                assert price[0] == self.reporting_currency
+                fx_rate[currency] = price[1]
+            df['exchange_rate'] = [fx_rate[currency] for currency in df['currency']]
+            accounts = enforce_schema(df, FX_REVALUATION_SCHEMA_CSV)
+            self.FX_revaluation(df, date=row['date'])
+
+    def FX_revaluation(self, accounts: pd.DataFrame = None, date: datetime.date = None):
+        """Record foreign exchange gains or losses.
+
+        Revalue given foreign currency accounts based on the provided exchange
+        rates (if not provided, use all foreign currency accounts)
+        and record the revaluation gain/losses.
+
+        Args:
+            accounts (pd.DataFrame, optional): DataFrame with the following columns:
+                - 'foreign_currency_account' (int): The account to revalue.
+                - 'exchange_rate' (float): The exchange rate to apply.
+                - 'fx_gain_loss_account' (int): The account in which to record FX gain/loss.
+            date (datetime.date, optional): The date for the revaluation.
+                Defaults to the last day of the current accounting year.
+        """
+
+        def get_fx_gain_loss_account(allow_missing=False) -> int:
+            """Retrieves the FX gain/loss account from the settings."""
+            settings = self._client.get("setting/read.json")
+            account_id = settings.get("DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID", None)
+            return self._client.account_from_id(account_id, allow_missing=allow_missing)
+
+        def set_fx_gain_loss_account(account: int, allow_missing=False):
+            """Sets the FX gain/loss account in the settings."""
+            account_id = self._client.account_to_id(account, allow_missing=allow_missing)
+            payload = {"DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID": account_id}
+            self._client.post("setting/update.json", params=payload)
+
+        # Get initial setting
+        initial_fx_gain_loss_account = get_fx_gain_loss_account(allow_missing=True)
+
+        # Use CashCtrl automatically calculated fx valuations if no specified
+        if accounts is None:
+            fx_rates = self.FX_valuation()
+            accounts = pd.DataFrame({
+                "foreign_currency_account": fx_rates["account"],
+                "fx_gain_loss_account": initial_fx_gain_loss_account,
+            })
+        accounts = enforce_schema(df, FX_REVALUATION_SCHEMA_CSV)
+
+        # Record FX gain loss on given accounts
+        accounts["fx_gain_loss_account"] = (
+            accounts["fx_gain_loss_account"].fillna(initial_fx_gain_loss_account)
+        )
+        for fx_gain_loss_account in accounts["fx_gain_loss_account"].unique():
+            set_fx_gain_loss_account(fx_gain_loss_account)
+            df = accounts.loc[accounts["fx_gain_loss_account"] == fx_gain_loss_account]
+            exchange_diff = [
+                {
+                    "accountId": self._client.account_to_id(account),
+                    "currencyRate": self._client.get_exchange_rate(
+                        self._client.account_to_currency(account),
+                        self.reporting_currency
+                    ) if pd.isna(rate) else rate
+                }
+                for account, rate in zip(df["foreign_currency_account"], df["exchange_rate"])
+            ]
+
+            payload = {"date": date, "exchangeDiff": exchange_diff}
+            self._client.post("fiscalperiod/bookexchangediff.json", params=payload)
+
+        # Restore initial setting
+        set_fx_gain_loss_account(initial_fx_gain_loss_account, allow_missing=True)
+
+    def FX_valuation(self) -> pd.DataFrame:
+        """Retrieve and process foreign exchange valuation data.
+
+        This method retrieves foreign exchange differences, processes the data into
+        a pandas DataFrame, and maps the `accountId` to the corresponding account identifier.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing the processed foreign exchange valuation data.
+        """
+        df = pd.DataFrame(self._client.get("fiscalperiod/exchangediff.json")["data"])
+        df["account"] = df["accountId"].apply(self._client.account_from_id)
+        return df
 
     # ----------------------------------------------------------------------
     # Currencies
