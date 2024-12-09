@@ -439,7 +439,7 @@ class CashCtrlLedger(LedgerEngine):
     def _ledger_add(self, data: pd.DataFrame) -> str:
         ids = []
         incoming = self.ledger.standardize(data)
-        self.ensure_fiscal_periods(data["date"])
+        self.ensure_fiscal_periods_exist(incoming["date"].min(), incoming["date"].max())
         for id in incoming["id"].unique():
             entry = incoming.query("id == @id")
             payload = self._map_ledger_entry(entry)
@@ -450,6 +450,7 @@ class CashCtrlLedger(LedgerEngine):
 
     def _ledger_modify(self, data: pd.DataFrame):
         incoming = self.ledger.standardize(data)
+        self.ensure_fiscal_periods_exist(incoming["date"].min(), incoming["date"].max())
         for id in incoming["id"].unique():
             entry = incoming.query("id == @id")
             payload = self._map_ledger_entry(entry)
