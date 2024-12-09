@@ -19,11 +19,7 @@ from pyledger.constants import (
     LEDGER_SCHEMA,
     ASSETS_SCHEMA
 )
-from .constants import (
-    FX_REVALUATION_SCHEMA_CSV,
-    JOURNAL_ITEM_COLUMNS,
-    SETTINGS_KEYS
-)
+from .constants import JOURNAL_ITEM_COLUMNS, SETTINGS_KEYS
 from consistent_df import unnest, enforce_dtypes, enforce_schema
 
 
@@ -735,45 +731,54 @@ class CashCtrlLedger(LedgerEngine):
         return payload
 
     def book_revaluations(self, revaluations: pd.DataFrame) -> pd.DataFrame:
-        """Book foreign exchange revaluations."""
-        # @ALex: The function that used to sit below had a more extensive doc string.
-        # Maybe we can re-use some of it here?
+        """
+        Book foreign exchange revaluations on given accounts, calculating and recording
+        any resulting FX gain or loss. If specific credit/debit accounts are provided,
+        they are used directly. Otherwise, the function calculates the appropriate
+        gain or loss account based on the current balances and exchange rates.
 
-        def get_fx_gain_loss_account(allow_missing=False) -> int:
+        Args:
+            revaluations (pd.DataFrame): A DataFrame with the LedgerEngine.Revaluations
+                columns schema
+        """
+        def _get_fx_gain_loss_account(allow_missing=False) -> int:
             """Retrieves the FX gain/loss account from the settings."""
             settings = self._client.get("setting/read.json")
             account_id = settings.get("DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID", None)
             return self._client.account_from_id(account_id, allow_missing=allow_missing)
 
-        def set_fx_gain_loss_account(account: int, allow_missing=False):
+        def _set_fx_gain_loss_account(account: int, allow_missing=False):
             """Sets the FX gain/loss account in the settings."""
             account_id = self._client.account_to_id(account, allow_missing=allow_missing)
             payload = {"DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID": account_id}
             self._client.post("setting/update.json", params=payload)
 
-        def _fx_gain_loss_account(revaluation: dict, price):
+        def _fx_gain_loss_account(
+            revaluation: dict, price: float, account: int, account_currency: str
+        ):
+            """
+            Determine the appropriate FX gain/loss account (credit or debit) for a revaluation.
+            """
             if pd.isna(revaluation['credit']) and not pd.isna(revaluation['debit']):
                 fx_gain_loss_account = revaluation['debit']
-            elif pd.isna(revaluation['credit']) and not pd.isna(revaluation['debit']):
-                fx_gain_loss_account = revaluation['debit']
+            elif pd.isna(revaluation['debit']) and not pd.isna(revaluation['credit']):
+                fx_gain_loss_account = revaluation['credit']
             elif not pd.isna(revaluation['credit']) and not pd.isna(revaluation['debit']):
-                # Book positive amounts to 'credit' and negative amounts to 'debit' account
-                balance = engine.account_balance(account, date=revaluation['date'])
+                # Book positive amounts to 'credit' and negative amounts to 'debit'.
+                balance = self.account_balance(account, date=revaluation['date'])
                 amount = balance[account_currency] * price - balance["reporting_currency"]
                 if amount > 0:
                     fx_gain_loss_account = revaluation['credit']
                 else:
                     fx_gain_loss_account = revaluation['debit']
             else:
-                raise ValueError("Neither credit not debit account defined.")
-
+                raise ValueError("Neither credit nor debit account defined for revaluation.")
             return fx_gain_loss_account
 
-        initial_fx_gain_loss_account = get_fx_gain_loss_account(allow_missing=True)
+        initial_fx_gain_loss_account = _get_fx_gain_loss_account(allow_missing=True)
 
-        for date in revaluations["date"].unique().sort():
-            # Revualations need to be processed in ascending order of time,
-            # prior values affect later revaluation amounts
+        # Process revaluations by ascending date, prior values affect later revaluation amounts
+        for date in sorted(revaluations["date"].unique()):
             exchange_diff = []
             for row in revaluations.query("date == @date").to_dict('records'):
                 accounts = self.account_range(row['account'])
@@ -781,26 +786,34 @@ class CashCtrlLedger(LedgerEngine):
                 for account in accounts:
                     currency = self.account_currency(account)
                     if currency == self.reporting_currency:
-                        # No FX revaluation needed for accounts in reporting_currency
+                        # No FX revaluation needed for accounts already in reporting currency
                         continue
-                    price = self.price(currency, date=row['date'], currency=self.reporting_currency)[1]
+
+                    price = self.price(currency, row['date'], self.reporting_currency)[1]
+                    fx_gl_account = _fx_gain_loss_account(row, price, account, currency)
                     exchange_diff.append({
                         "accountId": self._client.account_to_id(account),
                         "currencyRate": price,
-                        "fx_gain_loss_account": _fx_gain_loss_account(row, price=price)
+                        "fx_gain_loss_account": fx_gl_account
                     })
+
+            if not exchange_diff:
+                continue
+
             exchange_diff = pd.DataFrame(exchange_diff)
-            for account in exchange_diff["fx_gain_loss_account"].unique():
-                set_fx_gain_loss_account(fx_gain_loss_account)
+            for fx_gain_loss_account in exchange_diff["fx_gain_loss_account"].unique():
+                _set_fx_gain_loss_account(fx_gain_loss_account)
+                subset = exchange_diff.query(
+                    "fx_gain_loss_account == @fx_gain_loss_account"
+                )[["accountId", "currencyRate"]]
                 payload = {
-                    "date": row["date"],
-                    "exchangeDiff": exchange_diff.query("fx_gain_loss_account == @account")[["accountId", "currencyRate"]].to_dict()
+                    "date": date,
+                    "exchangeDiff": subset.to_dict(orient="records")
                 }
                 self._client.post("fiscalperiod/bookexchangediff.json", params=payload)
 
         # Restore initial setting
-        set_fx_gain_loss_account(initial_fx_gain_loss_account, allow_missing=True)
-
+        _set_fx_gain_loss_account(initial_fx_gain_loss_account, allow_missing=True)
 
     # ----------------------------------------------------------------------
     # Currencies
