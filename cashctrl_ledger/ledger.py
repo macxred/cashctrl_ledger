@@ -373,12 +373,16 @@ class CashCtrlLedger(LedgerEngine):
         fiscal_periods = enforce_schema(pd.DataFrame(fiscal_periods), FISCAL_PERIOD_SCHEMA)
         fp = fiscal_periods.sort_values("start").reset_index(drop=True)
 
+        # Normalize start and end dates to reset time to 00:00:00
+        fp["start"] = fp["start"].dt.normalize()
+        fp["end"] = fp["end"].dt.normalize()
+
         # Calculate the gap between consecutive periods (next start - current end)
         consecutive_gap = fp["start"].dt.date.shift(-1) - fp["end"].dt.date
         # Exclude the last period as it has no successor
         consecutive_gap = consecutive_gap[:-1]
         if not (consecutive_gap == pd.Timedelta(days=1)).all():
-            raise Exception("Gaps between fiscal periods.")
+            raise ValueError("Gaps between fiscal periods.")
 
         return fp
 
