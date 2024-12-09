@@ -734,48 +734,73 @@ class CashCtrlLedger(LedgerEngine):
             raise ValueError("The ledger entry contains no transaction.")
         return payload
 
-def book_revaluations(self, revaluations: pd.DataFrame) -> pd.DataFrame:
-    """Book foreign exchange revaluations."""
+    def book_revaluations(self, revaluations: pd.DataFrame) -> pd.DataFrame:
+        """Book foreign exchange revaluations."""
+        # @ALex: The function that used to sit below had a more extensive doc string.
+        # Maybe we can re-use some of it here?
 
-    def get_fx_gain_loss_account(allow_missing=False) -> int:
-        """Retrieves the FX gain/loss account from the settings."""
-        settings = self._client.get("setting/read.json")
-        account_id = settings.get("DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID", None)
-        return self._client.account_from_id(account_id, allow_missing=allow_missing)
+        def get_fx_gain_loss_account(allow_missing=False) -> int:
+            """Retrieves the FX gain/loss account from the settings."""
+            settings = self._client.get("setting/read.json")
+            account_id = settings.get("DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID", None)
+            return self._client.account_from_id(account_id, allow_missing=allow_missing)
 
-    def set_fx_gain_loss_account(account: int, allow_missing=False):
-        """Sets the FX gain/loss account in the settings."""
-        account_id = self._client.account_to_id(account, allow_missing=allow_missing)
-        payload = {"DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID": account_id}
-        self._client.post("setting/update.json", params=payload)
+        def set_fx_gain_loss_account(account: int, allow_missing=False):
+            """Sets the FX gain/loss account in the settings."""
+            account_id = self._client.account_to_id(account, allow_missing=allow_missing)
+            payload = {"DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID": account_id}
+            self._client.post("setting/update.json", params=payload)
 
-    initial_fx_gain_loss_account = get_fx_gain_loss_account(allow_missing=True)
+        def _fx_gain_loss_account(revaluation: dict, price):
+            if pd.isna(revaluation['credit']) and not pd.isna(revaluation['debit']):
+                fx_gain_loss_account = revaluation['debit']
+            elif pd.isna(revaluation['credit']) and not pd.isna(revaluation['debit']):
+                fx_gain_loss_account = revaluation['debit']
+            elif not pd.isna(revaluation['credit']) and not pd.isna(revaluation['debit']):
+                # Book positive amounts to 'credit' and negative amounts to 'debit' account
+                balance = engine.account_balance(account, date=revaluation['date'])
+                amount = balance[account_currency] * price - balance["reporting_currency"]
+                if amount > 0:
+                    fx_gain_loss_account = revaluation['credit']
+                else:
+                    fx_gain_loss_account = revaluation['debit']
+            else:
+                raise ValueError("Neither credit not debit account defined.")
 
-    revaluations = revaluations.copy().sort_values(by=["date"])
-    for row in revaluations.to_dict('records'):
-        if row['credit'] == row['debit']:
-            raise ValueError("CashCtrl allows to solely specify a single account")
+            return fx_gain_loss_account
 
-        accounts = self.account_range(row['account'])
-        accounts = set(accounts['add']) - set(accounts['subtract'])
-        fx_gain_loss_account = row['credit'] if pd.isna(row['credit']) else row['debit']
-        set_fx_gain_loss_account(fx_gain_loss_account) # TODO: if amount > 0 else row['debit']
-        exchange_diff = [
-            {
-                "accountId": self._client.account_to_id(account),
-                "currencyRate": self.price(
-                    ticker=self.account_currency(account),
-                    date=row['date'],
-                    currency=self.reporting_currency
-                )[1]
-            }
-            for account in accounts
-        ]
-        payload = {"date": row["date"], "exchangeDiff": exchange_diff}
-        self._client.post("fiscalperiod/bookexchangediff.json", params=payload)
+        initial_fx_gain_loss_account = get_fx_gain_loss_account(allow_missing=True)
 
-    # Restore initial setting
-    set_fx_gain_loss_account(initial_fx_gain_loss_account, allow_missing=True)
+        for date in revaluations["date"].unique().sort():
+            # Revualations need to be processed in ascending order of time,
+            # prior values affect later revaluation amounts
+            exchange_diff = []
+            for row in revaluations.query("date == @date").to_dict('records'):
+                accounts = self.account_range(row['account'])
+                accounts = set(accounts['add']) - set(accounts['subtract'])
+                for account in accounts:
+                    currency = self.account_currency(account)
+                    if currency == self.reporting_currency:
+                        # No FX revaluation needed for accounts in reporting_currency
+                        continue
+                    price = self.price(currency, date=row['date'], currency=self.reporting_currency)[1]
+                    exchange_diff.append({
+                        "accountId": self._client.account_to_id(account),
+                        "currencyRate": price,
+                        "fx_gain_loss_account": _fx_gain_loss_account(row, price=price)
+                    })
+            exchange_diff = pd.DataFrame(exchange_diff)
+            for account in exchange_diff["fx_gain_loss_account"].unique():
+                set_fx_gain_loss_account(fx_gain_loss_account)
+                payload = {
+                    "date": row["date"],
+                    "exchangeDiff": exchange_diff.query("fx_gain_loss_account == @account")[["accountId", "currencyRate"]].to_dict()
+                }
+                self._client.post("fiscalperiod/bookexchangediff.json", params=payload)
+
+        # Restore initial setting
+        set_fx_gain_loss_account(initial_fx_gain_loss_account, allow_missing=True)
+
 
     # ----------------------------------------------------------------------
     # Currencies
