@@ -373,15 +373,13 @@ class CashCtrlLedger(LedgerEngine):
         fiscal_periods = enforce_schema(pd.DataFrame(fiscal_periods), FISCAL_PERIOD_SCHEMA)
         fp = fiscal_periods.sort_values("start").reset_index(drop=True)
 
-        # Normalize start and end dates to reset time to 00:00:00
-        fp["start"] = fp["start"].dt.normalize()
-        fp["end"] = fp["end"].dt.normalize()
+        # Normalize start and end dates dropping timezone information
+        fp["start"] = fp["start"].dt.tz_localize(None).dt.floor('D')
+        fp["end"] = fp["end"].dt.tz_localize(None).dt.floor('D')
 
         # Calculate the gap between consecutive periods (next start - current end)
         consecutive_gap = fp["start"].dt.date.shift(-1) - fp["end"].dt.date
-        # Exclude the last period as it has no successor
-        consecutive_gap = consecutive_gap[:-1]
-        if not (consecutive_gap == pd.Timedelta(days=1)).all():
+        if any(consecutive_gap[:-1] != pd.Timedelta(days=1)):
             raise ValueError("Gaps between fiscal periods.")
 
         return fp
@@ -422,7 +420,7 @@ class CashCtrlLedger(LedgerEngine):
             # The new fiscal period will be one year before the earliest start
             new_end = earliest_start - pd.Timedelta(days=1)
             new_start = earliest_start - pd.DateOffset(years=1)
-            new_name = str(new_start.year)
+            new_name = str(new_end.year)
             self.fiscal_period_add(start=new_start.date(), end=new_end.date(), name=new_name)
             fiscal_periods = self.fiscal_period_list()
 
@@ -432,7 +430,7 @@ class CashCtrlLedger(LedgerEngine):
             # The new fiscal period will be one year after the latest end
             new_start = latest_end + pd.Timedelta(days=1)
             new_end = latest_end + pd.DateOffset(years=1)
-            new_name = str(new_start.year)
+            new_name = str(new_end.year)
             self.fiscal_period_add(start=new_start.date(), end=new_end.date(), name=new_name)
             fiscal_periods = self.fiscal_period_list()
 
