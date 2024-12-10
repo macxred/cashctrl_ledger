@@ -732,23 +732,25 @@ class CashCtrlLedger(LedgerEngine):
 
     def book_revaluations(self, revaluations: pd.DataFrame) -> pd.DataFrame:
         """
-        Book foreign exchange revaluations on given accounts, calculating and recording
-        any resulting FX gain or loss. If specific credit/debit accounts are provided,
-        they are used directly. Otherwise, the function calculates the appropriate
-        gain or loss account based on the current balances and exchange rates.
+        Book FX revaluations.
+
+        Generate ledger entries to align reporting currency balances with foreign
+        currency balances and the current FX rate at specified dates and accounts.
+        These entries affect only reporting currency balances, leaving foreign
+        currency balances unchanged.
 
         Args:
-            revaluations (pd.DataFrame): A DataFrame with the LedgerEngine.Revaluations
-                columns schema
+            revaluations (pd.DataFrame): DataFrame with LedgerEngine.Revaluations
+                schema specifying dates and accounts for FX gain/loss booking.
         """
         def _get_fx_gain_loss_account(allow_missing=False) -> int:
-            """Retrieves the FX gain/loss account from the settings."""
+            """Retrieves the FX gain/loss account from the CashCtrl settings."""
             settings = self._client.get("setting/read.json")
             account_id = settings.get("DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID", None)
             return self._client.account_from_id(account_id, allow_missing=allow_missing)
 
         def _set_fx_gain_loss_account(account: int, allow_missing=False):
-            """Sets the FX gain/loss account in the settings."""
+            """Sets the FX gain/loss account in the CasCtrl settings."""
             account_id = self._client.account_to_id(account, allow_missing=allow_missing)
             payload = {"DEFAULT_EXCHANGE_DIFF_ACCOUNT_ID": account_id}
             self._client.post("setting/update.json", params=payload)
@@ -777,7 +779,7 @@ class CashCtrlLedger(LedgerEngine):
 
         initial_fx_gain_loss_account = _get_fx_gain_loss_account(allow_missing=True)
 
-        # Process revaluations by ascending date, prior values affect later revaluation amounts
+        # Process revaluations by ascending date (prior values affect later revaluation amounts)
         for date in sorted(revaluations["date"].unique()):
             exchange_diff = []
             for row in revaluations.query("date == @date").to_dict('records'):
