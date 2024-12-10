@@ -97,6 +97,16 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
     # ----------------------------------------------------------------------
     # Ledger
 
+    def _ledger_add(self, data: pd.DataFrame) -> str:
+        incoming = self.ledger.standardize(data)
+        incoming = self.sanitize_ledger(incoming)
+        return super()._ledger_add(incoming)
+
+    def _ledger_modify(self, data: pd.DataFrame):
+        incoming = self.ledger.standardize(data)
+        incoming = self.sanitize_ledger(incoming)
+        super()._ledger_modify(incoming)
+
     def sanitize_ledger(self, ledger: pd.DataFrame) -> pd.DataFrame:
         """Modify ledger entries to ensure coherence and compatibility with CashCtrl.
 
