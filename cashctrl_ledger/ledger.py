@@ -360,11 +360,11 @@ class CashCtrlLedger(LedgerEngine):
     def fiscal_period_list(self) -> pd.DataFrame:
         """Retrieve fiscal periods.
 
-        Retrieve all fiscal periods and checks that each consecutive period
+        Retrieve fiscal periods and check that each consecutive period
         starts exactly one day after the previous one ends.
 
         Returns:
-            pd.DataFrame: A DataFrame of fiscal periods adhering to the FISCAL_PERIOD_SCHEMA.
+            pd.DataFrame: A DataFrame of fiscal periods with FISCAL_PERIOD_SCHEMA.
 
         Raises:
             Exception: If any gap is detected between consecutive fiscal periods.
