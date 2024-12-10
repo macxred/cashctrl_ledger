@@ -200,6 +200,10 @@ SETTINGS = {
 
 def main():
     cashctrl_ledger = CashCtrlLedger()
+    currencies = cashctrl_ledger._client.get("currency/list.json")["data"]
+    jpy_entry = next((item for item in currencies if item['code'] == 'JPY'), None)
+    if jpy_entry:
+        cashctrl_ledger._client.post("currency/delete.json", {"ids": jpy_entry["id"]})
     tax = pd.read_csv(StringIO(TAX_CODES), skipinitialspace=True)
     accounts = pd.read_csv(StringIO(ACCOUNTS), skipinitialspace=True)
     cashctrl_ledger.restore(settings=SETTINGS, tax_codes=tax, accounts=accounts)
