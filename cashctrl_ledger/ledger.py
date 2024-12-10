@@ -19,7 +19,7 @@ from pyledger.constants import (
     LEDGER_SCHEMA,
     ASSETS_SCHEMA
 )
-from .constants import JOURNAL_ITEM_COLUMNS, SETTINGS_KEYS
+from .constants import FISCAL_PERIOD_SCHEMA, JOURNAL_ITEM_COLUMNS, SETTINGS_KEYS
 from consistent_df import unnest, enforce_dtypes, enforce_schema
 
 
@@ -357,9 +357,87 @@ class CashCtrlLedger(LedgerEngine):
         """Not implemented yet."""
         raise NotImplementedError
 
-    def _ledger_add(self, data: pd.DataFrame) -> list[str]:
+    def fiscal_period_list(self) -> pd.DataFrame:
+        """Retrieve fiscal periods.
+
+        Retrieve all fiscal periods and checks that each consecutive period
+        starts exactly one day after the previous one ends.
+
+        Returns:
+            pd.DataFrame: A DataFrame of fiscal periods adhering to the FISCAL_PERIOD_SCHEMA.
+
+        Raises:
+            Exception: If any gap is detected between consecutive fiscal periods.
+        """
+        fiscal_periods = self._client.get("fiscalperiod/list.json")["data"]
+        fiscal_periods = enforce_schema(pd.DataFrame(fiscal_periods), FISCAL_PERIOD_SCHEMA)
+        fp = fiscal_periods.sort_values("start").reset_index(drop=True)
+
+        # Normalize start and end dates dropping timezone information
+        fp["start"] = fp["start"].dt.tz_localize(None).dt.floor('D')
+        fp["end"] = fp["end"].dt.tz_localize(None).dt.floor('D')
+
+        # Calculate the gap between consecutive periods (next start - current end)
+        consecutive_gap = fp["start"].dt.date.shift(-1) - fp["end"].dt.date
+        if any(consecutive_gap[:-1] != pd.Timedelta(days=1)):
+            raise ValueError("Gaps between fiscal periods.")
+
+        return fp
+
+    def fiscal_period_add(self, start: datetime.date, end: datetime.date, name: str):
+        """Add a new fiscal period.
+
+        Args:
+            start (datetime.date): Start date of the fiscal period.
+            end (datetime.date): End date of the fiscal period.
+            name (str): Name of the fiscal period.
+        """
+        data = {
+            "isCustom": True,
+            "start": start.strftime("%Y-%m-%d"),
+            "end": end.strftime("%Y-%m-%d"),
+            "name": name
+        }
+        self._client.post("fiscalperiod/create.json", data=data)
+
+    def ensure_fiscal_periods_exist(self, start: datetime.date, end: datetime.date):
+        """
+        Ensure fiscal periods exist for the given date range.
+        If any part of the range is not covered by existing fiscal periods,
+        create new periods to fill in the gaps.
+
+        Args:
+            start (datetime.date): Start of the date range to ensure coverage for.
+            end (datetime.date): End of the date range to ensure coverage for.
+        """
+        start = pd.to_datetime(start)
+        end = pd.to_datetime(end)
+        fiscal_periods = self.fiscal_period_list()
+
+        # Extend fiscal periods backward if needed
+        while start < fiscal_periods["start"].min():
+            earliest_start = fiscal_periods["start"].min()
+            # The new fiscal period will be one year before the earliest start
+            new_end = earliest_start - pd.Timedelta(days=1)
+            new_start = earliest_start - pd.DateOffset(years=1)
+            new_name = str(new_end.year)
+            self.fiscal_period_add(start=new_start.date(), end=new_end.date(), name=new_name)
+            fiscal_periods = self.fiscal_period_list()
+
+        # Extend fiscal periods forward if needed
+        while end > fiscal_periods["end"].max():
+            latest_end = fiscal_periods["end"].max()
+            # The new fiscal period will be one year after the latest end
+            new_start = latest_end + pd.Timedelta(days=1)
+            new_end = latest_end + pd.DateOffset(years=1)
+            new_name = str(new_end.year)
+            self.fiscal_period_add(start=new_start.date(), end=new_end.date(), name=new_name)
+            fiscal_periods = self.fiscal_period_list()
+
+    def _ledger_add(self, data: pd.DataFrame) -> str:
         ids = []
         incoming = self.ledger.standardize(data)
+        self.ensure_fiscal_periods_exist(incoming["date"].min(), incoming["date"].max())
         for id in incoming["id"].unique():
             entry = incoming.query("id == @id")
             payload = self._map_ledger_entry(entry)
@@ -370,6 +448,7 @@ class CashCtrlLedger(LedgerEngine):
 
     def _ledger_modify(self, data: pd.DataFrame):
         incoming = self.ledger.standardize(data)
+        self.ensure_fiscal_periods_exist(incoming["date"].min(), incoming["date"].max())
         for id in incoming["id"].unique():
             entry = incoming.query("id == @id")
             payload = self._map_ledger_entry(entry)
