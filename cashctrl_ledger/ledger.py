@@ -60,7 +60,11 @@ class CashCtrlLedger(LedgerEngine):
         self._tax_codes = TaxCode(client=client, schema=TAX_CODE_SCHEMA)
         self._accounts = Account(client=client, schema=ACCOUNT_SCHEMA)
         self._price_history = CSVAccountingEntity(schema=PRICE_SCHEMA, path=price_history_path)
-        self._assets = CSVAccountingEntity(schema=ASSETS_SCHEMA, path=assets_path)
+        self._assets = CSVAccountingEntity(
+            schema=ASSETS_SCHEMA,
+            path=assets_path,
+            on_change=self.ensure_currencies_exist
+        )
         self._ledger = Ledger(
             client=client,
             schema=LEDGER_SCHEMA,
@@ -939,3 +943,18 @@ class CashCtrlLedger(LedgerEngine):
             self._client.post("currency/create.json", data=payload)
 
         self._client.invalidate_currencies_cache()
+
+    # ----------------------------------------------------------------------
+    # Assets
+
+    def ensure_currencies_exist(self):
+        tickers = set(self.assets.list()["ticker"].dropna())
+        currencies = set(self._client.list_currencies()["code"].dropna())
+        to_add = tickers - currencies
+
+        for currency in to_add:
+            if len(currency) != 3:
+                raise ValueError(
+                    "CashCtrl allows only 3-character currency codes."
+                )
+            self._client.post("currency/create.json", data={"code": currency})
