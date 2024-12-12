@@ -934,9 +934,9 @@ class CashCtrlLedger(LedgerEngine):
     # Assets
 
     def ensure_currencies_exist(self):
-        tickers = set(self.assets.list()["ticker"].dropna())
-        currencies = set(self._client.list_currencies()["code"].dropna())
-        to_add = tickers - currencies
+        local = set(self.assets.list()["ticker"].dropna())
+        remote = set(self._client.list_currencies()["code"].dropna())
+        to_add = local - remote
 
         for currency in to_add:
             if len(currency) != 3:
