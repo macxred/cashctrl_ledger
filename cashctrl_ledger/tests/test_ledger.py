@@ -13,8 +13,6 @@ class TestLedger(BaseTestLedger):
     ACCOUNTS = BaseTestLedger.ACCOUNTS.copy()
     # Set the default root node, as CashCtrl does not allow the creation of root nodes
     ACCOUNTS.loc[:, "group"] = "/Assets"
-    # TODO: Remove when Assets will be implemented
-    ACCOUNTS.loc[ACCOUNTS["currency"] == "JPY", "currency"] = "USD"
 
     TAX_CODES = BaseTestLedger.TAX_CODES.copy()
     # Assign a default account to TAX_CODES where account is missing,

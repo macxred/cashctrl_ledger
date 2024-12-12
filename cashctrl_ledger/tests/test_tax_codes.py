@@ -11,8 +11,6 @@ class TestTaxCodes(BaseTestTaxCodes):
     ACCOUNTS = BaseTestTaxCodes.ACCOUNTS.copy()
     # Set the default root node for CashCtrl. In CashCtrl it is not possible to create root nodes
     ACCOUNTS.loc[:, "group"] = "/Assets"
-    # TODO: Remove when Assets will be implemented
-    ACCOUNTS.loc[ACCOUNTS["currency"] == "JPY", "currency"] = "USD"
 
     TAX_CODES = BaseTestTaxCodes.TAX_CODES.copy()
     # In CashCtrl it is not possible to create TAX CODE without specified account
