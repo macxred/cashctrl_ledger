@@ -49,7 +49,7 @@ class CashCtrlLedger(LedgerEngine):
         self._assets = CSVAccountingEntity(
             schema=ASSETS_SCHEMA,
             path=assets_path,
-            on_change=self.ensure_currencies_exist
+            on_change=self._ensure_currencies_exist
         )
         self._ledger = Ledger(
             client=client,
@@ -933,7 +933,8 @@ class CashCtrlLedger(LedgerEngine):
     # ----------------------------------------------------------------------
     # Assets
 
-    def ensure_currencies_exist(self):
+    def _ensure_currencies_exist(self):
+        """Ensure all local asset tickers definitions exist remotely"""
         local = set(self.assets.list()["ticker"].dropna())
         remote = set(self._client.list_currencies()["code"].dropna())
         to_add = local - remote
@@ -944,3 +945,4 @@ class CashCtrlLedger(LedgerEngine):
                     "CashCtrl allows only 3-character currency codes."
                 )
             self._client.post("currency/create.json", data={"code": currency})
+            self._client.invalidate_currencies_cache()
