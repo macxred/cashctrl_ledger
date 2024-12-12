@@ -37,3 +37,6 @@ FISCAL_PERIOD_SCHEMA_CSV = """
       name,     string[python],        True,      False
 """
 FISCAL_PERIOD_SCHEMA = pd.read_csv(StringIO(FISCAL_PERIOD_SCHEMA_CSV), skipinitialspace=True)
+
+
+DEFAULT_ACCOUNT_GROUPS = ['/Assets', '/Balance', '/Expense', '/Liabilities', '/Revenue']

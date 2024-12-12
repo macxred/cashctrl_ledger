@@ -19,8 +19,14 @@ from pyledger.constants import (
     LEDGER_SCHEMA,
     ASSETS_SCHEMA
 )
-from .constants import FISCAL_PERIOD_SCHEMA, JOURNAL_ITEM_COLUMNS, SETTINGS_KEYS
+from .constants import (
+    DEFAULT_ACCOUNT_GROUPS,
+    FISCAL_PERIOD_SCHEMA,
+    JOURNAL_ITEM_COLUMNS,
+    SETTINGS_KEYS
+)
 from consistent_df import unnest, enforce_dtypes, enforce_schema
+from difflib import get_close_matches
 
 
 class CashCtrlLedger(LedgerEngine):
@@ -196,6 +202,32 @@ class CashCtrlLedger(LedgerEngine):
 
     # ----------------------------------------------------------------------
     # Accounts
+
+    def sanitize_accounts(self, df: pd.DataFrame) -> pd.DataFrame:
+        def process_group(group):
+            if pd.isna(group):
+                return group
+            if not group.startswith('/'):
+                group = f'/{group}'
+
+            nodes = group.split('/')
+            first_node = nodes[1] if len(nodes) > 1 else group
+            matches = get_close_matches(first_node, [g.strip('/') for g in DEFAULT_ACCOUNT_GROUPS])
+
+            if matches:
+                nodes[1] = matches[0]
+            else:
+                nodes[1] = DEFAULT_ACCOUNT_GROUPS[0].strip('/')
+
+            return '/'.join(nodes)
+
+        # Process 'group' values to update it with valid values for CashCtrl
+        df['group'] = df['group'].apply(process_group).astype("string[python]")
+
+        # TODO: Uncomment when #71 is implemented
+        # df = super.sanitize_accounts(df, keep_extra_columns=keep_extra_columns)
+
+        return df
 
     def _single_account_balance(
         self, account: int, date: Union[datetime.date, None] = None

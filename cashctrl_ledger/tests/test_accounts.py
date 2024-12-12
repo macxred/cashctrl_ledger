@@ -8,14 +8,11 @@ from pyledger.tests import BaseTestAccounts
 from base_test import initial_engine
 from requests.exceptions import RequestException
 from consistent_df import assert_frame_equal
+from cashctrl_ledger.constants import DEFAULT_ACCOUNT_GROUPS
 
 
 class TestAccounts(BaseTestAccounts):
     """Test suite for the Account accessor and mutator methods."""
-
-    ACCOUNTS = BaseTestAccounts.ACCOUNTS.copy()
-    # Set the default root node, as CashCtrl does not allow the creation of root nodes
-    ACCOUNTS.loc[:, "group"] = "/Assets"
 
     TAX_CODES = BaseTestAccounts.TAX_CODES.copy()
     # Assign a default account to TAX_CODES where account is missing,
@@ -25,10 +22,17 @@ class TestAccounts(BaseTestAccounts):
 
     @pytest.fixture()
     def engine(self, initial_engine):
+        self.ACCOUNTS = initial_engine.sanitize_accounts(self.ACCOUNTS)
         initial_engine.clear()
         return initial_engine
 
     def test_account_accessor_mutators(self, restored_engine):
+        # TODO: some accounts can not be created via add() method since they
+        # are contain groups that do not exist.
+        # This functionality only works when use mirror() method - then categories are created
+        # Hack: Keep only root nodes
+        self.ACCOUNTS['group'] = self.ACCOUNTS['group'].str.split('/').str[1]
+        self.ACCOUNTS = restored_engine.sanitize_accounts(self.ACCOUNTS)
         super().test_account_accessor_mutators(restored_engine, ignore_row_order=True)
 
     def test_add_existing_account_raise_error(self, engine):
@@ -172,7 +176,7 @@ class TestAccounts(BaseTestAccounts):
         categories = engine._client.list_categories("account", include_system=True)
         categories = categories["path"].to_list()
         assert accounts.empty, "Mirror empty accounts should erase all of them"
-        root_categories = ['/Assets', '/Balance', '/Expense', '/Liabilities', '/Revenue']
+        root_categories = DEFAULT_ACCOUNT_GROUPS
         assert set(root_categories) == set(categories), (
             "Mirroring empty state should leave only root categories"
         )
@@ -191,3 +195,32 @@ class TestAccounts(BaseTestAccounts):
     @pytest.mark.skip(reason="Need to implement all entities to run this test")
     def test_account_balance(self):
         pass
+
+    def test_sanitize_accounts(self, engine):
+        ACCOUNT_CSV = """
+            group,             account, currency,  description
+                 ,                1000,      USD,  No group
+            Assets,               1001,      USD,  No leading /
+            /Assets,              1002,      USD,  Already valid group
+            Liability,            1003,      USD,  Needs replacement
+            /NonStandardGroup,    1004,      USD,  Non-standard group
+        """
+        EXPECTED_CSV = """
+            group,             account, currency,  description
+                 ,                1000,      USD,  No group
+            /Assets,              1001,      USD,  No leading /
+            /Assets,              1002,      USD,  Already valid group
+            /Liabilities,         1003,      USD,  Needs replacement
+            /Assets,              1004,      USD,  Non-standard group
+        """
+
+        # Load input and expected data
+        accounts = engine.accounts.standardize(
+            pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
+        )
+        expected_accounts = engine.accounts.standardize(
+            pd.read_csv(StringIO(EXPECTED_CSV), skipinitialspace=True)
+        )
+
+        sanitized_df = engine.sanitize_accounts(accounts)
+        assert_frame_equal(sanitized_df, expected_accounts)

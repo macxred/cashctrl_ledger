@@ -8,10 +8,6 @@ from base_test import initial_engine
 
 
 class TestTaxCodes(BaseTestTaxCodes):
-    ACCOUNTS = BaseTestTaxCodes.ACCOUNTS.copy()
-    # Set the default root node for CashCtrl. In CashCtrl it is not possible to create root nodes
-    ACCOUNTS.loc[:, "group"] = "/Assets"
-
     TAX_CODES = BaseTestTaxCodes.TAX_CODES.copy()
     # In CashCtrl it is not possible to create TAX CODE without specified account
     account = TAX_CODES.query("id == 'IN_STD'")["account"].values[0]
@@ -20,6 +16,7 @@ class TestTaxCodes(BaseTestTaxCodes):
 
     @pytest.fixture(scope="class")
     def engine(self, initial_engine):
+        self.ACCOUNTS = initial_engine.sanitize_accounts(self.ACCOUNTS)
         initial_engine.clear()
         return initial_engine
 
