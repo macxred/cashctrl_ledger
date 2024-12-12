@@ -31,20 +31,6 @@ class CashCtrlLedger(LedgerEngine):
     usage examples.
     """
 
-    # TODO: remove when assets are implemented
-    _precision = {
-        "AUD": 0.01,
-        "CAD": 0.01,
-        "CHF": 0.01,
-        "EUR": 0.01,
-        "GBP": 0.01,
-        "JPY": 1.00,
-        "NZD": 0.01,
-        "NOK": 0.01,
-        "SEK": 0.01,
-        "USD": 0.01,
-    }
-
     # ----------------------------------------------------------------------
     # Constructor
 
