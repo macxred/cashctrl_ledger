@@ -46,15 +46,18 @@ class CashCtrlLedger(LedgerEngine):
         self._tax_codes = TaxCode(client=client, schema=TAX_CODE_SCHEMA)
         self._accounts = Account(client=client, schema=ACCOUNT_SCHEMA)
         self._price_history = CSVAccountingEntity(schema=PRICE_SCHEMA, path=price_history_path)
-        # The CSVAccountingEntity is used for managing the Assets entity due to CashCtrl's
-        # limitations, which prevent a direct implementation of an Assets entity.
-        # This approach partially fulfills the requirements, but the _ensure_currencies_exist()
-        # method supplements it by ensuring all tickers are created remotely as currencies.
+        # CashCtrl does not allow to store Assets with corresponding precision
+        # in the historical order, which prevents the implementation of coherent
+        # accessors and mutators storing assets on the remote instance.
+        # Instead, we use the CSVAccountingEntity to store assets in a local
+        # text file, supplemented by the _ensure_currencies_exist() method to
+        # ensure all tickers present in the local text file also exists remotely as currencies.
         self._assets = CSVAccountingEntity(
             schema=ASSETS_SCHEMA,
             path=assets_path,
             on_change=self._ensure_currencies_exist
         )
+        self._ensure_currencies_exist()
         self._ledger = Ledger(
             client=client,
             schema=LEDGER_SCHEMA,
