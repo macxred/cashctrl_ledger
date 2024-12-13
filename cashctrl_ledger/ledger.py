@@ -31,20 +31,6 @@ class CashCtrlLedger(LedgerEngine):
     usage examples.
     """
 
-    # TODO: remove when assets are implemented
-    _precision = {
-        "AUD": 0.01,
-        "CAD": 0.01,
-        "CHF": 0.01,
-        "EUR": 0.01,
-        "GBP": 0.01,
-        "JPY": 1.00,
-        "NZD": 0.01,
-        "NOK": 0.01,
-        "SEK": 0.01,
-        "USD": 0.01,
-    }
-
     # ----------------------------------------------------------------------
     # Constructor
 
@@ -60,7 +46,18 @@ class CashCtrlLedger(LedgerEngine):
         self._tax_codes = TaxCode(client=client, schema=TAX_CODE_SCHEMA)
         self._accounts = Account(client=client, schema=ACCOUNT_SCHEMA)
         self._price_history = CSVAccountingEntity(schema=PRICE_SCHEMA, path=price_history_path)
-        self._assets = CSVAccountingEntity(schema=ASSETS_SCHEMA, path=assets_path)
+        # CashCtrl does not allow to store Assets with corresponding precision
+        # in the historical order, which prevents the implementation of coherent
+        # accessors and mutators storing assets on the remote instance.
+        # Instead, we use the CSVAccountingEntity to store assets in a local
+        # text file, supplemented by the _ensure_currencies_exist() method to
+        # ensure all tickers present in the local text file also exists remotely as currencies.
+        self._assets = CSVAccountingEntity(
+            schema=ASSETS_SCHEMA,
+            path=assets_path,
+            on_change=self._ensure_currencies_exist
+        )
+        self._ensure_currencies_exist()
         self._ledger = Ledger(
             client=client,
             schema=LEDGER_SCHEMA,
@@ -939,3 +936,20 @@ class CashCtrlLedger(LedgerEngine):
             self._client.post("currency/create.json", data=payload)
 
         self._client.invalidate_currencies_cache()
+
+    # ----------------------------------------------------------------------
+    # Assets
+
+    def _ensure_currencies_exist(self):
+        """Ensure all local asset tickers definitions exist remotely"""
+        local = set(self.assets.list()["ticker"].dropna())
+        remote = set(self._client.list_currencies()["code"].dropna())
+        to_add = local - remote
+
+        for currency in to_add:
+            if len(currency) != 3:
+                raise ValueError(
+                    "CashCtrl allows only 3-character currency codes."
+                )
+            self._client.post("currency/create.json", data={"code": currency})
+            self._client.invalidate_currencies_cache()
