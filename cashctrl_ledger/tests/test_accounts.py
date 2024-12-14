@@ -9,6 +9,7 @@ from base_test import initial_engine
 from requests.exceptions import RequestException
 from consistent_df import assert_frame_equal
 from cashctrl_ledger.constants import ROOT_ACCOUNT_NODES
+from cashctrl_ledger import CashCtrlLedger
 
 
 class TestAccounts(BaseTestAccounts):
@@ -211,10 +212,10 @@ class TestAccounts(BaseTestAccounts):
         ]
     )
 
-    def test_sanitize_account_groups(self, engine, input_groups, expected_groups):
+    def test_sanitize_account_groups(self, input_groups, expected_groups):
+        engine = CashCtrlLedger()
         input_series = pd.Series(input_groups, dtype="string[python]")
         expected_series = pd.Series(expected_groups, dtype="string[python]")
-
         output_series = engine.sanitize_account_groups(input_series)
         assert output_series.equals(expected_series), (
             f"Expected {expected_series.tolist()} but got {output_series.tolist()}"
