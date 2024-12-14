@@ -27,11 +27,6 @@ class TestAccounts(BaseTestAccounts):
         return initial_engine
 
     def test_account_accessor_mutators(self, restored_engine):
-        # TODO: some accounts can not be created via add() method since they
-        # are contain groups that do not exist.
-        # This functionality only works when use mirror() method - then categories are created
-        # Hack: Keep only root nodes
-        self.ACCOUNTS['group'] = self.ACCOUNTS['group'].str.split('/').str[1]
         self.ACCOUNTS = restored_engine.sanitize_accounts(self.ACCOUNTS)
         super().test_account_accessor_mutators(restored_engine, ignore_row_order=True)
 
