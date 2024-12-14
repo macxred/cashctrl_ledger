@@ -19,8 +19,14 @@ from pyledger.constants import (
     LEDGER_SCHEMA,
     ASSETS_SCHEMA
 )
-from .constants import FISCAL_PERIOD_SCHEMA, JOURNAL_ITEM_COLUMNS, SETTINGS_KEYS
+from .constants import (
+    ACCOUNT_ROOT_CATEGORIES,
+    FISCAL_PERIOD_SCHEMA,
+    JOURNAL_ITEM_COLUMNS,
+    SETTINGS_KEYS
+)
 from consistent_df import unnest, enforce_dtypes, enforce_schema
+from difflib import get_close_matches
 
 
 class CashCtrlLedger(LedgerEngine):
@@ -196,6 +202,39 @@ class CashCtrlLedger(LedgerEngine):
 
     # ----------------------------------------------------------------------
     # Accounts
+
+    def sanitize_account_groups(self, groups: pd.Series) -> pd.Series:
+        """Ensure account groups start with a leading slash and a valid root node.
+
+        Account categories in CashCtrl must be assigned to one of the pre-defined root nodes.
+        Additional root categories are not allowed, and the pre-defined root categories
+        cannot be deleted.
+
+        Args:
+            groups (pd.Series): A pandas Series containing account group paths.
+
+        Returns:
+            pd.Series: Sanitized account group series.
+        """
+        groups = groups.str.replace(r'^/', '', regex=True)
+        first_nodes = groups.str.replace(r'/.*', '', regex=True)
+        first_nodes = first_nodes.apply(
+            lambda g: get_close_matches(g, ACCOUNT_ROOT_CATEGORIES, cutoff=0)[0]
+        )
+        groups = groups.where(
+            groups.isna(),
+            "/" + first_nodes + groups.str.replace(r'^[^/]+', '', regex=True)
+        ).astype("string[python]")
+
+        return groups
+
+    def sanitize_accounts(self, df: pd.DataFrame) -> pd.DataFrame:
+        df["group"] = self.sanitize_account_groups(df["group"])
+
+        # TODO: Uncomment when #71 is implemented
+        # df = super().sanitize_accounts(df)
+
+        return df
 
     def _single_account_balance(
         self, account: int, date: Union[datetime.date, None] = None

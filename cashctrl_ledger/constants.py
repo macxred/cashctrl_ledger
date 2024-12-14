@@ -37,3 +37,6 @@ FISCAL_PERIOD_SCHEMA_CSV = """
       name,     string[python],        True,      False
 """
 FISCAL_PERIOD_SCHEMA = pd.read_csv(StringIO(FISCAL_PERIOD_SCHEMA_CSV), skipinitialspace=True)
+
+
+ACCOUNT_ROOT_CATEGORIES = ["Assets", "Balance", "Expense", "Liabilities", "Revenue"]

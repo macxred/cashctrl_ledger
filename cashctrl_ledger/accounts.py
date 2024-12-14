@@ -22,6 +22,13 @@ class Account(CashCtrlAccountingEntity):
 
     def add(self, data: pd.DataFrame):
         incoming = self.standardize(pd.DataFrame(data))
+
+        # Update account categories
+        self._client.update_categories(
+            resource="account", target=self._account_groups(incoming),
+            delete=False, ignore_account_root_nodes=True,
+        )
+
         for _, row in incoming.iterrows():
             payload = {
                 "number": row["account"],
@@ -41,6 +48,13 @@ class Account(CashCtrlAccountingEntity):
         reduced_schema = self._schema.query("column in @cols")
         incoming = enforce_schema(data, reduced_schema, keep_extra_columns=True)
         current = self.list()
+
+        # Update account categories
+        if "group" in cols:
+            self._client.update_categories(
+                resource="account", target=self._account_groups(incoming),
+                delete=False, ignore_account_root_nodes=True,
+            )
 
         for _, row in incoming.iterrows():
             existing = current.query("account == @row['account']")

@@ -8,14 +8,12 @@ from pyledger.tests import BaseTestAccounts
 from base_test import initial_engine
 from requests.exceptions import RequestException
 from consistent_df import assert_frame_equal
+from cashctrl_ledger.constants import ACCOUNT_ROOT_CATEGORIES
+from cashctrl_ledger import CashCtrlLedger
 
 
 class TestAccounts(BaseTestAccounts):
     """Test suite for the Account accessor and mutator methods."""
-
-    ACCOUNTS = BaseTestAccounts.ACCOUNTS.copy()
-    # Set the default root node, as CashCtrl does not allow the creation of root nodes
-    ACCOUNTS.loc[:, "group"] = "/Assets"
 
     TAX_CODES = BaseTestAccounts.TAX_CODES.copy()
     # Assign a default account to TAX_CODES where account is missing,
@@ -25,10 +23,12 @@ class TestAccounts(BaseTestAccounts):
 
     @pytest.fixture()
     def engine(self, initial_engine):
+        self.ACCOUNTS = initial_engine.sanitize_accounts(self.ACCOUNTS)
         initial_engine.clear()
         return initial_engine
 
     def test_account_accessor_mutators(self, restored_engine):
+        self.ACCOUNTS = restored_engine.sanitize_accounts(self.ACCOUNTS)
         super().test_account_accessor_mutators(restored_engine, ignore_row_order=True)
 
     def test_add_existing_account_raise_error(self, engine):
@@ -172,7 +172,7 @@ class TestAccounts(BaseTestAccounts):
         categories = engine._client.list_categories("account", include_system=True)
         categories = categories["path"].to_list()
         assert accounts.empty, "Mirror empty accounts should erase all of them"
-        root_categories = ['/Assets', '/Balance', '/Expense', '/Liabilities', '/Revenue']
+        root_categories = ["/" + category for category in ACCOUNT_ROOT_CATEGORIES]
         assert set(root_categories) == set(categories), (
             "Mirroring empty state should leave only root categories"
         )
@@ -191,3 +191,32 @@ class TestAccounts(BaseTestAccounts):
     @pytest.mark.skip(reason="Need to implement all entities to run this test")
     def test_account_balance(self):
         pass
+
+    @pytest.mark.parametrize(
+        "input_groups, expected_groups",
+        [
+            # Basic cases
+            (["Assets/Subgroup1/Subgroup2"], ["/Assets/Subgroup1/Subgroup2"]),
+            (["/Assets/Subgroup1/Subgroup2"], ["/Assets/Subgroup1/Subgroup2"]),
+            (["Revenue/Subgroup"], ["/Revenue/Subgroup"]),
+            # Close matches
+            (["Revenues/Subgroup"], ["/Revenue/Subgroup"]),
+            (["Expens/Subgroup"], ["/Expense/Subgroup"]),
+             # Top-level groups
+            (["Balance"], ["/Balance"]),
+            (["/Liabilities"], ["/Liabilities"]),
+            ([], []),  # Empty input
+            (["Assets"], ["/Assets"]),  # Single valid group
+            (["Invalid"], ["/Liabilities"]),  # Single invalid group
+            (["/RandomGroup/Subgroup"], ["/Revenue/Subgroup"]), # No match
+        ]
+    )
+
+    def test_sanitize_account_groups(self, input_groups, expected_groups):
+        engine = CashCtrlLedger()
+        input_series = pd.Series(input_groups, dtype="string[python]")
+        expected_series = pd.Series(expected_groups, dtype="string[python]")
+        output_series = engine.sanitize_account_groups(input_series)
+        assert output_series.equals(expected_series), (
+            f"Expected {expected_series.tolist()} but got {output_series.tolist()}"
+        )
