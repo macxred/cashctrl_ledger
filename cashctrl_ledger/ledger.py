@@ -20,7 +20,7 @@ from pyledger.constants import (
     ASSETS_SCHEMA
 )
 from .constants import (
-    ROOT_ACCOUNT_NODES,
+    ACCOUNT_ROOT_CATEGORIES,
     FISCAL_PERIOD_SCHEMA,
     JOURNAL_ITEM_COLUMNS,
     SETTINGS_KEYS
@@ -204,7 +204,11 @@ class CashCtrlLedger(LedgerEngine):
     # Accounts
 
     def sanitize_account_groups(self, groups: pd.Series) -> pd.Series:
-        """Ensure account group paths are sanitized with a leading slash and a valid root node.
+        """Ensure account groups start with a leading slash and a valid root node.
+
+        Account categories in CashCtrl must be assigned to one of the pre-defined root nodes.
+        Additional root categories are not allowed, and the pre-defined root categories
+        cannot be deleted.
 
         Args:
             groups (pd.Series): A pandas Series containing account group paths.
@@ -212,11 +216,10 @@ class CashCtrlLedger(LedgerEngine):
         Returns:
             pd.Series: Sanitized account group series.
         """
-        # Remove leading slashes
         groups = groups.str.replace(r'^/', '', regex=True)
         first_nodes = groups.str.replace(r'/.*', '', regex=True)
         first_nodes = first_nodes.apply(
-            lambda g: get_close_matches(g, ROOT_ACCOUNT_NODES, cutoff=0)[0]
+            lambda g: get_close_matches(g, ACCOUNT_ROOT_CATEGORIES, cutoff=0)[0]
         )
         groups = groups.where(
             groups.isna(),

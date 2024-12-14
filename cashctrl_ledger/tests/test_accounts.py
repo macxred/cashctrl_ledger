@@ -8,7 +8,7 @@ from pyledger.tests import BaseTestAccounts
 from base_test import initial_engine
 from requests.exceptions import RequestException
 from consistent_df import assert_frame_equal
-from cashctrl_ledger.constants import ROOT_ACCOUNT_NODES
+from cashctrl_ledger.constants import ACCOUNT_ROOT_CATEGORIES
 from cashctrl_ledger import CashCtrlLedger
 
 
@@ -172,7 +172,7 @@ class TestAccounts(BaseTestAccounts):
         categories = engine._client.list_categories("account", include_system=True)
         categories = categories["path"].to_list()
         assert accounts.empty, "Mirror empty accounts should erase all of them"
-        root_categories = ["/" + category for category in ROOT_ACCOUNT_NODES]
+        root_categories = ["/" + category for category in ACCOUNT_ROOT_CATEGORIES]
         assert set(root_categories) == set(categories), (
             "Mirroring empty state should leave only root categories"
         )
