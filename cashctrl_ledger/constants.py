@@ -39,4 +39,4 @@ FISCAL_PERIOD_SCHEMA_CSV = """
 FISCAL_PERIOD_SCHEMA = pd.read_csv(StringIO(FISCAL_PERIOD_SCHEMA_CSV), skipinitialspace=True)
 
 
-DEFAULT_ACCOUNT_GROUPS = ['/Assets', '/Balance', '/Expense', '/Liabilities', '/Revenue']
+ROOT_ACCOUNT_NODES = ["Assets", "Balance", "Expense", "Liabilities", "Revenue"]

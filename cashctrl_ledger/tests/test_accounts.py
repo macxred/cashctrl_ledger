@@ -8,7 +8,7 @@ from pyledger.tests import BaseTestAccounts
 from base_test import initial_engine
 from requests.exceptions import RequestException
 from consistent_df import assert_frame_equal
-from cashctrl_ledger.constants import DEFAULT_ACCOUNT_GROUPS
+from cashctrl_ledger.constants import ROOT_ACCOUNT_NODES
 
 
 class TestAccounts(BaseTestAccounts):
@@ -176,7 +176,7 @@ class TestAccounts(BaseTestAccounts):
         categories = engine._client.list_categories("account", include_system=True)
         categories = categories["path"].to_list()
         assert accounts.empty, "Mirror empty accounts should erase all of them"
-        root_categories = DEFAULT_ACCOUNT_GROUPS
+        root_categories = ["/" + category for category in ROOT_ACCOUNT_NODES]
         assert set(root_categories) == set(categories), (
             "Mirroring empty state should leave only root categories"
         )
@@ -196,31 +196,31 @@ class TestAccounts(BaseTestAccounts):
     def test_account_balance(self):
         pass
 
-    def test_sanitize_accounts(self, engine):
-        ACCOUNT_CSV = """
-            group,             account, currency,  description
-                 ,                1000,      USD,  No group
-            Assets,               1001,      USD,  No leading /
-            /Assets,              1002,      USD,  Already valid group
-            Liability,            1003,      USD,  Needs replacement
-            /NonStandardGroup,    1004,      USD,  Non-standard group
-        """
-        EXPECTED_CSV = """
-            group,             account, currency,  description
-                 ,                1000,      USD,  No group
-            /Assets,              1001,      USD,  No leading /
-            /Assets,              1002,      USD,  Already valid group
-            /Liabilities,         1003,      USD,  Needs replacement
-            /Assets,              1004,      USD,  Non-standard group
-        """
+    @pytest.mark.parametrize(
+        "input_groups, expected_groups",
+        [
+            # Basic cases
+            (["Assets/Subgroup1/Subgroup2"], ["/Assets/Subgroup1/Subgroup2"]),
+            (["/Assets/Subgroup1/Subgroup2"], ["/Assets/Subgroup1/Subgroup2"]),
+            (["Revenue/Subgroup"], ["/Revenue/Subgroup"]),
+            # Close matches
+            (["Revenues/Subgroup"], ["/Revenue/Subgroup"]),
+            (["Expens/Subgroup"], ["/Expense/Subgroup"]),
+             # Top-level groups
+            (["Balance"], ["/Balance"]),
+            (["/Liabilities"], ["/Liabilities"]),
+            ([], []),  # Empty input
+            (["Assets"], ["/Assets"]),  # Single valid group
+            (["Invalid"], ["/Liabilities"]),  # Single invalid group
+            (["/RandomGroup/Subgroup"], ["/Revenue/Subgroup"]), # No match
+        ]
+    )
 
-        # Load input and expected data
-        accounts = engine.accounts.standardize(
-            pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
-        )
-        expected_accounts = engine.accounts.standardize(
-            pd.read_csv(StringIO(EXPECTED_CSV), skipinitialspace=True)
-        )
+    def test_sanitize_account_groups(self, engine, input_groups, expected_groups):
+        input_series = pd.Series(input_groups, dtype="string[python]")
+        expected_series = pd.Series(expected_groups, dtype="string[python]")
 
-        sanitized_df = engine.sanitize_accounts(accounts)
-        assert_frame_equal(sanitized_df, expected_accounts)
+        output_series = engine.sanitize_account_groups(input_series)
+        assert output_series.equals(expected_series), (
+            f"Expected {expected_series.tolist()} but got {output_series.tolist()}"
+        )

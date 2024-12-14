@@ -20,7 +20,7 @@ from pyledger.constants import (
     ASSETS_SCHEMA
 )
 from .constants import (
-    DEFAULT_ACCOUNT_GROUPS,
+    ROOT_ACCOUNT_NODES,
     FISCAL_PERIOD_SCHEMA,
     JOURNAL_ITEM_COLUMNS,
     SETTINGS_KEYS
@@ -203,29 +203,33 @@ class CashCtrlLedger(LedgerEngine):
     # ----------------------------------------------------------------------
     # Accounts
 
+    def sanitize_account_groups(self, groups: pd.Series) -> pd.Series:
+        """Ensure account group paths are sanitized with a leading slash and a valid root node.
+
+        Args:
+            groups (pd.Series): A pandas Series containing account group paths.
+
+        Returns:
+            pd.Series: Sanitized account group series.
+        """
+        # Remove leading slashes
+        groups = groups.str.replace(r'^/', '', regex=True)
+        first_nodes = groups.str.replace(r'/.*', '', regex=True)
+        first_nodes = first_nodes.apply(
+            lambda g: get_close_matches(g, ROOT_ACCOUNT_NODES, cutoff=0)[0]
+        )
+        groups = groups.where(
+            groups.isna(),
+            "/" + first_nodes + groups.str.replace(r'^[^/]+', '', regex=True)
+        ).astype("string[python]")
+
+        return groups
+
     def sanitize_accounts(self, df: pd.DataFrame) -> pd.DataFrame:
-        def process_group(group):
-            if pd.isna(group):
-                return group
-            if not group.startswith('/'):
-                group = f'/{group}'
-
-            nodes = group.split('/')
-            first_node = nodes[1] if len(nodes) > 1 else group
-            matches = get_close_matches(first_node, [g.strip('/') for g in DEFAULT_ACCOUNT_GROUPS])
-
-            if matches:
-                nodes[1] = matches[0]
-            else:
-                nodes[1] = DEFAULT_ACCOUNT_GROUPS[0].strip('/')
-
-            return '/'.join(nodes)
-
-        # Process 'group' values to update it with valid values for CashCtrl
-        df['group'] = df['group'].apply(process_group).astype("string[python]")
+        df["group"] = self.sanitize_account_groups(df["group"])
 
         # TODO: Uncomment when #71 is implemented
-        # df = super.sanitize_accounts(df, keep_extra_columns=keep_extra_columns)
+        # df = super().sanitize_accounts(df)
 
         return df
 
