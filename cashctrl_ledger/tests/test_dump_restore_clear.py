@@ -7,8 +7,7 @@ import json
 from io import StringIO
 from pyledger.tests import BaseTestDumpRestoreClear
 # flake8: noqa: F401
-from base_test import initial_ledger
-from cashctrl_ledger.constants import SETTINGS_KEYS
+from base_test import initial_engine
 from consistent_df import assert_frame_equal
 
 
@@ -27,11 +26,11 @@ ACCOUNT_CSV = """
     /Assets,     6960,      CHF,         , Exchange Difference Account
     /Assets,     2000,      CHF,         , Creditor Account
     /Assets,     6961,      CHF,         , Round Account
-    /Assets,     9999,      CHF,         , Transitory Account
+    /Assets,     1000,      CHF,         , Transitory Account
 """
 ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
 SETTINGS = {
-    "DEFAULT_SETTINGS": {
+    "CASH_CTRL": {
         "DEFAULT_OPENING_ACCOUNT_ID": 9100,
         "DEFAULT_INPUT_TAX_ADJUSTMENT_ACCOUNT_ID": 1172,
         "DEFAULT_INVENTORY_ASSET_REVENUE_ACCOUNT_ID": 7900,
@@ -46,7 +45,7 @@ SETTINGS = {
         "DEFAULT_CREDITOR_ACCOUNT_ID": 2000
     },
     "REPORTING_CURRENCY": "CHF",
-    "DEFAULT_ROUNDINGS":[
+    "ROUNDING":[
         {
             "account": 6961,
             "name": "<values><de>Auf 0.05 runden</de><en>Round to 0.05</en></values>",
@@ -67,36 +66,50 @@ SETTINGS = {
 }
 
 
+# Revaluations can not be implemented in CashCtrl
+# Defining a placeholder class to satisfy test interface
+class Revaluations:
+    def list(self):
+        return pd.DataFrame({})
+    def mirror(self, target):
+        pass
+
+
 class TestDumpRestoreClear(BaseTestDumpRestoreClear):
-    LEDGER_ENTRIES = BaseTestDumpRestoreClear.LEDGER_ENTRIES.query("id.isin([1, 2, 3, 4])")
+    LEDGER_ENTRIES = BaseTestDumpRestoreClear.LEDGER_ENTRIES.query("id.isin(['2', '5', '6', '7'])")
+    TAX_CODES = BaseTestDumpRestoreClear.TAX_CODES.copy()
+    # Assign a default account to TAX_CODES where account is missing,
+    # CashCtrl does not support tax codes without accounts assigned
+    default_account = TAX_CODES.query("id == 'IN_STD'")["account"].values[0]
+    TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = default_account
+
+    # Revaluations can not be dumped or restored in CashCtrl, using empty DataFrame
+    REVALUATIONS = pd.DataFrame({})
 
     @pytest.fixture(scope="class")
-    def ledger(self, initial_ledger):
-        initial_ledger.clear()
-        return initial_ledger
+    def engine(self, initial_engine):
+        self.ACCOUNTS = initial_engine.sanitize_accounts(self.ACCOUNTS)
+        initial_engine._revaluations = Revaluations()
+        # Set transitory account as first from constants to simplify the test logic
+        initial_transitory_account = initial_engine.transitory_account
+        initial_engine.transitory_account = self.ACCOUNTS.iloc[0]["account"].item()
 
-    def test_restore_settings(self, ledger, tmp_path):
-        ledger.restore(ledger=pd.DataFrame({}), accounts=ACCOUNTS, settings=SETTINGS)
-        ledger.dump_to_zip(tmp_path / "system.zip")
+        yield initial_engine
+
+        initial_engine.transitory_account = initial_transitory_account
+
+    def test_restore_settings(self, engine, tmp_path):
+        engine.restore(ledger=pd.DataFrame({}), accounts=ACCOUNTS, settings=SETTINGS)
+        engine.dump_to_zip(tmp_path / "system.zip")
         with zipfile.ZipFile(tmp_path / "system.zip", 'r') as archive:
             settings = json.loads(archive.open('settings.json').read().decode('utf-8'))
-            roundings = settings.get("DEFAULT_ROUNDINGS", None)
-            reporting_currency = settings.get("REPORTING_CURRENCY", None)
-            system_settings = settings.get("DEFAULT_SETTINGS", None)
-            settings["DEFAULT_SETTINGS"]
-
-            for key in SETTINGS_KEYS:
-                if system_settings.get(key, None) is not None:
-                    system_settings[key] = ledger._client.account_to_id(system_settings[key])
-            if roundings is not None:
-                for rounding in roundings:
-                    rounding["accountId"] = ledger._client.account_to_id(rounding["account"])
-
-            roundings = pd.DataFrame(roundings)
-            default_roundings = pd.DataFrame(SETTINGS["DEFAULT_ROUNDINGS"])
+            default_roundings = pd.DataFrame(SETTINGS["ROUNDING"])
+            roundings = pd.DataFrame(settings.get("ROUNDING", None))
             columns = roundings.columns.intersection(default_roundings.columns)
             roundings = roundings[columns]
+            system_settings = settings.get("CASH_CTRL", None)
+            reporting_currency = settings.get("REPORTING_CURRENCY", None)
 
             assert_frame_equal(default_roundings, roundings, check_like=True)
             assert reporting_currency == SETTINGS["REPORTING_CURRENCY"]
-            assert system_settings == SETTINGS["DEFAULT_SETTINGS"]
+            assert system_settings == SETTINGS["CASH_CTRL"]
