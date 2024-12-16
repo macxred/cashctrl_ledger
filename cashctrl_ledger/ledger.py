@@ -133,6 +133,8 @@ class CashCtrlLedger(LedgerEngine):
                 "Restoring revaluations are not allowed since "
                 "accessor/mutators can not be implemented for the CashCtrl"
             )
+        if settings is not None and "REPORTING_CURRENCY" in settings:
+            self.reporting_currency = settings["REPORTING_CURRENCY"]
         if accounts is not None:
             self.accounts.mirror(accounts.assign(tax_code=pd.NA), delete=True)
         if tax_codes is not None:
