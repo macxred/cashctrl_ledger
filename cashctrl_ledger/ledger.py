@@ -120,8 +120,6 @@ class CashCtrlLedger(LedgerEngine):
         if ledger is not None:
             self.ledger.mirror(ledger, delete=True)
 
-        # TODO: Implement logic for other entities
-
     def clear(self):
         self.ledger.mirror(None, delete=True)
         self.settings_clear()
@@ -133,7 +131,6 @@ class CashCtrlLedger(LedgerEngine):
         self.accounts.mirror(None, delete=True)
         self.price_history.mirror(None, delete=True)
         self.assets.mirror(None, delete=True)
-        # TODO: Implement logic for other entities
 
     # ----------------------------------------------------------------------
     # Settings
