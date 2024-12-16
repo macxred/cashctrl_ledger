@@ -85,9 +85,37 @@ class CashCtrlLedger(LedgerEngine):
             archive.writestr('accounts.csv', self.accounts.list().to_csv(index=False))
             archive.writestr('price_history.csv', self.price_history.list().to_csv(index=False))
             archive.writestr('ledger.csv', self.ledger.list().to_csv(index=False))
-            archive.writestr('assets.csv', self.price_history.list().to_csv(index=False))
-            # Hack: Write empty revaluations file to make parent restore_from_zip() method work
-            archive.writestr('revaluations.csv')
+            archive.writestr('assets.csv', self.assets.list().to_csv(index=False))
+
+    def restore_from_zip(self, archive_path: str):
+        required_files = {
+            'ledger.csv', 'tax_codes.csv', 'accounts.csv', 'settings.json', 'assets.csv',
+            'price_history.csv'
+        }
+
+        with zipfile.ZipFile(archive_path, 'r') as archive:
+            archive_files = set(archive.namelist())
+            missing_files = required_files - archive_files
+            if missing_files:
+                raise FileNotFoundError(
+                    f"Missing required files in the archive: {', '.join(missing_files)}"
+                )
+
+            settings = json.loads(archive.open('settings.json').read().decode('utf-8'))
+            ledger = pd.read_csv(archive.open('ledger.csv'))
+            accounts = pd.read_csv(archive.open('accounts.csv'))
+            tax_codes = pd.read_csv(archive.open('tax_codes.csv'))
+            assets = pd.read_csv(archive.open('assets.csv'))
+            price_history = pd.read_csv(archive.open('price_history.csv'))
+            self.restore(
+                settings=settings,
+                ledger=ledger,
+                tax_codes=tax_codes,
+                accounts=accounts,
+                assets=assets,
+                price_history=price_history,
+                revaluations=None
+            )
 
     def restore(
         self,
