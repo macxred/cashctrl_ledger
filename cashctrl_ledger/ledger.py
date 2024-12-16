@@ -97,8 +97,14 @@ class CashCtrlLedger(LedgerEngine):
         price_history: pd.DataFrame | None = None,
         ledger: pd.DataFrame | None = None,
         assets: pd.DataFrame | None = None,
+        revaluations: pd.DataFrame | None = None,
     ):
         self.clear()
+        if revaluations is not None:
+            self._logger.warning(
+                "Restoring revaluations are not allowed since "
+                "accessor/mutators can not be implemented for the CashCtrl"
+            )
         if accounts is not None:
             self.accounts.mirror(accounts.assign(tax_code=pd.NA), delete=True)
         if tax_codes is not None:
