@@ -86,6 +86,8 @@ class CashCtrlLedger(LedgerEngine):
             archive.writestr('price_history.csv', self.price_history.list().to_csv(index=False))
             archive.writestr('ledger.csv', self.ledger.list().to_csv(index=False))
             archive.writestr('assets.csv', self.price_history.list().to_csv(index=False))
+            # Hack: Write empty revaluations file to make parent restore_from_zip() method work
+            archive.writestr('revaluations.csv')
 
     def restore(
         self,
