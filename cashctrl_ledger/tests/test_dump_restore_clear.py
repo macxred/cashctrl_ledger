@@ -66,8 +66,8 @@ SETTINGS = {
 }
 
 
-# Revaluations can not be implemented in CashCtrl
-# Defining a placeholder class to satisfy test interface
+# Revaluations are not implemented in CashCtrl.
+# A placeholder class is used to fulfill the test interface.
 class Revaluations:
     def list(self):
         return pd.DataFrame({})
@@ -83,19 +83,20 @@ class TestDumpRestoreClear(BaseTestDumpRestoreClear):
     default_account = TAX_CODES.query("id == 'IN_STD'")["account"].values[0]
     TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = default_account
 
-    # Revaluations can not be dumped or restored in CashCtrl, using empty DataFrame
+    # CashCtrl doesn't support revaluations, use an empty DataFrame
     REVALUATIONS = pd.DataFrame({})
 
     @pytest.fixture(scope="class")
     def engine(self, initial_engine):
         self.ACCOUNTS = initial_engine.sanitize_accounts(self.ACCOUNTS)
         initial_engine._revaluations = Revaluations()
-        # Set transitory account as first from constants to simplify the test logic
+        # Temporarily set the transitory account to the first listed account for simpler testing
         initial_transitory_account = initial_engine.transitory_account
         initial_engine.transitory_account = self.ACCOUNTS.iloc[0]["account"].item()
 
         yield initial_engine
 
+        # Restore initial transitory account
         initial_engine.transitory_account = initial_transitory_account
 
     def test_restore_settings(self, engine, tmp_path):
