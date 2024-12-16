@@ -189,8 +189,11 @@ class CashCtrlLedger(LedgerEngine):
 
         if "ROUNDING" in settings:
             for rounding in settings["ROUNDING"]:
-                rounding["accountId"] = self._client.account_to_id(rounding["account"])
-                self._client.post("rounding/create.json", data=rounding)
+                payload = {
+                    **rounding,
+                    "accountId": self._client.account_to_id(rounding["account"])
+                }
+                self._client.post("rounding/create.json", data=payload)
 
         if "CASH_CTRL" in settings:
             system_settings = {
