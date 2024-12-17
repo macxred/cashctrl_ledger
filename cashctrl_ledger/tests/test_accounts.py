@@ -36,6 +36,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         super().test_modify_nonexistent_account_raise_error(
             engine, error_class=ValueError, error_message="No id found for account"
         )
+
     def test_delete_account_allow_missing(self, engine):
         super().test_delete_account_allow_missing(
             engine, error_class=ValueError, error_message="No id found for account"
@@ -194,16 +195,15 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             # Close matches
             (["Revenues/Subgroup"], ["/Revenue/Subgroup"]),
             (["Expens/Subgroup"], ["/Expense/Subgroup"]),
-             # Top-level groups
+            # Top-level groups
             (["Balance"], ["/Balance"]),
             (["/Liabilities"], ["/Liabilities"]),
             ([], []),  # Empty input
             (["Assets"], ["/Assets"]),  # Single valid group
             (["Invalid"], ["/Liabilities"]),  # Single invalid group
-            (["/RandomGroup/Subgroup"], ["/Revenue/Subgroup"]), # No match
+            (["/RandomGroup/Subgroup"], ["/Revenue/Subgroup"]),  # No match
         ]
     )
-
     def test_sanitize_account_groups(self, input_groups, expected_groups):
         engine = CashCtrlLedger()
         input_series = pd.Series(input_groups, dtype="string[python]")

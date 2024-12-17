@@ -25,7 +25,7 @@ SETTINGS = {
         "DEFAULT_CREDITOR_ACCOUNT_ID": 4000
     },
     "REPORTING_CURRENCY": "CHF",
-    "ROUNDING":[
+    "ROUNDING": [
         {
             "account": 4001,
             "name": "<values><de>Auf 0.05 runden</de><en>Round to 0.05</en></values>",
@@ -51,6 +51,7 @@ SETTINGS = {
 class Revaluations:
     def list(self):
         return pd.DataFrame({})
+
     def mirror(self, target):
         pass
 

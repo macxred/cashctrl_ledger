@@ -1,7 +1,6 @@
 """Unit tests for vat codes accessor, mutator, and mirror methods."""
 
 import pytest
-import pandas as pd
 from pyledger.tests import BaseTestTaxCodes
 from base_test import BaseTestCashCtrl
 
@@ -36,7 +35,7 @@ class TestTaxCodes(BaseTestCashCtrl, BaseTestTaxCodes):
         with pytest.raises(ValueError):
             engine.accounts.add({
                 "code": "TestCode", "text": "VAT 20%",
-                "account": 8888, "rate": 0.02, "inclusive":True
+                "account": 8888, "rate": 0.02, "inclusive": True
             })
 
     def test_update_tax_code_with_not_valid_account_raise_error(self, engine):
@@ -45,5 +44,5 @@ class TestTaxCodes(BaseTestCashCtrl, BaseTestTaxCodes):
         with pytest.raises(ValueError):
             engine.tax_codes.modify({
                 "code": "TestCode", "text": "VAT 20%",
-                "account": 8888, "rate": 0.02, "inclusive":True
+                "account": 8888, "rate": 0.02, "inclusive": True
             })
