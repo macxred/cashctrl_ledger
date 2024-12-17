@@ -2,6 +2,8 @@
 directly represented in CahCtrl.
 """
 
+import datetime
+from typing import List
 import numpy as np
 import pandas as pd
 from .ledger import CashCtrlLedger
@@ -113,6 +115,29 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
             pd.DataFrame: The modified ledger DataFrame.
         """
         ledger = self.ledger.standardize(ledger)
+
+        # TODO: move this method to LedgerEngine class
+        def _reporting_currency_amount(amount: List[float], currency: List[str],
+                                       date: List[datetime.date]) -> List[float]:
+            reporting_currency = self.reporting_currency
+            if not (len(amount) == len(currency) == len(date)):
+                raise ValueError(
+                    "Vectors 'amount', 'currency', and 'date' must have the same length."
+                )
+            result = [
+                self.round_to_precision(
+                    a * self.price(t, date=d, currency=reporting_currency)[1],
+                    reporting_currency, date=d)
+                for a, t, d in zip(amount, currency, date)]
+            return result
+
+        # Insert missing base currency amounts
+        mask = ledger['report_amount'].isna()
+        ledger.loc[mask, 'report_amount'] = _reporting_currency_amount(
+            amount=ledger.loc[mask, 'amount'],
+            currency=ledger.loc[mask, 'currency'],
+            date=ledger.loc[mask, 'date']
+        )
 
         # Number of currencies other than reporting currency
         reporting_currency = self.reporting_currency
