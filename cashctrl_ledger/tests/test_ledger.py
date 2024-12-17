@@ -17,13 +17,11 @@ class TestLedger(BaseTestLedger):
     TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = default_account
 
     LEDGER_ENTRIES = BaseTestLedger.LEDGER_ENTRIES.copy()
-    exclude_ids = ["1", "23", "10", "9", "18", "22"]
+    exclude_ids = ["23", "10", "9", "18", "22"]
     # flake8: noqa: E501
     # "23": Transaction with CHF currency is correctly sanitized, but when reading - CHF is converted to USD and amount is recalculated to USD
     # LEDGER_ENTRIES = LEDGER_ENTRIES.query("id == '23'")
-    # "1": Same as above - JPY converted to the USD
     # "10": Same as above - EUR converted to the USD
-    # LEDGER_ENTRIES = LEDGER_ENTRIES.query("id == '1'")
 
     # "9": requests.exceptions.RequestException: API call failed. Total debit (2 500.00) and total credit (500.00) must be equal.
     # LEDGER_ENTRIES = LEDGER_ENTRIES.query("id == '9'")
