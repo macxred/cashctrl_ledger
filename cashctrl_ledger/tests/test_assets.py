@@ -2,11 +2,10 @@
 
 import pytest
 from pyledger.tests import BaseTestAssets
-# flake8: noqa: F401
-from base_test import initial_engine
+from base_test import BaseTestCashCtrl
 
 
-class TestAssets(BaseTestAssets):
+class TestAssets(BaseTestCashCtrl, BaseTestAssets):
 
     @pytest.fixture
     def engine(self, initial_engine):

@@ -5,8 +5,7 @@ import pytest
 import zipfile
 import json
 from pyledger.tests import BaseTestDumpRestoreClear
-# flake8: noqa: F401
-from base_test import initial_engine
+from base_test import BaseTestCashCtrl
 from consistent_df import assert_frame_equal
 
 
@@ -56,20 +55,13 @@ class Revaluations:
         pass
 
 
-class TestDumpRestoreClear(BaseTestDumpRestoreClear):
+class TestDumpRestoreClear(BaseTestCashCtrl, BaseTestDumpRestoreClear):
     LEDGER_ENTRIES = BaseTestDumpRestoreClear.LEDGER_ENTRIES.query("id.isin(['2', '5', '6', '7'])")
-    TAX_CODES = BaseTestDumpRestoreClear.TAX_CODES.copy()
-    # Assign a default account to TAX_CODES where account is missing,
-    # CashCtrl does not support tax codes without accounts assigned
-    default_account = TAX_CODES.query("id == 'IN_STD'")["account"].values[0]
-    TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = default_account
-
     # CashCtrl doesn't support revaluations, use an empty DataFrame
     REVALUATIONS = pd.DataFrame({})
 
     @pytest.fixture(scope="class")
     def engine(self, initial_engine):
-        self.ACCOUNTS = initial_engine.sanitize_accounts(self.ACCOUNTS)
         initial_engine._revaluations = Revaluations()
         # Temporarily set the transitory account to the first listed account for simpler testing
         initial_transitory_account = initial_engine.transitory_account
