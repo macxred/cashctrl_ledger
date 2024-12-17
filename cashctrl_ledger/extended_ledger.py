@@ -308,6 +308,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                         self.round_to_precision(entry["amount"] * fx_rate, reporting_currency)
                     ),
                 )
+                balance = np.array(self.round_to_precision(balance, reporting_currency))
                 if all(balance == 0.0):
                     return entry
                 else:

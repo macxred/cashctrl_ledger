@@ -525,10 +525,6 @@ class CashCtrlLedger(LedgerEngine):
         )
         df.loc[set_na, "report_amount"] = pd.NA
 
-        # Set reporting amount to 0 for transactions not in reporting currency with 0 amount
-        mask = (df["currency"] != self.reporting_currency) & (df["amount"] == 0)
-        df.loc[mask, "report_amount"] = 0
-
         # In CashCtrl, attachments are stored at the transaction level rather than
         # for each individual line item within collective transactions. To ensure
         # consistency between equivalent transactions, we fill any missing (NA)
