@@ -554,7 +554,7 @@ class CashCtrlLedger(LedgerEngine):
         # Swap accounts if a contra but no account is provided,
         # or if individual transaction amount is negative
         swap_accounts = df["contra"].notna() & (
-            (df["amount"] < 0) | df["account"].isna()
+            (df["amount"] < 0) | (df["report_amount"] < 0) | df["account"].isna()
         )
         if swap_accounts.any():
             initial_account = df.loc[swap_accounts, "account"]
