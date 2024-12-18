@@ -313,6 +313,15 @@ class CashCtrlLedger(LedgerEngine):
                 | (currency != individual["debit_currency"])
             )
         )
+        currency =  np.where(
+            is_fx_adjustment,
+            np.where(
+                individual["credit_currency"] != currency,
+                individual["credit_currency"],
+                individual["debit_currency"]
+            ),
+            currency
+        )
 
         result = pd.DataFrame(
             {
@@ -320,16 +329,9 @@ class CashCtrlLedger(LedgerEngine):
                 "date": individual["dateAdded"].dt.date,
                 "account": individual["debit_account"],
                 "contra": individual["credit_account"],
-                "currency": individual["currencyCode"],
-                "amount": individual["amount"],
-                "report_amount": self.round_to_precision(
-                    np.where(
-                        is_fx_adjustment,
-                        pd.NA,
-                        individual["amount"] * individual["currencyRate"],
-                    ),
-                    self.reporting_currency,
-                ),
+                "currency": currency,
+                "amount": np.where(is_fx_adjustment, pd.NA, individual["amount"]),
+                "report_amount": individual["amount"] * individual["currencyRate"],
                 "tax_code": individual["taxName"],
                 "description": individual["title"],
                 "document": individual["reference"],
