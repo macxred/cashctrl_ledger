@@ -330,7 +330,7 @@ class CashCtrlLedger(LedgerEngine):
                 "account": individual["debit_account"],
                 "contra": individual["credit_account"],
                 "currency": currency,
-                "amount": np.where(is_fx_adjustment, pd.NA, individual["amount"]),
+                "amount": np.where(is_fx_adjustment, 0, individual["amount"]),
                 "report_amount": individual["amount"] * individual["currencyRate"],
                 "tax_code": individual["taxName"],
                 "description": individual["title"],
