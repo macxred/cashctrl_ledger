@@ -17,10 +17,7 @@ class TestLedger(BaseTestLedger):
     TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = default_account
 
     LEDGER_ENTRIES = BaseTestLedger.LEDGER_ENTRIES.copy()
-    exclude_ids = ["23", "17"]
-    # flake8: noqa: E501
-    # "23": Transaction with CHF currency is correctly sanitized, but when reading - CHF is converted to USD and amount is recalculated to USD
-    # LEDGER_ENTRIES = LEDGER_ENTRIES.query("id == '23'")
+    exclude_ids = ["17"]
 
     LEDGER_ENTRIES = LEDGER_ENTRIES.query("id not in @exclude_ids")
 
