@@ -25,7 +25,7 @@ class TestLedger(BaseTestLedger):
         return initial_engine
 
     def test_ledger_accessor_mutators(self, restored_engine):
-        # TODO: Remove after resolving all issues with skipped transactions.
+        # Ledger entries need to be sanitized before adding to the CashCtrl
         self.LEDGER_ENTRIES = restored_engine.sanitize_ledger(self.LEDGER_ENTRIES)
         super().test_ledger_accessor_mutators(restored_engine, ignore_row_order=True)
 
