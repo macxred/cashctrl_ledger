@@ -313,7 +313,7 @@ class CashCtrlLedger(LedgerEngine):
                 | (currency != individual["debit_currency"])
             )
         )
-        currency =  np.where(
+        currency = np.where(
             is_fx_adjustment,
             np.where(
                 individual["credit_currency"] != currency,
