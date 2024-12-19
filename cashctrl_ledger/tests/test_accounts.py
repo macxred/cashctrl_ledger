@@ -182,23 +182,25 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         with pytest.raises(ValueError, match="Cannot create new root nodes"):
             engine.accounts.mirror(ACCOUNT, delete=True)
 
-    def test_account_balance(self, restored_engine):
-        restored_engine.clear()
-        restored_engine.transitory_account = 9999
+    def test_account_balance(self, engine):
+        """This method overrides base implementation since revaluations in CashCtrlLedger
+        package can not be restored and should be manually booked
+        """
+        engine.transitory_account = 9999
         accounts = pd.concat(
-            [self.ACCOUNTS, restored_engine.accounts.list()], ignore_index=True
+            [self.ACCOUNTS, engine.accounts.list()], ignore_index=True
         ).drop_duplicates(["account"])
-        restored_engine.restore(
+        engine.restore(
             accounts=accounts, settings=self.SETTINGS, tax_codes=self.TAX_CODES,
             ledger=self.LEDGER_ENTRIES, assets=self.ASSETS, price_history=self.PRICES,
         )
-        restored_engine.book_revaluations(self.REVALUATIONS)
+        engine.book_revaluations(self.REVALUATIONS)
 
         for _, row in self.EXPECTED_BALANCE.iterrows():
             date = datetime.datetime.strptime(row['date'], "%Y-%m-%d").date()
             account = row['account']
             expected = row['balance']
-            actual = restored_engine.account_balance(date=date, account=row['account'])
+            actual = engine.account_balance(date=date, account=row['account'])
             assert expected == actual, (
                 f"Account balance for {account} on {date} of {actual} differs from {expected}."
             )
