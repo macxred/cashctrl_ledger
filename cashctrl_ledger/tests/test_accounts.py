@@ -183,8 +183,8 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             engine.accounts.mirror(ACCOUNT, delete=True)
 
     def test_account_balance(self, engine):
-        """This method overrides base implementation since revaluations in CashCtrlLedger
-        package can not be restored and should be manually booked
+        """This method overrides base implementation since revaluations
+        in the CashCtrlLedger package can not be restored and should be manually booked.
         """
         engine.transitory_account = 9999
         accounts = pd.concat(
