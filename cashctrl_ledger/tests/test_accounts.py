@@ -1,5 +1,6 @@
 """Unit tests for accounts accessor and mutator methods."""
 
+import datetime
 from io import StringIO
 import pandas as pd
 import pytest
@@ -181,9 +182,28 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         with pytest.raises(ValueError, match="Cannot create new root nodes"):
             engine.accounts.mirror(ACCOUNT, delete=True)
 
-    @pytest.mark.skip(reason="Need to implement all entities to run this test")
-    def test_account_balance(self):
-        pass
+    def test_account_balance(self, engine):
+        """This method overrides base implementation since revaluations
+        in the CashCtrlLedger package can not be restored and should be manually booked.
+        """
+        engine.transitory_account = 9999
+        accounts = pd.concat(
+            [self.ACCOUNTS, engine.accounts.list()], ignore_index=True
+        ).drop_duplicates(["account"])
+        engine.restore(
+            accounts=accounts, settings=self.SETTINGS, tax_codes=self.TAX_CODES,
+            ledger=self.LEDGER_ENTRIES, assets=self.ASSETS, price_history=self.PRICES,
+        )
+        engine.book_revaluations(self.REVALUATIONS)
+
+        for _, row in self.EXPECTED_BALANCE.iterrows():
+            date = datetime.datetime.strptime(row['date'], "%Y-%m-%d").date()
+            account = row['account']
+            expected = row['balance']
+            actual = engine.account_balance(date=date, account=row['account'])
+            assert expected == actual, (
+                f"Account balance for {account} on {date} of {actual} differs from {expected}."
+            )
 
     @pytest.mark.parametrize(
         "input_groups, expected_groups",
