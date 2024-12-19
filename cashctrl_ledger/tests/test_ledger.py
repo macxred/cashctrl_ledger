@@ -16,11 +16,6 @@ class TestLedger(BaseTestLedger):
     default_account = TAX_CODES.query("id == 'IN_STD'")["account"].values[0]
     TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = default_account
 
-    LEDGER_ENTRIES = BaseTestLedger.LEDGER_ENTRIES.copy()
-    exclude_ids = ["17"]
-
-    LEDGER_ENTRIES = LEDGER_ENTRIES.query("id not in @exclude_ids")
-
     @pytest.fixture()
     def engine(self, initial_engine):
         initial_engine.restore(settings=self.SETTINGS)
