@@ -313,6 +313,15 @@ class CashCtrlLedger(LedgerEngine):
                 | (currency != individual["debit_currency"])
             )
         )
+        currency = np.where(
+            is_fx_adjustment,
+            np.where(
+                individual["credit_currency"] != currency,
+                individual["credit_currency"],
+                individual["debit_currency"]
+            ),
+            currency
+        )
 
         result = pd.DataFrame(
             {
@@ -320,16 +329,9 @@ class CashCtrlLedger(LedgerEngine):
                 "date": individual["dateAdded"].dt.date,
                 "account": individual["debit_account"],
                 "contra": individual["credit_account"],
-                "currency": individual["currencyCode"],
-                "amount": individual["amount"],
-                "report_amount": self.round_to_precision(
-                    np.where(
-                        is_fx_adjustment,
-                        pd.NA,
-                        individual["amount"] * individual["currencyRate"],
-                    ),
-                    self.reporting_currency,
-                ),
+                "currency": currency,
+                "amount": np.where(is_fx_adjustment, 0, individual["amount"]),
+                "report_amount": individual["amount"] * individual["currencyRate"],
                 "tax_code": individual["taxName"],
                 "description": individual["title"],
                 "document": individual["reference"],
@@ -525,10 +527,6 @@ class CashCtrlLedger(LedgerEngine):
         )
         df.loc[set_na, "report_amount"] = pd.NA
 
-        # Set reporting amount to 0 for transactions not in reporting currency with 0 amount
-        mask = (df["currency"] != self.reporting_currency) & (df["amount"] == 0)
-        df.loc[mask, "report_amount"] = 0
-
         # In CashCtrl, attachments are stored at the transaction level rather than
         # for each individual line item within collective transactions. To ensure
         # consistency between equivalent transactions, we fill any missing (NA)
@@ -558,7 +556,7 @@ class CashCtrlLedger(LedgerEngine):
         # Swap accounts if a contra but no account is provided,
         # or if individual transaction amount is negative
         swap_accounts = df["contra"].notna() & (
-            (df["amount"] < 0) | df["account"].isna()
+            (df["amount"] < 0) | (df["report_amount"] < 0) | df["account"].isna()
         )
         if swap_accounts.any():
             initial_account = df.loc[swap_accounts, "account"]

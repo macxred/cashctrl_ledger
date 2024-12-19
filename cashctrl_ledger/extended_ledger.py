@@ -2,6 +2,8 @@
 directly represented in CahCtrl.
 """
 
+import datetime
+from typing import List
 import numpy as np
 import pandas as pd
 from .ledger import CashCtrlLedger
@@ -113,6 +115,29 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
             pd.DataFrame: The modified ledger DataFrame.
         """
         ledger = self.ledger.standardize(ledger)
+
+        # TODO: move this method to LedgerEngine class
+        def _reporting_currency_amount(amount: List[float], currency: List[str],
+                                       date: List[datetime.date]) -> List[float]:
+            reporting_currency = self.reporting_currency
+            if not (len(amount) == len(currency) == len(date)):
+                raise ValueError(
+                    "Vectors 'amount', 'currency', and 'date' must have the same length."
+                )
+            result = [
+                self.round_to_precision(
+                    a * self.price(t, date=d, currency=reporting_currency)[1],
+                    reporting_currency, date=d)
+                for a, t, d in zip(amount, currency, date)]
+            return result
+
+        # Insert missing base currency amounts
+        mask = ledger['report_amount'].isna()
+        ledger.loc[mask, 'report_amount'] = _reporting_currency_amount(
+            amount=ledger.loc[mask, 'amount'],
+            currency=ledger.loc[mask, 'currency'],
+            date=ledger.loc[mask, 'date']
+        )
 
         # Number of currencies other than reporting currency
         reporting_currency = self.reporting_currency
@@ -229,14 +254,6 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 return entry
             else:
                 amount = self.round_to_precision(entry["amount"].item(), entry["currency"].item())
-                if pd.isna(entry["report_amount"].item()):
-                    # TODO: Check wehther this is needed when debugging skipped transactions
-                    # https://github.com/macxred/cashctrl_ledger/pull/88#discussion_r1863475186
-                    rate = self.price(entry["currency"].item(), date=entry["date"].item())
-                    entry["report_amount"] = self.round_to_precision(
-                        entry["amount"] * rate[1], entry["currency"].item(),
-                        date=entry["date"].item()
-                    )
                 reporting_amount = self.round_to_precision(
                     entry["report_amount"].item(), reporting_currency
                 )
@@ -249,9 +266,9 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 else:
                     balancing_txn = entry.copy()
                     balancing_txn["id"] = balancing_txn["id"] + ":fx"
-                    balancing_txn["currency"] = reporting_currency
-                    balancing_txn["amount"] = balance
-                    balancing_txn["report_amount"] = pd.NA
+                    balancing_txn["currency"] = entry["currency"].item()
+                    balancing_txn["amount"] = 0
+                    balancing_txn["report_amount"] = balance
                     entry["report_amount"] = (
                         entry["report_amount"] - balance
                     )
@@ -291,6 +308,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                         self.round_to_precision(entry["amount"] * fx_rate, reporting_currency)
                     ),
                 )
+                balance = np.array(self.round_to_precision(balance, reporting_currency))
                 if all(balance == 0.0):
                     return entry
                 else:
