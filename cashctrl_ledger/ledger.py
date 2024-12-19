@@ -267,13 +267,10 @@ class CashCtrlLedger(LedgerEngine):
         balance = float(response.text)
 
         account_df = self.accounts.list().query("account == @account")
-        is_negate = account_df['group'].apply(
-            lambda x: any(
-                x.startswith(f"/{category}")
-                for category in ACCOUNT_CATEGORIES_NEED_TO_NEGATE
-            )
-        ).any()
-        if is_negate:
+        is_negate = pd.Series(False, index=account_df.index)
+        for category in ACCOUNT_CATEGORIES_NEED_TO_NEGATE:
+            is_negate |= account_df['group'].str.startswith(f"/{category}")
+        if is_negate.any():
             balance = balance * -1
 
         account_currency = self._client.account_to_currency(account)
