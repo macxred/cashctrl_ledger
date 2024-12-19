@@ -266,9 +266,9 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 else:
                     balancing_txn = entry.copy()
                     balancing_txn["id"] = balancing_txn["id"] + ":fx"
-                    balancing_txn["currency"] = reporting_currency
-                    balancing_txn["amount"] = balance
-                    balancing_txn["report_amount"] = pd.NA
+                    balancing_txn["currency"] = entry["currency"].item()
+                    balancing_txn["amount"] = 0
+                    balancing_txn["report_amount"] = balance
                     entry["report_amount"] = (
                         entry["report_amount"] - balance
                     )
