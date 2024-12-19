@@ -1,22 +1,14 @@
 """Unit tests for vat codes accessor, mutator, and mirror methods."""
 
 import pytest
-import pandas as pd
 from pyledger.tests import BaseTestTaxCodes
-# flake8: noqa: F401
-from base_test import initial_engine
+from base_test import BaseTestCashCtrl
 
 
-class TestTaxCodes(BaseTestTaxCodes):
-    TAX_CODES = BaseTestTaxCodes.TAX_CODES.copy()
-    # In CashCtrl it is not possible to create TAX CODE without specified account
-    account = TAX_CODES.query("id == 'IN_STD'")["account"].values[0]
-    TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = account
-
+class TestTaxCodes(BaseTestCashCtrl, BaseTestTaxCodes):
 
     @pytest.fixture(scope="class")
     def engine(self, initial_engine):
-        self.ACCOUNTS = initial_engine.sanitize_accounts(self.ACCOUNTS)
         initial_engine.clear()
         return initial_engine
 
@@ -43,7 +35,7 @@ class TestTaxCodes(BaseTestTaxCodes):
         with pytest.raises(ValueError):
             engine.accounts.add({
                 "code": "TestCode", "text": "VAT 20%",
-                "account": 8888, "rate": 0.02, "inclusive":True
+                "account": 8888, "rate": 0.02, "inclusive": True
             })
 
     def test_update_tax_code_with_not_valid_account_raise_error(self, engine):
@@ -52,5 +44,5 @@ class TestTaxCodes(BaseTestTaxCodes):
         with pytest.raises(ValueError):
             engine.tax_codes.modify({
                 "code": "TestCode", "text": "VAT 20%",
-                "account": 8888, "rate": 0.02, "inclusive":True
+                "account": 8888, "rate": 0.02, "inclusive": True
             })

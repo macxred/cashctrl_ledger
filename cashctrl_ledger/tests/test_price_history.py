@@ -2,11 +2,10 @@
 
 import pytest
 from pyledger.tests import BaseTestPriceHistory
-# flake8: noqa: F401
-from base_test import initial_engine
+from base_test import BaseTestCashCtrl
 
 
-class TestPriceHistory(BaseTestPriceHistory):
+class TestPriceHistory(BaseTestCashCtrl, BaseTestPriceHistory):
 
     @pytest.fixture
     def engine(self, initial_engine):
