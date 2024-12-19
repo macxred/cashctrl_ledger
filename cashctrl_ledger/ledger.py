@@ -20,6 +20,7 @@ from pyledger.constants import (
     ASSETS_SCHEMA
 )
 from .constants import (
+    ACCOUNT_CATEGORIES_NEED_TO_NEGATE,
     ACCOUNT_ROOT_CATEGORIES,
     FISCAL_PERIOD_SCHEMA,
     JOURNAL_ITEM_COLUMNS,
@@ -265,13 +266,21 @@ class CashCtrlLedger(LedgerEngine):
         response = self._client.request("GET", "account/balance", params=params)
         balance = float(response.text)
 
+        account_df = self.accounts.list().query("account == @account")
+        is_negate = account_df['group'].apply(
+            lambda x: any(
+                x.startswith(f"/{category}")
+                for category in ACCOUNT_CATEGORIES_NEED_TO_NEGATE
+            )
+        ).any()
+        if is_negate:
+            balance = balance * -1
+
         account_currency = self._client.account_to_currency(account)
         if self.reporting_currency == account_currency:
             reporting_currency_balance = balance
         else:
-            response = self._client.get(
-                "fiscalperiod/exchangediff.json", params={"date": date}
-            )
+            response = self._client.get("fiscalperiod/exchangediff.json", params={"date": date})
             exchange_diff = pd.DataFrame(response["data"])
             reporting_currency_balance = exchange_diff.loc[
                 exchange_diff["accountId"] == account_id, "dcBalance"
