@@ -4,24 +4,18 @@ import pytest
 import pandas as pd
 from requests import RequestException
 # flake8: noqa: F401
-from base_test import initial_engine
+from base_test import BaseTestCashCtrl
 from pyledger.tests import BaseTestLedger
 from io import StringIO
 
 
-class TestLedger(BaseTestLedger):
-    TAX_CODES = BaseTestLedger.TAX_CODES.copy()
-    # Assign a default account to TAX_CODES where account is missing,
-    # CashCtrl does not support tax codes without accounts assigned
-    default_account = TAX_CODES.query("id == 'IN_STD'")["account"].values[0]
-    TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = default_account
+class TestLedger(BaseTestCashCtrl, BaseTestLedger):
 
     @pytest.fixture()
     def engine(self, initial_engine):
-        initial_engine.restore(settings=self.SETTINGS)
         # Hack: when updating reporting currency transitory account currency should be updated
+        initial_engine.restore(settings=self.SETTINGS)
         initial_engine.transitory_account = 9999
-        self.ACCOUNTS = initial_engine.sanitize_accounts(self.ACCOUNTS)
         return initial_engine
 
     def test_ledger_accessor_mutators(self, restored_engine):

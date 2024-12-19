@@ -4,26 +4,18 @@ from io import StringIO
 import pandas as pd
 import pytest
 from pyledger.tests import BaseTestAccounts
-# flake8: noqa: F401
-from base_test import initial_engine
+from base_test import BaseTestCashCtrl
 from requests.exceptions import RequestException
 from consistent_df import assert_frame_equal
 from cashctrl_ledger.constants import ACCOUNT_ROOT_CATEGORIES
 from cashctrl_ledger import CashCtrlLedger
 
 
-class TestAccounts(BaseTestAccounts):
+class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
     """Test suite for the Account accessor and mutator methods."""
-
-    TAX_CODES = BaseTestAccounts.TAX_CODES.copy()
-    # Assign a default account to TAX_CODES where account is missing,
-    # CashCtrl does not support tax codes without accounts assigned
-    default_account = TAX_CODES.query("id == 'IN_STD'")["account"].values[0]
-    TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = default_account
 
     @pytest.fixture()
     def engine(self, initial_engine):
-        self.ACCOUNTS = initial_engine.sanitize_accounts(self.ACCOUNTS)
         initial_engine.clear()
         return initial_engine
 
@@ -44,6 +36,7 @@ class TestAccounts(BaseTestAccounts):
         super().test_modify_nonexistent_account_raise_error(
             engine, error_class=ValueError, error_message="No id found for account"
         )
+
     def test_delete_account_allow_missing(self, engine):
         super().test_delete_account_allow_missing(
             engine, error_class=ValueError, error_message="No id found for account"
@@ -202,16 +195,15 @@ class TestAccounts(BaseTestAccounts):
             # Close matches
             (["Revenues/Subgroup"], ["/Revenue/Subgroup"]),
             (["Expens/Subgroup"], ["/Expense/Subgroup"]),
-             # Top-level groups
+            # Top-level groups
             (["Balance"], ["/Balance"]),
             (["/Liabilities"], ["/Liabilities"]),
             ([], []),  # Empty input
             (["Assets"], ["/Assets"]),  # Single valid group
             (["Invalid"], ["/Liabilities"]),  # Single invalid group
-            (["/RandomGroup/Subgroup"], ["/Revenue/Subgroup"]), # No match
+            (["/RandomGroup/Subgroup"], ["/Revenue/Subgroup"]),  # No match
         ]
     )
-
     def test_sanitize_account_groups(self, input_groups, expected_groups):
         engine = CashCtrlLedger()
         input_series = pd.Series(input_groups, dtype="string[python]")
