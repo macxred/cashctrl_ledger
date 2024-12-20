@@ -2,6 +2,7 @@
 
 import datetime
 import json
+import re
 from typing import Dict, List, Tuple, Union
 import zipfile
 from cashctrl_api import CachedCashCtrlClient
@@ -266,14 +267,9 @@ class CashCtrlLedger(LedgerEngine):
         response = self._client.request("GET", "account/balance", params=params)
         balance = float(response.text)
 
-        account_df = self.accounts.list().query("account == @account")
-        is_negate = account_df['group'].apply(
-            lambda x: any(
-                x.startswith(f"/{category}")
-                for category in ACCOUNT_CATEGORIES_NEED_TO_NEGATE
-            )
-        ).any()
-        if is_negate:
+        group = self.accounts.list().query("account == @account")["group"].item()
+        root_category = re.sub("/.*", "", re.sub("^/", "", group))
+        if root_category in ACCOUNT_CATEGORIES_NEED_TO_NEGATE:
             balance = balance * -1
 
         account_currency = self._client.account_to_currency(account)
