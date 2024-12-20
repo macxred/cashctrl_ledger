@@ -2,6 +2,7 @@
 
 import datetime
 import json
+import re
 from typing import Dict, List, Tuple, Union
 import zipfile
 from cashctrl_api import CachedCashCtrlClient
@@ -20,6 +21,7 @@ from pyledger.constants import (
     ASSETS_SCHEMA
 )
 from .constants import (
+    ACCOUNT_CATEGORIES_NEED_TO_NEGATE,
     ACCOUNT_ROOT_CATEGORIES,
     FISCAL_PERIOD_SCHEMA,
     JOURNAL_ITEM_COLUMNS,
@@ -265,13 +267,16 @@ class CashCtrlLedger(LedgerEngine):
         response = self._client.request("GET", "account/balance", params=params)
         balance = float(response.text)
 
+        group = self.accounts.list().query("account == @account")["group"].item()
+        root_category = re.sub("/.*", "", re.sub("^/", "", group))
+        if root_category in ACCOUNT_CATEGORIES_NEED_TO_NEGATE:
+            balance = balance * -1
+
         account_currency = self._client.account_to_currency(account)
         if self.reporting_currency == account_currency:
             reporting_currency_balance = balance
         else:
-            response = self._client.get(
-                "fiscalperiod/exchangediff.json", params={"date": date}
-            )
+            response = self._client.get("fiscalperiod/exchangediff.json", params={"date": date})
             exchange_diff = pd.DataFrame(response["data"])
             reporting_currency_balance = exchange_diff.loc[
                 exchange_diff["accountId"] == account_id, "dcBalance"
