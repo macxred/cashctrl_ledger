@@ -97,8 +97,6 @@ class TestLedger(BaseTestCashCtrl, BaseTestLedger):
         with pytest.raises(ValueError, match=expected):
             restored_engine.ledger.add(entry)
 
-    # TODO: Replace with entries from Base class
-    # after resolving all issues with skipped transactions.
     MULTI_CURRENCY_ENTRIES_CSV = """
         id,     date,  account, contra, currency,     amount, report_amount, tax_code,   description,                     document
         1, 2024-06-26,       ,   9991,      USD,  100000.00,      90000.00,         ,   Convert 100k USD to EUR @ 0.9375,
