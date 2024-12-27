@@ -90,22 +90,12 @@ class TestLedger(BaseTestCashCtrl, BaseTestLedger):
             restored_engine.ledger.delete({"id": ["FAKE_ID"]})
 
     def test_adding_transaction_with_two_non_reporting_currencies_fails(self, restored_engine):
-        # TODO: Replace with entries from Base class
-        # after resolving all issues with skipped transactions.
-        LEDGER_CSV = """
-            id,   date, account, contra, currency,    amount, reporting_amount, text, description
-            0, 2024-06-26,     ,   1000,      CHF, 100000.00,         111476.00, Convert CHF to EUR,
-            0, 2024-06-26, 1005,       ,      EUR,  93750.00,         90000.00, Convert CHF to EUR,
-            1, 2024-06-26,     ,   1000,      USD, 200000.00,        180000.00, Convert USD to EUR+CHF,
-            1, 2024-06-26, 1005,       ,      EUR,  93750.00,         90000.00, Convert USD to EUR+CHF,
-            1, 2024-06-26, 1010,       ,      CHF,  90000.00,         90000.00, Convert USD to EUR+CHF,
-        """
-        target = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
         expected = (
             "CashCtrl allows only the reporting currency plus a single foreign currency"
         )
+        entry = BaseTestLedger.LEDGER_ENTRIES.query("id == '23'")
         with pytest.raises(ValueError, match=expected):
-            restored_engine.ledger.add(target)
+            restored_engine.ledger.add(entry)
 
     # TODO: Replace with entries from Base class
     # after resolving all issues with skipped transactions.
