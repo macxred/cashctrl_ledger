@@ -205,7 +205,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         for (id, currency), group in ledger.groupby(["id", "currency"]):
             sub_id = f"{id}:{currency}"
             result.append(group.assign(id=sub_id))
-            balance = round(group["report_amount"].sum(), 2)
+            balance = self.round_to_precision(group["report_amount"].sum(), reporting_currency)
             if balance != 0:
                 clearing_txn = pd.DataFrame(
                     {
