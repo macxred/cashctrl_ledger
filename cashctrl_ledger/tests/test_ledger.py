@@ -97,20 +97,9 @@ class TestLedger(BaseTestCashCtrl, BaseTestLedger):
         with pytest.raises(ValueError, match=expected):
             restored_engine.ledger.add(entry)
 
-    MULTI_CURRENCY_ENTRIES_CSV = """
-        id,     date,  account, contra, currency,     amount, report_amount, tax_code,   description,                     document
-        1, 2024-06-26,       ,   9991,      USD,  100000.00,      90000.00,         ,   Convert 100k USD to EUR @ 0.9375,
-        1, 2024-06-26,   9990,       ,      EUR,   93750.00,      90000.00,         ,   Convert 100k USD to EUR @ 0.9375,
-        2, 2024-06-26,       ,   9991,      USD,  200000.00,     180000.00,         ,   Convert 200k USD to EUR and CHF,
-        2, 2024-06-26,   9990,       ,      EUR,   93750.00,      90000.00,         ,   Convert 200k USD to EUR and CHF,
-        2, 2024-06-26,   9992,       ,      CHF,   90000.00,      90000.00,         ,   Convert 200k USD to EUR and CHF,
-    """
-    MULTI_CURRENCY_ENTRIES = pd.read_csv(StringIO(MULTI_CURRENCY_ENTRIES_CSV), skipinitialspace=True)
-
     def test_split_multi_currency_transactions(self, engine):
-        engine.reporting_currency = "CHF"
-        transitory_account = 9995
-        txn = engine.ledger.standardize(self.MULTI_CURRENCY_ENTRIES.query("id == 1"))
+        transitory_account = 9999
+        txn = engine.ledger.standardize(BaseTestLedger.LEDGER_ENTRIES.query("id == '10'"))
         spit_txn = engine.split_multi_currency_transactions(
             txn, transitory_account=transitory_account
         )
@@ -130,9 +119,8 @@ class TestLedger(BaseTestCashCtrl, BaseTestLedger):
         )
 
     def test_split_several_multi_currency_transactions(self, engine):
-        engine.reporting_currency = "CHF"
-        transitory_account = 9995
-        txn = engine.ledger.standardize(self.MULTI_CURRENCY_ENTRIES.query("id.isin([1, 2])"))
+        transitory_account = 9999
+        txn = engine.ledger.standardize(BaseTestLedger.LEDGER_ENTRIES.query("id in ['10', '23']"))
         spit_txn = engine.split_multi_currency_transactions(
             txn, transitory_account=transitory_account
         )
