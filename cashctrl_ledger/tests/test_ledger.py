@@ -90,39 +90,16 @@ class TestLedger(BaseTestCashCtrl, BaseTestLedger):
             restored_engine.ledger.delete({"id": ["FAKE_ID"]})
 
     def test_adding_transaction_with_two_non_reporting_currencies_fails(self, restored_engine):
-        # TODO: Replace with entries from Base class
-        # after resolving all issues with skipped transactions.
-        LEDGER_CSV = """
-            id,   date, account, contra, currency,    amount, reporting_amount, text, description
-            0, 2024-06-26,     ,   1000,      CHF, 100000.00,         111476.00, Convert CHF to EUR,
-            0, 2024-06-26, 1005,       ,      EUR,  93750.00,         90000.00, Convert CHF to EUR,
-            1, 2024-06-26,     ,   1000,      USD, 200000.00,        180000.00, Convert USD to EUR+CHF,
-            1, 2024-06-26, 1005,       ,      EUR,  93750.00,         90000.00, Convert USD to EUR+CHF,
-            1, 2024-06-26, 1010,       ,      CHF,  90000.00,         90000.00, Convert USD to EUR+CHF,
-        """
-        target = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
         expected = (
             "CashCtrl allows only the reporting currency plus a single foreign currency"
         )
+        entry = BaseTestLedger.LEDGER_ENTRIES.query("id == '23'")
         with pytest.raises(ValueError, match=expected):
-            restored_engine.ledger.add(target)
-
-    # TODO: Replace with entries from Base class
-    # after resolving all issues with skipped transactions.
-    MULTI_CURRENCY_ENTRIES_CSV = """
-        id,     date,  account, contra, currency,     amount, report_amount, tax_code,   description,                     document
-        1, 2024-06-26,       ,   9991,      USD,  100000.00,      90000.00,         ,   Convert 100k USD to EUR @ 0.9375,
-        1, 2024-06-26,   9990,       ,      EUR,   93750.00,      90000.00,         ,   Convert 100k USD to EUR @ 0.9375,
-        2, 2024-06-26,       ,   9991,      USD,  200000.00,     180000.00,         ,   Convert 200k USD to EUR and CHF,
-        2, 2024-06-26,   9990,       ,      EUR,   93750.00,      90000.00,         ,   Convert 200k USD to EUR and CHF,
-        2, 2024-06-26,   9992,       ,      CHF,   90000.00,      90000.00,         ,   Convert 200k USD to EUR and CHF,
-    """
-    MULTI_CURRENCY_ENTRIES = pd.read_csv(StringIO(MULTI_CURRENCY_ENTRIES_CSV), skipinitialspace=True)
+            restored_engine.ledger.add(entry)
 
     def test_split_multi_currency_transactions(self, engine):
-        engine.reporting_currency = "CHF"
-        transitory_account = 9995
-        txn = engine.ledger.standardize(self.MULTI_CURRENCY_ENTRIES.query("id == 1"))
+        transitory_account = 9999
+        txn = engine.ledger.standardize(BaseTestLedger.LEDGER_ENTRIES.query("id == '10'"))
         spit_txn = engine.split_multi_currency_transactions(
             txn, transitory_account=transitory_account
         )
@@ -142,9 +119,8 @@ class TestLedger(BaseTestCashCtrl, BaseTestLedger):
         )
 
     def test_split_several_multi_currency_transactions(self, engine):
-        engine.reporting_currency = "CHF"
-        transitory_account = 9995
-        txn = engine.ledger.standardize(self.MULTI_CURRENCY_ENTRIES.query("id.isin([1, 2])"))
+        transitory_account = 9999
+        txn = engine.ledger.standardize(BaseTestLedger.LEDGER_ENTRIES.query("id in ['10', '23']"))
         spit_txn = engine.split_multi_currency_transactions(
             txn, transitory_account=transitory_account
         )
