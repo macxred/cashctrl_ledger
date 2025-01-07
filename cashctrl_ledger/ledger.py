@@ -9,6 +9,7 @@ from cashctrl_api import CachedCashCtrlClient
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from .profit_center import ProfitCenter
 from .tax_code import TaxCode
 from .accounts import Account
 from .ledger_entity import Ledger
@@ -78,11 +79,7 @@ class CashCtrlLedger(LedgerEngine):
             standardize=self._ledger_standardize,
             prepare_for_mirroring=self.sanitize_ledger
         )
-        # TODO: replace CSV implementation with entity that integrates to CashCtrl
-        self._profit_centers = CSVAccountingEntity(
-            schema=PROFIT_CENTER_SCHEMA,
-            path=profit_centers_path,
-        )
+        self._profit_centers = ProfitCenter(client=client, schema=PROFIT_CENTER_SCHEMA)
 
     # ----------------------------------------------------------------------
     # File operations
@@ -100,7 +97,7 @@ class CashCtrlLedger(LedgerEngine):
     def restore_from_zip(self, archive_path: str):
         required_files = {
             'ledger.csv', 'tax_codes.csv', 'accounts.csv', 'settings.json', 'assets.csv',
-            'price_history.csv'
+            'price_history.csv', 'profit_centers.csv'
         }
 
         with zipfile.ZipFile(archive_path, 'r') as archive:
@@ -177,6 +174,7 @@ class CashCtrlLedger(LedgerEngine):
         self.profit_centers.mirror(None, delete=True)
         self.price_history.mirror(None, delete=True)
         self.assets.mirror(None, delete=True)
+        self.profit_centers.mirror(None, delete=True)
 
     # ----------------------------------------------------------------------
     # Settings
