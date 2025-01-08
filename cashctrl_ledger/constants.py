@@ -10,6 +10,7 @@ JOURNAL_ITEM_COLUMNS = {
     "debit": "float64",
     "credit": "float64",
     "taxName": "string[python]",
+    "profitCenter": "string[python]",
 }
 
 

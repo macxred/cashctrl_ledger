@@ -338,6 +338,14 @@ class CashCtrlLedger(LedgerEngine):
             currency
         )
 
+        def extract_profit_center(cost_center_ids):
+            if pd.isna(cost_center_ids):
+                return pd.NA
+            ids = cost_center_ids.split(',')
+            if len(ids) > 1:
+                raise ValueError("Multiple profit centers assigned to Ledger entry")
+            return self._client.profit_center_from_id(int(ids[0]), allow_missing=True)
+
         result = pd.DataFrame(
             {
                 "id": individual["id"],
@@ -348,6 +356,7 @@ class CashCtrlLedger(LedgerEngine):
                 "amount": np.where(is_fx_adjustment, 0, individual["amount"]),
                 "report_amount": individual["amount"] * individual["currencyRate"],
                 "tax_code": individual["taxName"],
+                "profit_center": individual["costCenterIds"].apply(extract_profit_center),
                 "description": individual["title"],
                 "document": individual["reference"],
             }
@@ -361,6 +370,18 @@ class CashCtrlLedger(LedgerEngine):
             # Fetch individual legs (line 'items') of collective transaction
             def fetch_journal(id: int) -> pd.DataFrame:
                 res = self._client.get("journal/read.json", params={"id": id})["data"]
+                profit_centers = pd.json_normalize(
+                    res["items"], record_path='allocations', meta=['id'], meta_prefix='ledger_'
+                ).drop(columns=["id"])
+                if profit_centers["ledger_id"].duplicated().any():
+                    raise ValueError("Multiple profit centers assigned to Ledger entries")
+                profit_centers["profitCenter"] = profit_centers["toCostCenterId"].apply(
+                    lambda x: self._client.profit_center_from_id(x, allow_missing=True)
+                )
+                items = pd.merge(
+                    pd.DataFrame(res["items"]), profit_centers,
+                    left_on="id", right_on="ledger_id", how="outer"
+                )
                 return pd.DataFrame(
                     {
                         "id": [res["id"]],
@@ -368,7 +389,7 @@ class CashCtrlLedger(LedgerEngine):
                         "date": [pd.to_datetime(res["dateAdded"]).date()],
                         "currency": [res["currencyCode"]],
                         "rate": [res["currencyRate"]],
-                        "items": [enforce_dtypes(pd.DataFrame(res["items"]), JOURNAL_ITEM_COLUMNS)],
+                        "items": [enforce_dtypes(items, JOURNAL_ITEM_COLUMNS)],
                         "fx_rate": [res["currencyRate"]],
                     }
                 )
@@ -406,6 +427,7 @@ class CashCtrlLedger(LedgerEngine):
                 "amount": self.round_to_precision(foreign_amount, currency),
                 "report_amount": self.round_to_precision(reporting_amount, reporting_currency),
                 "tax_code": collective["taxName"],
+                "profit_center": collective["profitCenter"],
                 "description": collective["description"],
                 "document": collective["document"]
             })
@@ -504,7 +526,11 @@ class CashCtrlLedger(LedgerEngine):
         for id in incoming["id"].unique():
             entry = incoming.query("id == @id")
             payload = self._map_ledger_entry(entry)
-            res = self._client.post("journal/create.json", data=payload)
+            try:
+                res = self._client.post("journal/create.json", data=payload)
+            except:
+                print(payload)
+                breakpoint()
             ids.append(str(res["insertId"]))
             self._client.invalidate_journal_cache()
         return ids
@@ -798,6 +824,10 @@ class CashCtrlLedger(LedgerEngine):
                     fx_rate = 1
                 else:
                     fx_rate = reporting_amount / amount
+            cost_center_id = self._client.profit_center_to_id(
+                entry["profit_center"].iat[0], allow_missing=True
+            )
+            allocations = [{"share": 100, "toCostCenterId": cost_center_id}]
             payload = {
                 "dateAdded": entry["date"].iat[0],
                 "amount": amount,
@@ -814,6 +844,7 @@ class CashCtrlLedger(LedgerEngine):
                 "reference": None
                 if pd.isna(entry["document"].iat[0])
                 else entry["document"].iat[0],
+                "allocations": None if cost_center_id is None else allocations,
             }
 
         # Collective ledger entry
@@ -834,6 +865,10 @@ class CashCtrlLedger(LedgerEngine):
                         "allowed in CashCtrl collective transactions."
                     )
                 amount = self.round_to_precision(amount, currency)
+                cost_center_id = self._client.profit_center_to_id(
+                    row["profit_center"], allow_missing=True
+                )
+                allocations = [{"share": 100, "toCostCenterId": cost_center_id}]
                 items.append(
                     {
                         "accountId": self._client.account_to_id(row["account"]),
@@ -843,6 +878,7 @@ class CashCtrlLedger(LedgerEngine):
                         if pd.isna(row["tax_code"])
                         else self._client.tax_code_to_id(row["tax_code"]),
                         "description": row["description"],
+                        "allocations": None if cost_center_id is None else allocations,
                     }
                 )
 
