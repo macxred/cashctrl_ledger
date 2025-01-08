@@ -57,7 +57,7 @@ class Revaluations:
 
 
 class TestDumpRestoreClear(BaseTestCashCtrl, BaseTestDumpRestoreClear):
-    LEDGER_ENTRIES = BaseTestDumpRestoreClear.LEDGER_ENTRIES.query("id.isin(['2', '5', '6', '7'])")
+    LEDGER_ENTRIES = BaseTestCashCtrl.LEDGER_ENTRIES.query("id.isin(['2', '5', '6', '7'])")
     # CashCtrl doesn't support revaluations, use an empty DataFrame
     REVALUATIONS = pd.DataFrame({})
 
