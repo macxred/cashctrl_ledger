@@ -240,12 +240,9 @@ class CashCtrlLedger(LedgerEngine):
 
         return groups
 
-    def sanitize_accounts(self, df: pd.DataFrame) -> pd.DataFrame:
+    def sanitize_accounts(self, df: pd.DataFrame, tax_codes: pd.DataFrame = None) -> pd.DataFrame:
         df["group"] = self.sanitize_account_groups(df["group"])
-
-        # TODO: Uncomment when #71 is implemented
-        # df = super().sanitize_accounts(df)
-
+        df = super().sanitize_accounts(df, tax_codes=tax_codes)
         return df
 
     def _single_account_balance(
