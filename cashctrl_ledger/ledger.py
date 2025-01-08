@@ -246,7 +246,8 @@ class CashCtrlLedger(LedgerEngine):
         return df
 
     def _single_account_balance(
-        self, account: int, date: Union[datetime.date, None] = None
+        self, account: int, date: Union[datetime.date, None] = None,
+        profit_centers: list[str] | str = None
     ) -> dict:
         """Calculate the balance of a single account in both account currency
         and reporting currency.
