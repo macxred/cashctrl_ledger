@@ -196,7 +196,8 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         )
         engine.book_revaluations(self.REVALUATIONS)
 
-        for _, row in self.EXPECTED_BALANCE.iterrows():
+        EXPECTED_BALANCE_NO_PROFIT_CENTERS = self.EXPECTED_BALANCE.query("profit_center.isna()")
+        for _, row in EXPECTED_BALANCE_NO_PROFIT_CENTERS.iterrows():
             date = datetime.datetime.strptime(row['date'], "%Y-%m-%d").date()
             account = row['account']
             expected = row['balance']
