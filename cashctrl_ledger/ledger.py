@@ -18,7 +18,8 @@ from pyledger.constants import (
     ACCOUNT_SCHEMA,
     PRICE_SCHEMA,
     LEDGER_SCHEMA,
-    ASSETS_SCHEMA
+    ASSETS_SCHEMA,
+    PROFIT_CENTER_SCHEMA
 )
 from .constants import (
     ACCOUNT_CATEGORIES_NEED_TO_NEGATE,
@@ -47,6 +48,7 @@ class CashCtrlLedger(LedgerEngine):
         client: CachedCashCtrlClient | None = None,
         price_history_path: Path = Path.cwd() / "price_history.csv",
         assets_path: Path = Path.cwd() / "assets.csv",
+        profit_centers_path: Path = Path.cwd() / "profit_centers.csv",
     ):
         super().__init__()
         client = CachedCashCtrlClient() if client is None else client
@@ -76,6 +78,11 @@ class CashCtrlLedger(LedgerEngine):
             standardize=self._ledger_standardize,
             prepare_for_mirroring=self.sanitize_ledger
         )
+        # TODO: replace CSV implementation with entity that integrates to CashCtrl
+        self._profit_centers = CSVAccountingEntity(
+            schema=PROFIT_CENTER_SCHEMA,
+            path=profit_centers_path,
+        )
 
     # ----------------------------------------------------------------------
     # File operations
@@ -88,6 +95,7 @@ class CashCtrlLedger(LedgerEngine):
             archive.writestr('price_history.csv', self.price_history.list().to_csv(index=False))
             archive.writestr('ledger.csv', self.ledger.list().to_csv(index=False))
             archive.writestr('assets.csv', self.assets.list().to_csv(index=False))
+            archive.writestr('profit_centers.csv', self.profit_centers.list().to_csv(index=False))
 
     def restore_from_zip(self, archive_path: str):
         required_files = {
@@ -109,6 +117,7 @@ class CashCtrlLedger(LedgerEngine):
             tax_codes = pd.read_csv(archive.open('tax_codes.csv'))
             assets = pd.read_csv(archive.open('assets.csv'))
             price_history = pd.read_csv(archive.open('price_history.csv'))
+            profit_centers = pd.read_csv(archive.open('profit_centers.csv'))
             self.restore(
                 settings=settings,
                 ledger=ledger,
@@ -116,6 +125,7 @@ class CashCtrlLedger(LedgerEngine):
                 accounts=accounts,
                 assets=assets,
                 price_history=price_history,
+                profit_centers=profit_centers,
                 revaluations=None
             )
 
@@ -128,6 +138,7 @@ class CashCtrlLedger(LedgerEngine):
         ledger: pd.DataFrame | None = None,
         assets: pd.DataFrame | None = None,
         revaluations: pd.DataFrame | None = None,
+        profit_centers: pd.DataFrame | None = None,
     ):
         self.clear()
         if revaluations is not None:
@@ -149,6 +160,8 @@ class CashCtrlLedger(LedgerEngine):
             self.assets.mirror(assets, delete=True)
         if price_history is not None:
             self.price_history.mirror(price_history, delete=True)
+        if profit_centers is not None:
+            self.profit_centers.mirror(profit_centers, delete=True)
         if ledger is not None:
             self.ledger.mirror(ledger, delete=True)
 
@@ -161,6 +174,7 @@ class CashCtrlLedger(LedgerEngine):
         self.accounts.mirror(accounts.assign(tax_code=pd.NA))
         self.tax_codes.mirror(None, delete=True)
         self.accounts.mirror(None, delete=True)
+        self.profit_centers.mirror(None, delete=True)
         self.price_history.mirror(None, delete=True)
         self.assets.mirror(None, delete=True)
 

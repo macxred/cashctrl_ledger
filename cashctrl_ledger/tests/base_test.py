@@ -20,6 +20,7 @@ class BaseTestCashCtrl(BaseTest):
             transitory_account=9999,
             price_history_path=tmp_path / "price_history.csv",
             assets_path=tmp_path / "assets.csv",
+            profit_centers_path=tmp_path / "profit_centers.csv",
         )
         engine.dump_to_zip(tmp_path / "ledger.zip")
         self.ACCOUNTS = engine.sanitize_accounts(self.ACCOUNTS)
