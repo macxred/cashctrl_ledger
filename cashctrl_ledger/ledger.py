@@ -65,7 +65,7 @@ class CashCtrlLedger(LedgerEngine):
         self._assets = CSVAccountingEntity(
             schema=ASSETS_SCHEMA,
             path=assets_path,
-            on_change=self._ensure_currencies_exist
+            on_change=self._on_assets_change
         )
         self._ensure_currencies_exist()
         self._ledger = Ledger(
@@ -1003,6 +1003,10 @@ class CashCtrlLedger(LedgerEngine):
 
     # ----------------------------------------------------------------------
     # Assets
+
+    def _on_assets_change(self):
+        self._ensure_currencies_exist()
+        self.__class__._assets_as_dict_of_df.fget.cache_clear()
 
     def _ensure_currencies_exist(self):
         """Ensure all local asset tickers definitions exist remotely"""
