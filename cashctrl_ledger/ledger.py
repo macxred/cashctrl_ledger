@@ -26,7 +26,7 @@ from .constants import (
     ACCOUNT_ROOT_CATEGORIES,
     FISCAL_PERIOD_SCHEMA,
     JOURNAL_ITEM_COLUMNS,
-    SETTINGS_KEYS
+    CONFIGURATION_KEYS
 )
 from consistent_df import unnest, enforce_dtypes, enforce_schema
 from difflib import get_close_matches
@@ -89,7 +89,7 @@ class CashCtrlLedger(LedgerEngine):
 
     def dump_to_zip(self, archive_path: str):
         with zipfile.ZipFile(archive_path, 'w') as archive:
-            archive.writestr('settings.json', json.dumps(self.settings_list()))
+            archive.writestr('configuration.json', json.dumps(self.configuration_list()))
             archive.writestr('tax_codes.csv', self.tax_codes.list().to_csv(index=False))
             archive.writestr('accounts.csv', self.accounts.list().to_csv(index=False))
             archive.writestr('price_history.csv', self.price_history.list().to_csv(index=False))
@@ -99,7 +99,7 @@ class CashCtrlLedger(LedgerEngine):
 
     def restore_from_zip(self, archive_path: str):
         required_files = {
-            'ledger.csv', 'tax_codes.csv', 'accounts.csv', 'settings.json', 'assets.csv',
+            'ledger.csv', 'tax_codes.csv', 'accounts.csv', 'configuration.json', 'assets.csv',
             'price_history.csv'
         }
 
@@ -111,7 +111,7 @@ class CashCtrlLedger(LedgerEngine):
                     f"Missing required files in the archive: {', '.join(missing_files)}"
                 )
 
-            settings = json.loads(archive.open('settings.json').read().decode('utf-8'))
+            configuration = json.loads(archive.open('configuration.json').read().decode('utf-8'))
             ledger = pd.read_csv(archive.open('ledger.csv'))
             accounts = pd.read_csv(archive.open('accounts.csv'))
             tax_codes = pd.read_csv(archive.open('tax_codes.csv'))
@@ -119,7 +119,7 @@ class CashCtrlLedger(LedgerEngine):
             price_history = pd.read_csv(archive.open('price_history.csv'))
             profit_centers = pd.read_csv(archive.open('profit_centers.csv'))
             self.restore(
-                settings=settings,
+                configuration=configuration,
                 ledger=ledger,
                 tax_codes=tax_codes,
                 accounts=accounts,
@@ -131,7 +131,7 @@ class CashCtrlLedger(LedgerEngine):
 
     def restore(
         self,
-        settings: dict | None = None,
+        configuration: dict | None = None,
         tax_codes: pd.DataFrame | None = None,
         accounts: pd.DataFrame | None = None,
         price_history: pd.DataFrame | None = None,
@@ -146,16 +146,16 @@ class CashCtrlLedger(LedgerEngine):
                 "Restoring revaluations are not allowed since "
                 "accessor/mutators can not be implemented for the CashCtrl"
             )
-        if settings is not None and "REPORTING_CURRENCY" in settings:
-            self.reporting_currency = settings["REPORTING_CURRENCY"]
+        if configuration is not None and "REPORTING_CURRENCY" in configuration:
+            self.reporting_currency = configuration["REPORTING_CURRENCY"]
         if accounts is not None:
             self.accounts.mirror(accounts.assign(tax_code=pd.NA), delete=True)
         if tax_codes is not None:
             self.tax_codes.mirror(tax_codes, delete=True)
         if accounts is not None:
             self.accounts.mirror(accounts, delete=True)
-        if settings is not None:
-            self.settings_modify(settings)
+        if configuration is not None:
+            self.configuration_modify(configuration)
         if assets is not None:
             self.assets.mirror(assets, delete=True)
         if price_history is not None:
@@ -167,7 +167,7 @@ class CashCtrlLedger(LedgerEngine):
 
     def clear(self):
         self.ledger.mirror(None, delete=True)
-        self.settings_clear()
+        self.configuration_clear()
 
         # Manually reset accounts tax to none
         accounts = self.accounts.list()
@@ -179,48 +179,48 @@ class CashCtrlLedger(LedgerEngine):
         self.assets.mirror(None, delete=True)
 
     # ----------------------------------------------------------------------
-    # Settings
+    # configuration
 
-    def settings_list(self) -> dict:
+    def configuration_list(self) -> dict:
         roundings = self._client.get("rounding/list.json")["data"]
         for rounding in roundings:
             rounding["account"] = self._client.account_from_id(rounding["accountId"])
             rounding.pop("accountId")
 
-        system_settings = self._client.get("setting/read.json")
-        cash_ctrl_settings = {
-            key: self._client.account_from_id(system_settings[key])
-            for key in SETTINGS_KEYS if key in system_settings
+        system_configuration = self._client.get("setting/read.json")
+        cash_ctrl_configuration = {
+            key: self._client.account_from_id(system_configuration[key])
+            for key in CONFIGURATION_KEYS if key in system_configuration
         }
 
         return {
             "REPORTING_CURRENCY": self.reporting_currency,
             "ROUNDING": roundings,
-            "CASH_CTRL": cash_ctrl_settings
+            "CASH_CTRL": cash_ctrl_configuration
         }
 
-    def settings_modify(self, settings: dict = {}):
-        if "REPORTING_CURRENCY" in settings:
-            self.reporting_currency = settings["REPORTING_CURRENCY"]
+    def configuration_modify(self, configuration: dict = {}):
+        if "REPORTING_CURRENCY" in configuration:
+            self.reporting_currency = configuration["REPORTING_CURRENCY"]
 
-        if "ROUNDING" in settings:
-            for rounding in settings["ROUNDING"]:
+        if "ROUNDING" in configuration:
+            for rounding in configuration["ROUNDING"]:
                 payload = {
                     **rounding,
                     "accountId": self._client.account_to_id(rounding["account"])
                 }
                 self._client.post("rounding/create.json", data=payload)
 
-        if "CASH_CTRL" in settings:
-            system_settings = {
-                key: self._client.account_to_id(settings["CASH_CTRL"][key])
-                for key in SETTINGS_KEYS if key in settings["CASH_CTRL"]
+        if "CASH_CTRL" in configuration:
+            system_configuration = {
+                key: self._client.account_to_id(configuration["CASH_CTRL"][key])
+                for key in CONFIGURATION_KEYS if key in configuration["CASH_CTRL"]
             }
-            self._client.post("setting/update.json", data=system_settings)
+            self._client.post("setting/update.json", data=system_configuration)
 
-    def settings_clear(self):
-        empty_settings = {key: "" for key in SETTINGS_KEYS}
-        self._client.post("setting/update.json", empty_settings)
+    def configuration_clear(self):
+        empty_configuration = {key: "" for key in CONFIGURATION_KEYS}
+        self._client.post("setting/update.json", empty_configuration)
         roundings = self._client.get("rounding/list.json")["data"]
         if len(roundings):
             ids = ','.join(str(item['id']) for item in roundings)

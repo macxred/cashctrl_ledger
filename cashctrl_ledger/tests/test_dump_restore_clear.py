@@ -9,7 +9,7 @@ from base_test import BaseTestCashCtrl
 from consistent_df import assert_frame_equal
 
 
-SETTINGS = {
+CONFIGURATION = {
     "CASH_CTRL": {
         "DEFAULT_OPENING_ACCOUNT_ID": 1000,
         "DEFAULT_INPUT_TAX_ADJUSTMENT_ACCOUNT_ID": 1005,
@@ -73,19 +73,21 @@ class TestDumpRestoreClear(BaseTestCashCtrl, BaseTestDumpRestoreClear):
         # Restore initial transitory account
         initial_engine.transitory_account = initial_transitory_account
 
-    def test_restore_settings(self, engine, tmp_path):
+    def test_restore_configuration(self, engine, tmp_path):
         self.ACCOUNTS = engine.sanitize_accounts(self.ACCOUNTS)
-        engine.restore(accounts=self.ACCOUNTS, tax_codes=self.TAX_CODES, settings=SETTINGS)
+        engine.restore(
+            accounts=self.ACCOUNTS, tax_codes=self.TAX_CODES, configuration=CONFIGURATION
+        )
         engine.dump_to_zip(tmp_path / "system.zip")
         with zipfile.ZipFile(tmp_path / "system.zip", 'r') as archive:
-            settings = json.loads(archive.open('settings.json').read().decode('utf-8'))
-            default_roundings = pd.DataFrame(SETTINGS["ROUNDING"])
-            roundings = pd.DataFrame(settings.get("ROUNDING", None))
+            configuration = json.loads(archive.open('configuration.json').read().decode('utf-8'))
+            default_roundings = pd.DataFrame(CONFIGURATION["ROUNDING"])
+            roundings = pd.DataFrame(configuration.get("ROUNDING", None))
             columns = roundings.columns.intersection(default_roundings.columns)
             roundings = roundings[columns]
-            system_settings = settings.get("CASH_CTRL", None)
-            reporting_currency = settings.get("REPORTING_CURRENCY", None)
+            system_configuration = configuration.get("CASH_CTRL", None)
+            reporting_currency = configuration.get("REPORTING_CURRENCY", None)
 
             assert_frame_equal(default_roundings, roundings, check_like=True)
-            assert reporting_currency == SETTINGS["REPORTING_CURRENCY"]
-            assert system_settings == SETTINGS["CASH_CTRL"]
+            assert reporting_currency == CONFIGURATION["REPORTING_CURRENCY"]
+            assert system_configuration == CONFIGURATION["CASH_CTRL"]

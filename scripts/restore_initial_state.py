@@ -159,7 +159,7 @@ ACCOUNTS = """
 
 # flake8: enable
 
-SETTINGS = {
+CONFIGURATION = {
     "CASH_CTRL": {
         "DEFAULT_OPENING_ACCOUNT_ID": 9100,
         "DEFAULT_INPUT_TAX_ADJUSTMENT_ACCOUNT_ID": 1172,
@@ -202,7 +202,7 @@ def main():
     cashctrl_ledger = CashCtrlLedger()
     tax = pd.read_csv(StringIO(TAX_CODES), skipinitialspace=True)
     accounts = pd.read_csv(StringIO(ACCOUNTS), skipinitialspace=True)
-    cashctrl_ledger.restore(settings=SETTINGS, tax_codes=tax, accounts=accounts)
+    cashctrl_ledger.restore(configuration=CONFIGURATION, tax_codes=tax, accounts=accounts)
 
 
 if __name__ == "__main__":
