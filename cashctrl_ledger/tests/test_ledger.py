@@ -14,7 +14,7 @@ class TestLedger(BaseTestCashCtrl, BaseTestLedger):
     @pytest.fixture()
     def engine(self, initial_engine):
         # Hack: when updating reporting currency transitory account currency should be updated
-        initial_engine.restore(settings=self.SETTINGS)
+        initial_engine.restore(configuration=self.CONFIGURATION)
         initial_engine.transitory_account = 9999
         return initial_engine
 
