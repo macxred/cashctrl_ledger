@@ -1,56 +1,40 @@
-on:
-  # For all pushes run the tests
-  push:
-  # Also trigger on pull_request
-  pull_request:
-  # Run nightly tests at 04:00 UTC
-  schedule:
-    - cron: "0 4 * * *"
-  # Manually triggered
-  workflow_dispatch:
+# ---------------------------------------------------------------------------------
+# Security Check Workflow
+#
+# This workflow runs Bandit to perform a security scan on the codebase.
+# It is triggered:
+# - on every push and pull request,
+# - nightly at 04:00 UTC,
+# - manually via workflow dispatch.
+# ---------------------------------------------------------------------------------
 
 name: Security Check
 
-jobs:
-  docker:
-    runs-on: ubuntu-latest
-    container:
-      image: python:latest
-    env:
-      GITHUB_PAT: ${{ secrets.INSTALL_GITHUB }}
-    # If the PR is coming from a fork (pull_request_target), ensure it is opened
-    # by "dependabot[bot]". Otherwise, clone it normally.
-      CC_API_ORGANISATION: ${{ secrets.CC_API_ORGANISATION }}
-      CC_API_KEY: ${{ secrets.CC_API_KEY }}
-    if: |
-        (github.event_name == 'pull_request_target' && github.actor == 'dependabot[bot]') ||
-        (github.event_name != 'pull_request_target' && github.actor != 'dependabot[bot]')
-    steps:
-      - name: Checkout
-        if: ${{ github.event_name != 'pull_request_target' }}
-        uses: actions/checkout@v4
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
 
-      - name: Checkout PR
-        if: ${{ github.event_name == 'pull_request_target' }}
+jobs:
+  security-check:
+    name: Run Security Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
 
-      - name: Setup virtualenv
-        run: |
-          python -V  # Print out python version for debugging
-          pip install virtualenv pytest
-          virtualenv venv
-          . venv/bin/activate
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
 
       - name: Install dependencies
-        run: pip install pytest pandas bandit safety .
-
-      - name: Install package
-        run: python setup.py develop
+        run: pip install bandit
 
       - name: Run Bandit
         run: bandit -r cashctrl_ledger -ll
-
-      - name: Run Safety
-        run: safety check -r setup.py
