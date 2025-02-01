@@ -1,11 +1,19 @@
+# ---------------------------------------------------------------------------------
+# Restore CashCtrl Initial State
+#
+# This workflow restores the initial state of CashCtrl account.
+#
+# It is triggered:
+# - nightly at 03:00 UTC,
+# - manually via workflow dispatch.
+# ---------------------------------------------------------------------------------
+
+name: Restore CashCtrl Initial State
+
 on:
-  # Run nightly tests at 03:00 UTC
   schedule:
     - cron: "0 3 * * *"
-  # Manually triggered
   workflow_dispatch:
-
-name: Restore CashCtrl initial state
 
 concurrency:
   # Within the same concurrency group, run only one job at a time
@@ -14,30 +22,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  docker:
+  restore:
+    name: Restore Initial State
     runs-on: ubuntu-latest
-    container:
-      image: python:latest
+
     env:
       GITHUB_PAT: ${{ secrets.INSTALL_GITHUB }}
       CC_API_ORGANISATION: ${{ secrets.CC_API_ORGANISATION }}
       CC_API_KEY: ${{ secrets.CC_API_KEY }}
+
     steps:
-      - name: Checkout
+      - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Setup virtualenv
-        run: |
-          python -V  # Print out python version for debugging
-          pip install virtualenv pytest
-          virtualenv venv
-          . venv/bin/activate
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
 
       - name: Install dependencies
-        run: pip install pytest pandas setuptools .
-
-      - name: Install package
-        run: python setup.py develop
+        run: pip install setuptools .
 
       - name: Run restore_initial_state.py script
         run: python -W error scripts/restore_initial_state.py
