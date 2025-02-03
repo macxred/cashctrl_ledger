@@ -15,10 +15,10 @@ class BaseTestCashCtrl(BaseTest):
     TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = default_account
 
     # TODO: Remove when profit centers entity integrates with CashCtrl
-    LEDGER_ENTRIES = BaseTest.LEDGER_ENTRIES.copy()
-    LEDGER_ENTRIES.loc[:, "profit_center"] = pd.NA
-    columns = [col for col in LEDGER_ENTRIES.columns if col != "profit_center"] + ["profit_center"]
-    LEDGER_ENTRIES = LEDGER_ENTRIES[columns]
+    JOURNAL = BaseTest.JOURNAL.copy()
+    JOURNAL.loc[:, "profit_center"] = pd.NA
+    columns = [col for col in JOURNAL.columns if col != "profit_center"] + ["profit_center"]
+    JOURNAL = JOURNAL[columns]
 
     @pytest.fixture(scope="module")
     def initial_engine(self, tmp_path_factory):

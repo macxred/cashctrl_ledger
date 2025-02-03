@@ -11,13 +11,13 @@ import pandas as pd
 from pathlib import Path
 from .tax_code import TaxCode
 from .accounts import Account
-from .ledger_entity import Ledger
+from .ledger_entity import Journal
 from pyledger import LedgerEngine, CSVAccountingEntity
 from pyledger.constants import (
     TAX_CODE_SCHEMA,
     ACCOUNT_SCHEMA,
     PRICE_SCHEMA,
-    LEDGER_SCHEMA,
+    JOURNAL_SCHEMA,
     ASSETS_SCHEMA,
     PROFIT_CENTER_SCHEMA
 )
@@ -68,15 +68,15 @@ class CashCtrlLedger(LedgerEngine):
             on_change=self._on_assets_change
         )
         self._ensure_currencies_exist()
-        self._ledger = Ledger(
+        self._journal = Journal(
             client=client,
-            schema=LEDGER_SCHEMA,
-            list=self._ledger_list,
-            add=self._ledger_add,
-            modify=self._ledger_modify,
-            delete=self._ledger_delete,
-            standardize=self._ledger_standardize,
-            prepare_for_mirroring=self.sanitize_ledger
+            schema=JOURNAL_SCHEMA,
+            list=self._journal_list,
+            add=self._journal_add,
+            modify=self._journal_modify,
+            delete=self._journal_delete,
+            standardize=self._journal_standardize,
+            prepare_for_mirroring=self.sanitize_journal
         )
         # TODO: replace CSV implementation with entity that integrates to CashCtrl
         self._profit_centers = CSVAccountingEntity(
@@ -93,13 +93,13 @@ class CashCtrlLedger(LedgerEngine):
             archive.writestr('tax_codes.csv', self.tax_codes.list().to_csv(index=False))
             archive.writestr('accounts.csv', self.accounts.list().to_csv(index=False))
             archive.writestr('price_history.csv', self.price_history.list().to_csv(index=False))
-            archive.writestr('ledger.csv', self.ledger.list().to_csv(index=False))
+            archive.writestr('journal.csv', self.journal.list().to_csv(index=False))
             archive.writestr('assets.csv', self.assets.list().to_csv(index=False))
             archive.writestr('profit_centers.csv', self.profit_centers.list().to_csv(index=False))
 
     def restore_from_zip(self, archive_path: str):
         required_files = {
-            'ledger.csv', 'tax_codes.csv', 'accounts.csv', 'configuration.json', 'assets.csv',
+            'journal.csv', 'tax_codes.csv', 'accounts.csv', 'configuration.json', 'assets.csv',
             'price_history.csv'
         }
 
@@ -112,7 +112,7 @@ class CashCtrlLedger(LedgerEngine):
                 )
 
             configuration = json.loads(archive.open('configuration.json').read().decode('utf-8'))
-            ledger = pd.read_csv(archive.open('ledger.csv'))
+            journal = pd.read_csv(archive.open('journal.csv'))
             accounts = pd.read_csv(archive.open('accounts.csv'))
             tax_codes = pd.read_csv(archive.open('tax_codes.csv'))
             assets = pd.read_csv(archive.open('assets.csv'))
@@ -120,7 +120,7 @@ class CashCtrlLedger(LedgerEngine):
             profit_centers = pd.read_csv(archive.open('profit_centers.csv'))
             self.restore(
                 configuration=configuration,
-                ledger=ledger,
+                journal=journal,
                 tax_codes=tax_codes,
                 accounts=accounts,
                 assets=assets,
@@ -135,7 +135,7 @@ class CashCtrlLedger(LedgerEngine):
         tax_codes: pd.DataFrame | None = None,
         accounts: pd.DataFrame | None = None,
         price_history: pd.DataFrame | None = None,
-        ledger: pd.DataFrame | None = None,
+        journal: pd.DataFrame | None = None,
         assets: pd.DataFrame | None = None,
         revaluations: pd.DataFrame | None = None,
         profit_centers: pd.DataFrame | None = None,
@@ -162,11 +162,11 @@ class CashCtrlLedger(LedgerEngine):
             self.price_history.mirror(price_history, delete=True)
         if profit_centers is not None:
             self.profit_centers.mirror(profit_centers, delete=True)
-        if ledger is not None:
-            self.ledger.mirror(ledger, delete=True)
+        if journal is not None:
+            self.journal.mirror(journal, delete=True)
 
     def clear(self):
-        self.ledger.mirror(None, delete=True)
+        self.journal.mirror(None, delete=True)
         self.configuration_clear()
 
         # Manually reset accounts tax to none
@@ -296,21 +296,21 @@ class CashCtrlLedger(LedgerEngine):
 
         return {account_currency: balance, "reporting_currency": reporting_currency_balance}
 
-        # ----------------------------------------------------------------------
-    # Ledger
+    # ----------------------------------------------------------------------
+    # Journal
 
-    def _ledger_list(self) -> pd.DataFrame:
-        """Retrieves ledger entries from the remote CashCtrl account and converts
+    def _journal_list(self) -> pd.DataFrame:
+        """Retrieves journal entries from the remote CashCtrl account and converts
         the entries to standard pyledger format.
 
         Returns:
-            pd.DataFrame: A DataFrame with LedgerEngine.ledger() column schema.
+            pd.DataFrame: A DataFrame with LedgerEngine.JOURNAL_SCHEMA column schema.
         """
-        ledger = self._client.list_journal_entries()
+        journal = self._client.list_journal_entries()
 
         # Individual ledger entries represent a single transaction and
         # map to a single row in the resulting data frame.
-        individual = ledger[ledger["type"] != "COLLECTIVE"]
+        individual = journal[journal["type"] != "COLLECTIVE"]
 
         # Map to credit and debit account number and account currency
         cols = {"id": "creditId", "currencyCode": "credit_currency", "number": "credit_account"}
@@ -355,9 +355,9 @@ class CashCtrlLedger(LedgerEngine):
             }
         )
 
-        # Collective ledger entries represent a group of transactions and
+        # Collective journal entries represent a group of transactions and
         # map to multiple rows in the resulting data frame with the same id.
-        collective_ids = ledger.loc[ledger["type"] == "COLLECTIVE", "id"]
+        collective_ids = journal.loc[journal["type"] == "COLLECTIVE", "id"]
         if len(collective_ids) > 0:
 
             # Fetch individual legs (line 'items') of collective transaction
@@ -412,13 +412,13 @@ class CashCtrlLedger(LedgerEngine):
                 "document": collective["document"]
             })
             result = pd.concat([
-                self.ledger.standardize(result),
-                self.ledger.standardize(mapped_collective),
+                self.journal.standardize(result),
+                self.journal.standardize(mapped_collective),
             ])
 
-        return self.ledger.standardize(result).reset_index(drop=True)
+        return self.journal.standardize(result).reset_index(drop=True)
 
-    def ledger_entry(self):
+    def journal_entry(self):
         """Not implemented yet."""
         raise NotImplementedError
 
@@ -499,43 +499,43 @@ class CashCtrlLedger(LedgerEngine):
             self.fiscal_period_add(start=new_start.date(), end=new_end.date(), name=new_name)
             fiscal_periods = self.fiscal_period_list()
 
-    def _ledger_add(self, data: pd.DataFrame) -> str:
+    def _journal_add(self, data: pd.DataFrame) -> str:
         ids = []
-        incoming = self.ledger.standardize(data)
+        incoming = self.journal.standardize(data)
         self.ensure_fiscal_periods_exist(incoming["date"].min(), incoming["date"].max())
         for id in incoming["id"].unique():
             entry = incoming.query("id == @id")
-            payload = self._map_ledger_entry(entry)
+            payload = self._map_journal_entry(entry)
             res = self._client.post("journal/create.json", data=payload)
             ids.append(str(res["insertId"]))
             self._client.invalidate_journal_cache()
         return ids
 
-    def _ledger_modify(self, data: pd.DataFrame):
-        incoming = self.ledger.standardize(data)
+    def _journal_modify(self, data: pd.DataFrame):
+        incoming = self.journal.standardize(data)
         self.ensure_fiscal_periods_exist(incoming["date"].min(), incoming["date"].max())
         for id in incoming["id"].unique():
             entry = incoming.query("id == @id")
-            payload = self._map_ledger_entry(entry)
+            payload = self._map_journal_entry(entry)
             payload["id"] = id
             self._client.post("journal/update.json", data=payload)
             self._client.invalidate_journal_cache()
 
-    def _ledger_delete(self, id: pd.DataFrame, allow_missing=False):
-        incoming = enforce_schema(pd.DataFrame(id), LEDGER_SCHEMA.query("id"))
+    def _journal_delete(self, id: pd.DataFrame, allow_missing=False):
+        incoming = enforce_schema(pd.DataFrame(id), JOURNAL_SCHEMA.query("id"))
         self._client.post(
             "journal/delete.json", {"ids": ",".join([str(id) for id in incoming["id"]])}
         )
         self._client.invalidate_journal_cache()
 
-    def _ledger_standardize(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Standardizes the ledger DataFrame to conform to CashCtrl format.
+    def _journal_standardize(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Standardizes the journal DataFrame to conform to CashCtrl format.
 
         Args:
-            ledger (pd.DataFrame): The ledger DataFrame to be standardized.
+            journal (pd.DataFrame): The journal DataFrame to be standardized.
 
         Returns:
-            pd.DataFrame: The standardized ledger DataFrame.
+            pd.DataFrame: The standardized journal DataFrame.
         """
         # Drop redundant report_amount for transactions in reporting currency
         set_na = (
@@ -588,40 +588,40 @@ class CashCtrlLedger(LedgerEngine):
 
         return df
 
-    def attach_ledger_files(self, detach: bool = False):
-        """Updates the attachments of all ledger entries based on the file paths specified
+    def attach_journal_files(self, detach: bool = False):
+        """Updates the attachments of all journal entries based on the file paths specified
         in the 'reference' field of each journal entry. If a file with the specified path
         exists in the remote CashCtrl account, it will be attached to the corresponding
-        ledger entry.
+        journal entry.
 
         Note: The 'reference' field in CashCtrl corresponds to the 'document' column in pyledger.
 
         Args:
-            detach (bool, optional): If True, any files currently attached to ledger entries that do
-                        not have a valid reference path or whose reference path does not
+            detach (bool, optional): If True, any files currently attached to journal entries that
+                        do not have a valid reference path or whose reference path does not
                         match an actual file will be detached. Defaults to False.
         """
-        # Map ledger entries to their actual and targeted attachments
-        attachments = self._get_ledger_attachments()
-        ledger = self._client.list_journal_entries()
-        ledger["id"] = ledger["id"].astype("string[python]")
-        ledger["reference"] = "/" + ledger["reference"]
+        # Map journal entries to their actual and targeted attachments
+        attachments = self._get_journal_attachments()
+        journal = self._client.list_journal_entries()
+        journal["id"] = journal["id"].astype("string[python]")
+        journal["reference"] = "/" + journal["reference"]
         files = self._client.list_files()
         df = pd.DataFrame(
             {
-                "ledger_id": ledger["id"],
+                "journal": journal["id"],
                 "target_attachment": np.where(
-                    ledger["reference"].isin(files["path"]), ledger["reference"], pd.NA
+                    journal["reference"].isin(files["path"]), journal["reference"], pd.NA
                 ),
                 "actual_attachments": [
-                    attachments.get(id, []) for id in ledger["id"]
+                    attachments.get(id, []) for id in journal["id"]
                 ],
             }
         )
 
         # Update attachments to align with the target attachments
         for id, target, actual in zip(
-            df["ledger_id"], df["target_attachment"], df["actual_attachments"]
+            df["journal"], df["target_attachment"], df["actual_attachments"]
         ):
             if pd.isna(target):
                 if actual and detach:
@@ -636,20 +636,20 @@ class CashCtrlLedger(LedgerEngine):
                 )
         self._client.invalidate_journal_cache()
 
-    def _get_ledger_attachments(self, allow_missing=True) -> Dict[str, List[str]]:
-        """Retrieves paths of files attached to CashCtrl ledger entries.
+    def _get_journal_attachments(self, allow_missing=True) -> Dict[str, List[str]]:
+        """Retrieves paths of files attached to CashCtrl journal entries.
 
         Args:
             allow_missing (bool, optional): If True, return None if the file has no path,
                 e.g. for files in the recycle bin. Otherwise raise a ValueError. Defaults to True.
 
         Returns:
-            Dict[str, List[str]]: A Dict that contains ledger ids with attached
+            Dict[str, List[str]]: A Dict that contains journal ids with attached
             files as keys and a list of file paths as values.
         """
-        ledger = self._client.list_journal_entries()
+        journal = self._client.list_journal_entries()
         result = {}
-        for id in ledger.loc[ledger["attachmentCount"] > 0, "id"]:
+        for id in journal.loc[journal["attachmentCount"] > 0, "id"]:
             res = self._client.get("journal/read.json", params={"id": id})["data"]
             paths = [
                 self._client.file_id_to_path(
@@ -772,19 +772,19 @@ class CashCtrlLedger(LedgerEngine):
 
         return currency, fx_rate
 
-    def _map_ledger_entry(self, entry: pd.DataFrame) -> dict:
-        """Converts a single ledger entry to a data structure for upload to CashCtrl.
+    def _map_journal_entry(self, entry: pd.DataFrame) -> dict:
+        """Converts a single journal entry to a data structure for upload to CashCtrl.
 
         Args:
-            entry (pd.DataFrame): DataFrame with ledger entry in pyledger schema.
+            entry (pd.DataFrame): DataFrame with journal entry in pyledger schema.
 
         Returns:
             dict: A data structure to post as json to the CashCtrl REST API.
         """
-        entry = self.ledger.standardize(entry)
+        entry = self.journal.standardize(entry)
         reporting_currency = self.reporting_currency
 
-        # Individual ledger entry
+        # Individual journal entry
         if len(entry) == 1:
             amount = entry["amount"].iat[0]
             reporting_amount = entry["report_amount"].iat[0]
@@ -818,7 +818,7 @@ class CashCtrlLedger(LedgerEngine):
                 else entry["document"].iat[0],
             }
 
-        # Collective ledger entry
+        # Collective journal entry
         elif len(entry) > 1:
             # Individual transaction entries (line items)
             items = []
@@ -867,7 +867,7 @@ class CashCtrlLedger(LedgerEngine):
                 "items": items,
             }
         else:
-            raise ValueError("The ledger entry contains no transaction.")
+            raise ValueError("The journal entry contains no transaction.")
         return payload
 
     def book_revaluations(self, revaluations: pd.DataFrame) -> pd.DataFrame:

@@ -13,7 +13,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
     represented due to CashCtrl's limitations.
 
     CashCtrl's data model imposes constraints, such as restricting FX rates
-    to eight-digit precision and limiting collective ledger entries to a single
+    to eight-digit precision and limiting collective journal entries to a single
     currency beyond the reporting currency. This class ensures that transactions
     conform to CashCtrl's standards by splitting unrepresentable transactions
     into multiple simpler ones that can be accommodated, while preserving the
@@ -93,13 +93,13 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         self._transitory_account = value
 
     # ----------------------------------------------------------------------
-    # Ledger
+    # Journal
 
-    def sanitize_ledger(self, ledger: pd.DataFrame) -> pd.DataFrame:
-        """Modify ledger entries to ensure coherence and compatibility with CashCtrl.
+    def sanitize_journal(self, journal: pd.DataFrame) -> pd.DataFrame:
+        """Modify journal to ensure coherence and compatibility with CashCtrl.
 
-        Extends the base `sanitize_ledger` to address CashCtrl-specific constraints:
-        - Splits collective ledger entries with multiple currencies (other than
+        Extends the base `sanitize_journal` to address CashCtrl-specific constraints:
+        - Splits collective journal entries with multiple currencies (other than
           the reporting currency) into separate entries for each currency that can
           be represented in CashCtrl.
         - Ensures transactions conform to CashCtrl's eight-digit precision limit.
@@ -107,35 +107,35 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
           using the designated `transitory_account`.
 
         Args:
-            ledger (pd.DataFrame): The ledger DataFrame with transactions to be processed.
+            journal (pd.DataFrame): The journal DataFrame with transactions to be processed.
 
         Returns:
-            pd.DataFrame: The modified ledger DataFrame.
+            pd.DataFrame: The modified journal DataFrame.
         """
-        ledger = self.ledger.standardize(ledger)
+        journal = self.journal.standardize(journal)
 
         # Insert missing base currency amounts
-        mask = ledger['report_amount'].isna()
-        ledger.loc[mask, 'report_amount'] = self.report_amount(
-            amount=ledger.loc[mask, 'amount'],
-            currency=ledger.loc[mask, 'currency'],
-            date=ledger.loc[mask, 'date']
+        mask = journal['report_amount'].isna()
+        journal.loc[mask, 'report_amount'] = self.report_amount(
+            amount=journal.loc[mask, 'amount'],
+            currency=journal.loc[mask, 'currency'],
+            date=journal.loc[mask, 'date']
         )
 
         # Number of currencies other than reporting currency
         reporting_currency = self.reporting_currency
-        n_currency = ledger[["id", "currency"]][ledger["currency"] != reporting_currency]
+        n_currency = journal[["id", "currency"]][journal["currency"] != reporting_currency]
         n_currency = n_currency.groupby("id")["currency"].nunique()
 
         # Split entries with multiple currencies into separate entries for each currency
         ids = n_currency.index[n_currency > 1]
         if len(ids) > 0:
-            multi_currency = self.ledger.standardize(ledger[ledger["id"].isin(ids)])
+            multi_currency = self.journal.standardize(journal[journal["id"].isin(ids)])
             multi_currency = self.split_multi_currency_transactions(multi_currency)
-            others = ledger[~ledger["id"].isin(ids)]
+            others = journal[~journal["id"].isin(ids)]
             df = pd.concat([others, multi_currency], ignore_index=True)
         else:
-            df = ledger
+            df = journal
 
         # Ensure foreign currencies can be mapped, correct with FX adjustments otherwise
         transitory_account = self.transitory_account
@@ -144,7 +144,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
             new_txn = self._add_fx_adjustment(
                 txn, transitory_account=transitory_account, reporting_currency=reporting_currency
             )
-            result.append(self.ledger.standardize(new_txn))
+            result.append(self.journal.standardize(new_txn))
         if len(result) > 0:
             result = pd.concat(result)
         else:
@@ -152,7 +152,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
 
         return result
 
-    def split_multi_currency_transactions(self, ledger: pd.DataFrame,
+    def split_multi_currency_transactions(self, journal: pd.DataFrame,
                                           transitory_account: int | None = None) -> pd.DataFrame:
         """
         Splits multi-currency transactions into individual transactions for each currency.
@@ -165,27 +165,27 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         account across these transactions will balance to zero.
 
         Args:
-            ledger (pd.DataFrame): The ledger DataFrame containing transactions to be split.
+            journal (pd.DataFrame): The journal DataFrame containing transactions to be split.
             transitory_account (int, optional): The account number for recording balancing
                 entries. If not provided, the instance's `transitory_account` will be used.
 
         Returns:
-            pd.DataFrame: Modified ledger entries with split transactions and any necessary
+            pd.DataFrame: Modified journal entries with split transactions and any necessary
                 balancing entries.
         """
         reporting_currency = self.reporting_currency
-        is_reporting_currency = ledger["currency"] == reporting_currency
-        ledger.loc[is_reporting_currency, "report_amount"] = ledger.loc[
+        is_reporting_currency = journal["currency"] == reporting_currency
+        journal.loc[is_reporting_currency, "report_amount"] = journal.loc[
             is_reporting_currency, "amount"
         ]
 
-        if any(ledger["report_amount"].isna()):
+        if any(journal["report_amount"].isna()):
             raise ValueError("Reporting currency amount missing for some items.")
         if transitory_account is None:
             transitory_account = self.transitory_account
 
         result = []
-        for (id, currency), group in ledger.groupby(["id", "currency"]):
+        for (id, currency), group in journal.groupby(["id", "currency"]):
             sub_id = f"{id}:{currency}"
             result.append(group.assign(id=sub_id))
             balance = self.round_to_precision(group["report_amount"].sum(), reporting_currency)
@@ -206,30 +206,30 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 result.append(clearing_txn)
 
         result = pd.concat(result, ignore_index=True)
-        return self.ledger.standardize(result)
+        return self.journal.standardize(result)
 
     def _add_fx_adjustment(
         self, entry: pd.DataFrame, transitory_account: int, reporting_currency: str
     ) -> pd.DataFrame:
         """
-        Adjusts ledger entries to conform with CashCtrl's eight-digit FX rate precision.
+        Adjusts journal entries to conform with CashCtrl's eight-digit FX rate precision.
 
-        This method ensures that the reporting currency amounts in a ledger entry match
+        This method ensures that the reporting currency amounts in a journal entry match
         CashCtrl's precision limit for foreign exchange rates of eight digits after
         the decimal point. If an adjustment is needed due to rounding differences,
-        it adds a balancing ledger entry using the `transitory_account`, so the
+        it adds a balancing journal entry using the `transitory_account`, so the
         financial result remains consistent.
 
         Args:
-            entry (pd.DataFrame): The ledger entry or entries to be adjusted.
+            entry (pd.DataFrame): The journal entry or entries to be adjusted.
             transitory_account (int): The account number for recording balancing transactions.
             reporting_currency (str): The reporting currency against which adjustments are made.
 
         Returns:
-            pd.DataFrame: The adjusted ledger entries and any necessary balancing entries.
+            pd.DataFrame: The adjusted journal entries and any necessary balancing entries.
         """
         if len(entry) == 1:
-            # Individual transaction: one row in the ledger data frame
+            # Individual transaction: one row in the journal data frame
             if (
                 entry["amount"].item() == 0
                 or entry["currency"].item() == reporting_currency
@@ -257,8 +257,8 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     )
                     result = pd.concat(
                         [
-                            self.ledger.standardize(entry),
-                            self.ledger.standardize(balancing_txn),
+                            self.journal.standardize(entry),
+                            self.journal.standardize(balancing_txn),
                         ]
                     )
                     result["amount"] = self.round_to_precision(
@@ -267,10 +267,10 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     result["report_amount"] = self.round_to_precision(
                         result["report_amount"], reporting_currency
                     )
-                    return self.ledger.standardize(result)
+                    return self.journal.standardize(result)
 
         elif len(entry) > 1:
-            # Collective transaction: multiple rows in the ledger data frame
+            # Collective transaction: multiple rows in the journal data frame
             currency, fx_rate = self._collective_transaction_currency_and_rate(
                 entry, suppress_error=True
             )
@@ -312,8 +312,8 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     )
                     entry = pd.concat(
                         [
-                            self.ledger.standardize(entry),
-                            self.ledger.standardize(balancing_txn),
+                            self.journal.standardize(entry),
+                            self.journal.standardize(balancing_txn),
                         ]
                     )
                     balance = np.append(balance, -1 * balance.sum())
@@ -326,14 +326,14 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     fx_adjust["id"] = fx_adjust["id"] + ":fx"
                     fx_adjust["description"] = "Currency adjustments: " + fx_adjust["description"]
                     fx_adjust = fx_adjust[balance != 0]
-                    result = pd.concat([entry, self.ledger.standardize(fx_adjust)])
+                    result = pd.concat([entry, self.journal.standardize(fx_adjust)])
                     result["amount"] = self.round_to_precision(
                         result["amount"], result["currency"]
                     )
                     result["report_amount"] = self.round_to_precision(
                         result["report_amount"], reporting_currency
                     )
-                    return self.ledger.standardize(result)
+                    return self.journal.standardize(result)
 
         else:
             raise ValueError("Expecting at least one `entry` row.")

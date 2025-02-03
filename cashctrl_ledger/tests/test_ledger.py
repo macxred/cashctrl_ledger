@@ -1,15 +1,15 @@
-"""Unit tests for ledger accessor, mutator, and mirror methods."""
+"""Unit tests for journal accessor, mutator, and mirror methods."""
 
 import pytest
 import pandas as pd
 from requests import RequestException
 # flake8: noqa: F401
 from base_test import BaseTestCashCtrl
-from pyledger.tests import BaseTestLedger
+from pyledger.tests import BaseTestJournal
 from io import StringIO
 
 
-class TestLedger(BaseTestCashCtrl, BaseTestLedger):
+class TestJournal(BaseTestCashCtrl, BaseTestJournal):
 
     @pytest.fixture()
     def engine(self, initial_engine):
@@ -18,68 +18,68 @@ class TestLedger(BaseTestCashCtrl, BaseTestLedger):
         initial_engine.transitory_account = 9999
         return initial_engine
 
-    def test_ledger_accessor_mutators(self, restored_engine):
-        # Ledger entries need to be sanitized before adding to the CashCtrl
-        self.LEDGER_ENTRIES = restored_engine.sanitize_ledger(self.LEDGER_ENTRIES)
-        super().test_ledger_accessor_mutators(restored_engine, ignore_row_order=True)
+    def test_journal_accessor_mutators(self, restored_engine):
+        # Journal entries need to be sanitized before adding to the CashCtrl
+        self.JOURNAL = restored_engine.sanitize_journal(self.JOURNAL)
+        super().test_journal_accessor_mutators(restored_engine, ignore_row_order=True)
 
     @pytest.mark.skip(reason="CashCtrl allows to create same entries.")
     def test_add_already_existed_raise_error(self):
         pass
 
-    def test_add_ledger_with_illegal_attributes(self, restored_engine):
-        ledger_entry = self.LEDGER_ENTRIES.query("id == '2'")
+    def test_add_journal_with_illegal_attributes(self, restored_engine):
+        journal_entry = self.JOURNAL.query("id == '2'")
 
         # Add with non existent Tax code should raise an error
-        target = ledger_entry.copy()
+        target = journal_entry.copy()
         target["tax_code"] = "Test_Non_Existent_TAX_code"
         with pytest.raises(ValueError, match="No id found for tax code"):
-            restored_engine.ledger.add(target)
+            restored_engine.journal.add(target)
 
         # Add with non existent account should raise an error
-        target = ledger_entry.copy()
+        target = journal_entry.copy()
         target["account"] = 33333
         with pytest.raises(ValueError, match="No id found for account"):
-            restored_engine.ledger.add(target)
+            restored_engine.journal.add(target)
 
         # Add with non existent currency should raise an error
-        target = ledger_entry.copy()
+        target = journal_entry.copy()
         target["currency"] = "Non_Existent_Currency"
         with pytest.raises(ValueError, match="No id found for currency"):
-            restored_engine.ledger.add(target)
+            restored_engine.journal.add(target)
 
     def test_modify_non_existed_raises_error(self, restored_engine):
         super().test_modify_non_existed_raises_error(
             restored_engine, error_class=RequestException, error_message="entry does not exist"
         )
 
-    def test_update_ledger_with_illegal_attributes(self, restored_engine):
-        ledger_entry = self.LEDGER_ENTRIES.query("id == '2'")
-        id = restored_engine.ledger.add(ledger_entry)[0]
+    def test_update_journal_entry_with_illegal_attributes(self, restored_engine):
+        journal_entry = self.JOURNAL.query("id == '2'")
+        id = restored_engine.journal.add(journal_entry)[0]
 
-        # Updating a ledger with non existent tax code should raise an error
-        target = ledger_entry.copy()
+        # Updating a journal entry with non existent tax code should raise an error
+        target = journal_entry.copy()
         target["id"] = id
         target["tax_code"] = "Test_Non_Existent_TAX_code"
         with pytest.raises(ValueError, match="No id found for tax code"):
-            restored_engine.ledger.modify(target)
+            restored_engine.journal.modify(target)
 
-        # Updating a ledger with non existent account code should raise an error
-        target = ledger_entry.copy()
+        # Updating a journal entry with non existent account code should raise an error
+        target = journal_entry.copy()
         target["id"] = id
         target["account"] = 333333
         with pytest.raises(ValueError, match="No id found for account"):
-            restored_engine.ledger.modify(target)
+            restored_engine.journal.modify(target)
 
-        # Updating a ledger with non existent currency code should raise an error
-        target = ledger_entry.copy()
+        # Updating a journal entry with non existent currency code should raise an error
+        target = journal_entry.copy()
         target["id"] = id
         target["currency"] = "Non_Existent_Currency"
         with pytest.raises(ValueError, match="No id found for currency"):
-            restored_engine.ledger.modify(target)
+            restored_engine.journal.modify(target)
 
-        # Delete the ledger entry created above
-        restored_engine.ledger.delete([{"id": id}])
+        # Delete the journal entry created above
+        restored_engine.journal.delete([{"id": id}])
 
     @pytest.mark.skip(reason="We don't have a mechanism to allow missing ids.")
     def test_delete_entry_allow_missing(self):
@@ -87,19 +87,19 @@ class TestLedger(BaseTestCashCtrl, BaseTestLedger):
 
     def test_delete_nonexistent_entry_raise_error(self, restored_engine):
         with pytest.raises(RequestException, match="API call failed. ID missing."):
-            restored_engine.ledger.delete({"id": ["FAKE_ID"]})
+            restored_engine.journal.delete({"id": ["FAKE_ID"]})
 
     def test_adding_transaction_with_two_non_reporting_currencies_fails(self, restored_engine):
         expected = (
             "CashCtrl allows only the reporting currency plus a single foreign currency"
         )
-        entry = BaseTestLedger.LEDGER_ENTRIES.query("id == '23'")
+        entry = BaseTestJournal.JOURNAL.query("id == '23'")
         with pytest.raises(ValueError, match=expected):
-            restored_engine.ledger.add(entry)
+            restored_engine.journal.add(entry)
 
     def test_split_multi_currency_transactions(self, engine):
         transitory_account = 9999
-        txn = engine.ledger.standardize(BaseTestLedger.LEDGER_ENTRIES.query("id == '10'"))
+        txn = engine.journal.standardize(BaseTestJournal.JOURNAL.query("id == '10'"))
         spit_txn = engine.split_multi_currency_transactions(
             txn, transitory_account=transitory_account
         )
@@ -120,7 +120,7 @@ class TestLedger(BaseTestCashCtrl, BaseTestLedger):
 
     def test_split_several_multi_currency_transactions(self, engine):
         transitory_account = 9999
-        txn = engine.ledger.standardize(BaseTestLedger.LEDGER_ENTRIES.query("id in ['10', '23']"))
+        txn = engine.journal.standardize(BaseTestJournal.JOURNAL.query("id in ['10', '23']"))
         spit_txn = engine.split_multi_currency_transactions(
             txn, transitory_account=transitory_account
         )

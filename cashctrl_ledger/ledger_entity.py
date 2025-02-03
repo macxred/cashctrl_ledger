@@ -1,14 +1,14 @@
-"""Provides a class with Ledger accessors and mutators for CashCtrl."""
+"""Provides a class with Journal accessors and mutators for CashCtrl."""
 
 import pandas as pd
 from typing import Callable
-from pyledger import LedgerEntity
+from pyledger import JournalEntity
 from .cashctrl_accounting_entity import CashCtrlAccountingEntity
 
 
-class Ledger(LedgerEntity, CashCtrlAccountingEntity):
+class Journal(JournalEntity, CashCtrlAccountingEntity):
     """
-    Provides ledger accessors and mutators for CashCtrl.
+    Provides journal accessors and mutators for CashCtrl.
 
     These methods are passed as parameters during initialization and defined as callables.
     They are implemented in this class by calling the provided callables, thus satisfying
@@ -25,17 +25,17 @@ class Ledger(LedgerEntity, CashCtrlAccountingEntity):
         *args, **kwargs
     ):
         """
-        Initializes the Ledger class.
+        Initializes the journal class.
 
         Args:
             list (Callable[[], pd.DataFrame]):
-                A callable that lists ledger entries and returns a DataFrame.
+                A callable that lists journal entries and returns a DataFrame.
             add (Callable[[pd.DataFrame], None]):
-                A callable that adds ledger entries from a DataFrame.
+                A callable that adds journal entries from a DataFrame.
             modify (Callable[[pd.DataFrame], None]):
-                A callable that modifies ledger entries based on a DataFrame.
+                A callable that modifies journal entries based on a DataFrame.
             delete (Callable[[pd.DataFrame, bool], None]):
-                A callable that deletes ledger entries specified in a DataFrame.
+                A callable that deletes journal entries specified in a DataFrame.
              *args, **kwargs: Additional arguments passed to the superclass.
         """
         super().__init__(*args, **kwargs)

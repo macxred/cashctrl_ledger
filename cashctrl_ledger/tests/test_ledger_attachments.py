@@ -5,7 +5,7 @@ from cashctrl_ledger import CashCtrlLedger
 import pandas as pd
 import pytest
 
-LEDGER_CSV = """
+JOURNAL_CSV = """
     id,   date, account, contra,  currency, amount,  description,                  document
     1, 2024-05-24, 2100,   2200,       CHF,    100,  pytest single transaction 1,
     2, 2024-05-24, 2100,   2200,       CHF,    100,  pytest single transaction 1,  file1.txt
@@ -13,7 +13,7 @@ LEDGER_CSV = """
     4, 2024-05-24, 2100,   2200,       CHF,    100,  pytest single transaction 1,  file1.txt
     5, 2024-05-24, 2100,   2200,       CHF,    100,  pytest single transaction 1,  file_invalid.txt
 """
-LEDGER_ENTRIES = pd.read_csv(StringIO(LEDGER_CSV), skipinitialspace=True)
+JOURNAL = pd.read_csv(StringIO(JOURNAL_CSV), skipinitialspace=True)
 
 
 @pytest.fixture(scope="module")
@@ -50,8 +50,8 @@ def files(mock_directory):
 
 
 @pytest.fixture(scope="module")
-def ledger_ids():
-    """Populate remote ledger with three new entries and return their ids in a list."""
+def journal_ids():
+    """Populate remote journal with three new entries and return their ids in a list."""
     entry = pd.DataFrame({
         "date": ["2024-05-24"],
         "account": [2270],
@@ -61,152 +61,152 @@ def ledger_ids():
         "description": ["test entry"],
     })
     engine = CashCtrlLedger()
-    ledger_ids = [engine.ledger.add(entry)[0] for _ in range(3)]
+    journal_ids = [engine.journal.add(entry)[0] for _ in range(3)]
 
-    yield ledger_ids
+    yield journal_ids
 
-    # Restore original ledger state
-    engine.ledger.delete({"id": ledger_ids})
+    # Restore original journal state
+    engine.journal.delete({"id": journal_ids})
 
 
 @pytest.fixture(scope="module")
-def ledger_attached_ids():
-    """Populate remote ledger with four new entries with specified document
+def journal_attached_ids():
+    """Populate remote journal with four new entries with specified document
     field and return their ids in a list.
     """
     cashctrl = CashCtrlLedger()
-    ledger_ids = [
-        cashctrl.ledger.add(LEDGER_ENTRIES.query(f"id == {id}"))[0]
-        for id in LEDGER_ENTRIES["id"]
+    journal_ids = [
+        cashctrl.journal.add(JOURNAL.query(f"id == {id}"))[0]
+        for id in JOURNAL["id"]
     ]
 
-    yield ledger_ids
+    yield journal_ids
 
-    # Restore original ledger state
-    cashctrl.ledger.delete({"id": ledger_ids})
+    # Restore original journal state
+    cashctrl.journal.delete({"id": journal_ids})
 
 
 def sort_dict_values(items):
     return {key: value.sort() for key, value in items.items()}
 
 
-def test_get_ledger_attachments(files, ledger_ids):
+def test_get_journal_attachments(files, journal_ids):
     engine = CashCtrlLedger()
-    initial = engine._get_ledger_attachments()
+    initial = engine._get_journal_attachments()
 
     engine._client.post(
         "journal/update_attachments.json",
-        data={"id": ledger_ids[0], "fileIds": files["id"].iat[0]},
+        data={"id": journal_ids[0], "fileIds": files["id"].iat[0]},
     )
     engine._client.invalidate_journal_cache()
-    expected = initial | {ledger_ids[0]: ["/file1.txt"]}
-    assert engine._get_ledger_attachments() == expected
+    expected = initial | {journal_ids[0]: ["/file1.txt"]}
+    assert engine._get_journal_attachments() == expected
 
     engine._client.post(
         "journal/update_attachments.json",
-        data={"id": ledger_ids[1], "fileIds": files["id"].iat[1]},
+        data={"id": journal_ids[1], "fileIds": files["id"].iat[1]},
     )
     engine._client.invalidate_journal_cache()
     expected = initial | {
-        ledger_ids[0]: ["/file1.txt"],
-        ledger_ids[1]: ["/subdir/file2.txt"],
+        journal_ids[0]: ["/file1.txt"],
+        journal_ids[1]: ["/subdir/file2.txt"],
     }
-    assert engine._get_ledger_attachments() == expected
+    assert engine._get_journal_attachments() == expected
 
     file_ids = f'{files["id"].iat[0]},{files["id"].iat[1]}'
     engine._client.post(
         "journal/update_attachments.json",
-        data={"id": ledger_ids[1], "fileIds": file_ids},
+        data={"id": journal_ids[1], "fileIds": file_ids},
     )
     engine._client.invalidate_journal_cache()
     expected = initial | {
-        ledger_ids[0]: ["/file1.txt"],
-        ledger_ids[1]: ["/file1.txt", "/subdir/file2.txt"],
+        journal_ids[0]: ["/file1.txt"],
+        journal_ids[1]: ["/file1.txt", "/subdir/file2.txt"],
     }
-    assert sort_dict_values(engine._get_ledger_attachments()) == sort_dict_values(expected)
+    assert sort_dict_values(engine._get_journal_attachments()) == sort_dict_values(expected)
 
 
-def test_attach_ledger_files(files, ledger_attached_ids):
+def test_attach_journal_files(files, journal_attached_ids):
     engine = CashCtrlLedger()
     # Attach file that should be deleted
     engine._client.post(
         "journal/update_attachments.json",
-        data={"id": ledger_attached_ids[0], "fileIds": files["id"].iat[0]},
+        data={"id": journal_attached_ids[0], "fileIds": files["id"].iat[0]},
     )
     # Attach file that should be updated
     engine._client.post(
         "journal/update_attachments.json",
-        data={"id": ledger_attached_ids[1], "fileIds": files["id"].iat[0]},
+        data={"id": journal_attached_ids[1], "fileIds": files["id"].iat[0]},
     )
     # Attach file that should left untouched
     engine._client.post(
         "journal/update_attachments.json",
-        data={"id": ledger_attached_ids[2], "fileIds": files["id"].iat[0]},
+        data={"id": journal_attached_ids[2], "fileIds": files["id"].iat[0]},
     )
     engine._client.invalidate_journal_cache()
 
     # Update attachments with detach=False
-    engine.attach_ledger_files(detach=False)
-    attachments = engine._get_ledger_attachments()
-    attachments = {k: v for k, v in attachments.items() if k in ledger_attached_ids}
+    engine.attach_journal_files(detach=False)
+    attachments = engine._get_journal_attachments()
+    attachments = {k: v for k, v in attachments.items() if k in journal_attached_ids}
     expected = {
-        ledger_attached_ids[0]: ["/file1.txt"],
-        ledger_attached_ids[1]: ["/subdir/file2.txt"],
-        ledger_attached_ids[2]: ["/file1.txt"],
-        ledger_attached_ids[3]: ["/file1.txt"],
+        journal_attached_ids[0]: ["/file1.txt"],
+        journal_attached_ids[1]: ["/subdir/file2.txt"],
+        journal_attached_ids[2]: ["/file1.txt"],
+        journal_attached_ids[3]: ["/file1.txt"],
     }
     assert sort_dict_values(expected) == sort_dict_values(attachments)
 
     # Update attachments with detach=True
-    engine.attach_ledger_files(detach=True)
-    attachments = engine._get_ledger_attachments()
-    attachments = {k: v for k, v in attachments.items() if k in ledger_attached_ids}
+    engine.attach_journal_files(detach=True)
+    attachments = engine._get_journal_attachments()
+    attachments = {k: v for k, v in attachments.items() if k in journal_attached_ids}
     expected = {
-        ledger_attached_ids[1]: ["/subdir/file2.txt"],
-        ledger_attached_ids[2]: ["/file1.txt"],
-        ledger_attached_ids[3]: ["/file1.txt"],
+        journal_attached_ids[1]: ["/subdir/file2.txt"],
+        journal_attached_ids[2]: ["/file1.txt"],
+        journal_attached_ids[3]: ["/file1.txt"],
     }
     assert sort_dict_values(expected) == sort_dict_values(attachments)
 
 
-def test_attach_ledger_files_that_dont_match_remote_files(files, ledger_attached_ids):
+def test_attach_ledger_files_that_dont_match_remote_files(files, journal_attached_ids):
     engine = CashCtrlLedger()
     # Attach file that should trigger update of non-existent file
     engine._client.post(
         "journal/update_attachments.json",
-        data={"id": ledger_attached_ids[4], "fileIds": files["id"].iat[0]},
+        data={"id": journal_attached_ids[4], "fileIds": files["id"].iat[0]},
     )
     engine._client.invalidate_journal_cache()
 
     # With detach=false attached file should left the same
-    engine.attach_ledger_files(detach=False)
-    attachments = engine._get_ledger_attachments()
-    attachments = {k: v for k, v in attachments.items() if k == ledger_attached_ids[4]}
-    expected = {ledger_attached_ids[4]: ["/file1.txt"]}
+    engine.attach_journal_files(detach=False)
+    attachments = engine._get_journal_attachments()
+    attachments = {k: v for k, v in attachments.items() if k == journal_attached_ids[4]}
+    expected = {journal_attached_ids[4]: ["/file1.txt"]}
     assert expected == attachments
 
     # With detach=true attached file should be deleted
-    engine.attach_ledger_files(detach=True)
-    attachments = engine._get_ledger_attachments()
-    attachments = {k: v for k, v in attachments.items() if k == ledger_attached_ids[4]}
+    engine.attach_journal_files(detach=True)
+    attachments = engine._get_journal_attachments()
+    attachments = {k: v for k, v in attachments.items() if k == journal_attached_ids[4]}
     assert {} == attachments
 
 
-def test_attach_ledger_files_to_ledger_with_multiple_attachments(files, ledger_attached_ids):
+def test_attach_journal_files_to_journal_with_multiple_attachments(files, journal_attached_ids):
     engine = CashCtrlLedger()
     # Attach files that should trigger update
     engine._client.post(
         "journal/update_attachments.json",
         data={
-            "id": ledger_attached_ids[1],
+            "id": journal_attached_ids[1],
             "fileIds": f"{files['id'].iat[0]}, {files['id'].iat[1]}",
         },
     )
     engine._client.invalidate_journal_cache()
 
     # Should update attachments from multiple to only one specified
-    engine.attach_ledger_files(detach=False)
-    attachments = engine._get_ledger_attachments()
-    attachments = {k: v for k, v in attachments.items() if k == ledger_attached_ids[1]}
-    expected = {ledger_attached_ids[1]: ["/file1.txt"]}
+    engine.attach_journal_files(detach=False)
+    attachments = engine._get_journal_attachments()
+    attachments = {k: v for k, v in attachments.items() if k == journal_attached_ids[1]}
+    expected = {journal_attached_ids[1]: ["/file1.txt"]}
     assert expected == attachments
