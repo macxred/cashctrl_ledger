@@ -11,7 +11,7 @@ import pandas as pd
 from pathlib import Path
 from .tax_code import TaxCode
 from .accounts import Account
-from .ledger_entity import Journal
+from .journal_entity import Journal
 from pyledger import LedgerEngine, CSVAccountingEntity
 from pyledger.constants import (
     TAX_CODE_SCHEMA,
