@@ -14,8 +14,8 @@ def engine():
 
     yield cashctrl
 
-    # Delete any created ledger entries
-    cashctrl.ledger.mirror(pd.DataFrame({}), delete=True)
+    # Delete any created journal
+    cashctrl.journal.mirror(pd.DataFrame({}), delete=True)
 
     # Delete any created fiscal period
     fiscal_periods = cashctrl._client.get("fiscalperiod/list.json")['data']
@@ -68,28 +68,28 @@ def test_fiscal_period_list_raises_error_on_gap_between_fiscal_periods(engine):
         engine.fiscal_period_list()
 
 
-def test_add_and_modify_ledger_entry_creates_missing_fiscal_period(engine):
+def test_add_and_modify_journal_entry_creates_missing_fiscal_period(engine):
     fiscal_periods = engine.fiscal_period_list()
     latest_end = fiscal_periods["end"].max()
 
-    # Add ledger entry with a date outside existing fiscal periods
+    # Add journal entry with a date outside existing fiscal periods
     date = latest_end + pd.DateOffset(years=1)
     entry = pd.DataFrame([{
         "date": date, "account": 1000, "contra": 2000, "currency": "CHF",
         "amount": 100, "description": "test entry",
     }])
-    id = engine.ledger.add(entry)
+    id = engine.journal.add(entry)
 
     updated_fiscal_periods = engine.fiscal_period_list()
     assert len(updated_fiscal_periods) > len(fiscal_periods), (
         "New fiscal period should be created."
     )
 
-    # Modify ledger entry with a date outside existing fiscal periods
+    # Modify journal entry with a date outside existing fiscal periods
     fiscal_periods = updated_fiscal_periods
     entry.loc[:, "id"] = id
     entry.loc[:, "date"] = date + pd.DateOffset(years=1)
-    engine.ledger.modify(entry)
+    engine.journal.modify(entry)
 
     updated_fiscal_periods = engine.fiscal_period_list()
     assert len(updated_fiscal_periods) > len(fiscal_periods), (

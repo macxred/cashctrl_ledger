@@ -192,7 +192,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         ).drop_duplicates(["account"])
         engine.restore(
             accounts=accounts, configuration=self.CONFIGURATION, tax_codes=self.TAX_CODES,
-            ledger=self.LEDGER_ENTRIES, assets=self.ASSETS, price_history=self.PRICES,
+            journal=self.JOURNAL, assets=self.ASSETS, price_history=self.PRICES,
         )
         engine.book_revaluations(self.REVALUATIONS)
 
