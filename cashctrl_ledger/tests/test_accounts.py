@@ -1,6 +1,5 @@
 """Unit tests for accounts accessor and mutator methods."""
 
-import datetime
 from io import StringIO
 import pandas as pd
 import pytest
@@ -198,12 +197,12 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
 
         EXPECTED_BALANCE_NO_PROFIT_CENTERS = self.EXPECTED_BALANCE.query("profit_center.isna()")
         for _, row in EXPECTED_BALANCE_NO_PROFIT_CENTERS.iterrows():
-            date = datetime.datetime.strptime(row['date'], "%Y-%m-%d").date()
+            period = row['period']
             account = row['account']
             expected = row['balance']
-            actual = engine.account_balance(date=date, account=row['account'])
+            actual = engine.account_balance(period=period, account=row['account'])
             assert expected == actual, (
-                f"Account balance for {account} on {date} of {actual} differs from {expected}."
+                f"Account balance for {account} on {period} of {actual} differs from {expected}."
             )
 
     @pytest.mark.parametrize(
