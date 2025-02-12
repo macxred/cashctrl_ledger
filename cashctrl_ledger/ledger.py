@@ -923,7 +923,7 @@ class CashCtrlLedger(LedgerEngine):
         for date in sorted(revaluations["date"].unique()):
             exchange_diff = []
             for row in revaluations.query("date == @date").to_dict('records'):
-                accounts = self.account_range(row['account'])
+                accounts = self.parse_account_range(row['account'])
                 accounts = set(accounts['add']) - set(accounts['subtract'])
                 for account in accounts:
                     currency = self.account_currency(account)
