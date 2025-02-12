@@ -41,7 +41,7 @@ jobs:
           python-version: "3.x"
 
       - name: Install dependencies
-        run: pip install setuptools .
+        run: pip install pytest setuptools .
 
       - name: Run restore_initial_state.py script
         run: python -W error scripts/restore_initial_state.py
