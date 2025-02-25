@@ -6,6 +6,7 @@ from requests import RequestException
 # flake8: noqa: F401
 from base_test import BaseTestCashCtrl
 from pyledger.tests import BaseTestJournal
+from consistent_df import assert_frame_equal
 from io import StringIO
 
 
@@ -17,6 +18,24 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
         initial_engine.restore(configuration=self.CONFIGURATION)
         initial_engine.transitory_account = 9999
         return initial_engine
+
+    @pytest.fixture()
+    def restore_fiscal_periods(self, engine):
+        fiscal_periods = engine._client.get("fiscalperiod/list.json")['data']
+        initial_ids = [fp["id"] for fp in fiscal_periods]
+
+        yield
+
+        # Delete any created journal
+        engine.journal.mirror(pd.DataFrame({}), delete=True)
+
+        # Delete any created fiscal period
+        fiscal_periods = engine._client.get("fiscalperiod/list.json")['data']
+        new_ids = [fp["id"] for fp in fiscal_periods]
+        created_ids = set(new_ids) - set(initial_ids)
+        if len(created_ids):
+            ids = ",".join([str(id) for id in created_ids])
+            engine._client.post("fiscalperiod/delete.json", params={"ids": ids})
 
     def test_journal_accessor_mutators(self, restored_engine):
         # Journal entries need to be sanitized before adding to the CashCtrl
@@ -140,4 +159,49 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
         )
         assert spit_txn.query("account == @transitory_account")["report_amount"].sum() == 0, (
             "Expecting transitory account to be balanced"
+        )
+
+    def test_list_journal_with_fiscal_periods(self, restored_engine, restore_fiscal_periods):
+        JOURNAL_CSV = """
+            id,       date, account, contra, currency,      amount, tax_code,  description
+             1, 2023-01-24,    1000,   4000,      USD,     1000.00,         ,  Sell cakes
+             2, 2024-01-24,    1000,   4000,      USD,     2000.00,         ,  Sell donuts
+             3, 2025-01-24,    1000,   4000,      USD,     3000.00,         ,  Sell candies
+             4, 2026-01-24,    1000,   4000,      USD,     4000.00,         ,  Sell chocolate
+        """
+        JOURNAL = restored_engine.sanitize_journal(
+            pd.read_csv(StringIO(JOURNAL_CSV), skipinitialspace=True)
+        )
+        restored_engine.journal.mirror(target=JOURNAL, delete=True)
+
+        assert_frame_equal(
+            restored_engine.journal.list("2023"), JOURNAL.query("id == '1'"),
+            ignore_columns=["id"], check_like=True, ignore_index=True
+        )
+        assert_frame_equal(
+            restored_engine.journal.list("2024"), JOURNAL.query("id == '2'"),
+            ignore_columns=["id"], check_like=True, ignore_index=True,
+        )
+        assert_frame_equal(
+            restored_engine.journal.list("2025"), JOURNAL.query("id == '3'"),
+            ignore_columns=["id"], check_like=True, ignore_index=True
+        )
+        assert_frame_equal(
+            restored_engine.journal.list("2026"), JOURNAL.query("id == '4'"),
+            ignore_columns=["id"], check_like=True, ignore_index=True
+        )
+        assert_frame_equal(
+            restored_engine.journal.list(), JOURNAL, ignore_columns=["id"],
+            check_like=True, ignore_index=True,
+        )
+
+        fiscal_periods = restored_engine.fiscal_period_list()
+        new_fiscal_period = fiscal_periods.query("current == False").iloc[0]
+        restored_engine._client.post(
+            "fiscalperiod/switch.json", data={"id": new_fiscal_period["id"].item()}
+        )
+        assert_frame_equal(
+            restored_engine.journal.list("current"),
+            JOURNAL.query(f"date.dt.year == {new_fiscal_period['name']}"),
+            ignore_columns=["id"], check_like=True, ignore_index=True,
         )
