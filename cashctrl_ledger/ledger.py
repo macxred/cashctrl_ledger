@@ -299,15 +299,48 @@ class CashCtrlLedger(LedgerEngine):
     # ----------------------------------------------------------------------
     # Journal
 
-    def _journal_list(self) -> pd.DataFrame:
-        """Retrieves journal entries from the remote CashCtrl account and converts
-        the entries to standard pyledger format.
+    def _journal_list(self, fiscal_period: str | None = None) -> pd.DataFrame:
+        """Retrieves journal entries from the remote CashCtrl account.
+
+        Args:
+            fiscal_period (str | None, optional): Specifies which fiscal period to retrieve:
+                - `None` (default): Returns entries for all fiscal periods.
+                - `"current"`: Returns entries for the currently selected fiscal period.
+                - Any other string: Treats it as a fiscal period name (e.g., `"2025"`)
+                and returns entries for that period.
 
         Returns:
-            pd.DataFrame: A DataFrame with LedgerEngine.JOURNAL_SCHEMA column schema.
+            pd.DataFrame: A DataFrame following the `LedgerEngine.JOURNAL_SCHEMA` column schema.
         """
-        journal = self._client.list_journal_entries()
+        fiscal_periods = self.fiscal_period_list()
+        if fiscal_period is None:
+            fiscal_period_names = fiscal_periods["name"].tolist()
+        elif fiscal_period == "current":
+            current_period = self._client.get_current_fiscal_period()
+            if current_period.empty:
+                raise ValueError("No current fiscal period is defined.")
+            fiscal_period_names = current_period["name"].tolist()
+        else:
+            fiscal_periods = fiscal_periods.query("name == @fiscal_period")
+            if fiscal_periods.empty:
+                raise ValueError(f"No fiscal period named '{fiscal_period}' was found.")
+            fiscal_period_names = fiscal_periods["name"].tolist()
+        ids = [self._client.get_fiscal_period_id_from_name(name) for name in fiscal_period_names]
+        journal = pd.concat(
+            [self._client.list_journal_entries(fiscal_period_id=id) for id in ids],
+            ignore_index=True,
+        )
+        return self._map_journal_entries(journal)
 
+    def _map_journal_entries(self, journal: pd.DataFrame) -> pd.DataFrame:
+        """Converts CashCtrl journal entries format to standard pyledger format.
+
+        Args:
+            journal (pd.DataFrame): Raw journal entries from CashCtrl.
+
+        Returns:
+            pd.DataFrame: Standardized journal DataFrame with LedgerEngine.JOURNAL_SCHEMA.
+        """
         # Individual ledger entries represent a single transaction and
         # map to a single row in the resulting data frame.
         individual = journal[journal["type"] != "COLLECTIVE"]
