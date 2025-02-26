@@ -41,7 +41,7 @@ class TaxCode(CashCtrlAccountingEntity):
                 "calcType": "NET" if row["is_inclusive"] else "GROSS",
             }
             self._client.post("tax/create.json", data=payload)
-        self._client.invalidate_tax_rates_cache()
+        self._client.list_tax_rates.cache_clear()
 
     def modify(self, data: pd.DataFrame) -> None:
         data = pd.DataFrame(data)
@@ -68,7 +68,7 @@ class TaxCode(CashCtrlAccountingEntity):
             if "description" in incoming.columns:
                 payload["documentName"] = row["description"]
             self._client.post("tax/update.json", data=payload)
-        self._client.invalidate_tax_rates_cache()
+        self._client.list_tax_rates.cache_clear()
 
     def delete(self, id: pd.DataFrame, allow_missing: bool = False) -> None:
         incoming = enforce_schema(pd.DataFrame(id), self._schema.query("id"))
@@ -79,4 +79,4 @@ class TaxCode(CashCtrlAccountingEntity):
                 ids.append(str(id))
         if len(ids):
             self._client.post("tax/delete.json", {"ids": ", ".join(ids)})
-            self._client.invalidate_tax_rates_cache()
+            self._client.list_tax_rates.cache_clear()
