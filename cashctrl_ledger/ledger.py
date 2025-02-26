@@ -5,7 +5,7 @@ import json
 import re
 from typing import Dict, List, Tuple, Union
 import zipfile
-from cashctrl_api import CachedCashCtrlClient
+from cashctrl_api import CashCtrlClient
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -45,13 +45,13 @@ class CashCtrlLedger(LedgerEngine):
 
     def __init__(
         self,
-        client: CachedCashCtrlClient | None = None,
+        client: CashCtrlClient | None = None,
         price_history_path: Path = Path.cwd() / "price_history.csv",
         assets_path: Path = Path.cwd() / "assets.csv",
         profit_centers_path: Path = Path.cwd() / "profit_centers.csv",
     ):
         super().__init__()
-        client = CachedCashCtrlClient() if client is None else client
+        client = CashCtrlClient() if client is None else client
         self._client = client
         self._tax_codes = TaxCode(client=client, schema=TAX_CODE_SCHEMA)
         self._accounts = Account(client=client, schema=ACCOUNT_SCHEMA)
@@ -510,7 +510,7 @@ class CashCtrlLedger(LedgerEngine):
             payload = self._map_journal_entry(entry)
             res = self._client.post("journal/create.json", data=payload)
             ids.append(str(res["insertId"]))
-            self._client.invalidate_journal_cache()
+            self._client.list_journal_entries.cache_clear()
         return ids
 
     def _journal_modify(self, data: pd.DataFrame):
@@ -521,14 +521,14 @@ class CashCtrlLedger(LedgerEngine):
             payload = self._map_journal_entry(entry)
             payload["id"] = id
             self._client.post("journal/update.json", data=payload)
-            self._client.invalidate_journal_cache()
+            self._client.list_journal_entries.cache_clear()
 
     def _journal_delete(self, id: pd.DataFrame, allow_missing=False):
         incoming = enforce_schema(pd.DataFrame(id), JOURNAL_SCHEMA.query("id"))
         self._client.post(
             "journal/delete.json", {"ids": ",".join([str(id) for id in incoming["id"]])}
         )
-        self._client.invalidate_journal_cache()
+        self._client.list_journal_entries.cache_clear()
 
     def _journal_standardize(self, df: pd.DataFrame) -> pd.DataFrame:
         """Standardizes the journal DataFrame to conform to CashCtrl format.
@@ -636,7 +636,7 @@ class CashCtrlLedger(LedgerEngine):
                     "journal/update_attachments.json",
                     data={"id": id, "fileIds": file_id},
                 )
-        self._client.invalidate_journal_cache()
+        self._client.list_journal_entries.cache_clear()
 
     def _get_journal_attachments(self, allow_missing=True) -> Dict[str, List[str]]:
         """Retrieves paths of files attached to CashCtrl journal entries.
@@ -1001,7 +1001,7 @@ class CashCtrlLedger(LedgerEngine):
             }
             self._client.post("currency/create.json", data=payload)
 
-        self._client.invalidate_currencies_cache()
+        self._client.list_currencies.cache_clear()
 
     # ----------------------------------------------------------------------
     # Assets
@@ -1022,4 +1022,4 @@ class CashCtrlLedger(LedgerEngine):
                     "CashCtrl allows only 3-character currency codes."
                 )
             self._client.post("currency/create.json", data={"code": currency})
-            self._client.invalidate_currencies_cache()
+            self._client.list_currencies.cache_clear()
