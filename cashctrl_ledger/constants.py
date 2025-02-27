@@ -30,11 +30,12 @@ CONFIGURATION_KEYS = [
 
 
 FISCAL_PERIOD_SCHEMA_CSV = """
-    column,              dtype,   mandatory,       id
-        id,              Int64,        True,     True
-     start,     datetime64[ns],        True,     False
-       end,     datetime64[ns],        True,     False
-      name,     string[python],        True,      False
+       column,              dtype,   mandatory,     id
+           id,              Int64,        True,     True
+        start,     datetime64[ns],        True,     False
+          end,     datetime64[ns],        True,     False
+         name,     string[python],        True,     False
+    isCurrent,               bool,        True,     False
 """
 FISCAL_PERIOD_SCHEMA = pd.read_csv(StringIO(FISCAL_PERIOD_SCHEMA_CSV), skipinitialspace=True)
 
