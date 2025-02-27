@@ -339,7 +339,8 @@ class CashCtrlLedger(LedgerEngine):
             journal (pd.DataFrame): Raw journal entries from CashCtrl.
 
         Returns:
-            pd.DataFrame: Standardized journal DataFrame with LedgerEngine.JOURNAL_SCHEMA.
+            pd.DataFrame: Standardized journal DataFrame following the
+                `LedgerEngine.JOURNAL_SCHEMA` column schema.
         """
         # Individual ledger entries represent a single transaction and
         # map to a single row in the resulting data frame.
