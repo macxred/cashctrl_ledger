@@ -305,32 +305,32 @@ class CashCtrlLedger(LedgerEngine):
         Args:
             fiscal_period (str | None, optional): Specifies which fiscal period to retrieve:
                 - `None` (default): Returns entries for all fiscal periods.
-                - `"current"`: Returns entries for the currently selected fiscal period.
-                - Any other string: Treats it as a fiscal period name (e.g., `"2025"`)
-                and returns entries for that period.
+                - `"current"`: Returns entries for the selected fiscal period.
+                - Any other string: Returns entries for the given fiscal period (e.g., `"2025"`).
 
         Returns:
             pd.DataFrame: A DataFrame following the `LedgerEngine.JOURNAL_SCHEMA` column schema.
+
+        Raises:
+            ValueError: If the fiscal period does not exist or no current period is defined.
         """
         fiscal_periods = self.fiscal_period_list()
         if fiscal_period is None:
             fiscal_period_names = fiscal_periods["name"].tolist()
         elif fiscal_period == "current":
-            current_period = self._client.get_current_fiscal_period()
+            current_period = fiscal_periods.query("isCurrent == True")
             if current_period.empty:
                 raise ValueError("No current fiscal period is defined.")
             fiscal_period_names = current_period["name"].tolist()
         else:
-            fiscal_periods = fiscal_periods.query("name == @fiscal_period")
-            if fiscal_periods.empty:
+            matched_period = fiscal_periods.loc[fiscal_periods["name"] == fiscal_period]
+            if matched_period.empty:
                 raise ValueError(f"No fiscal period named '{fiscal_period}' was found.")
-            fiscal_period_names = fiscal_periods["name"].tolist()
-        ids = [self._client.get_fiscal_period_id_from_name(name) for name in fiscal_period_names]
-        journal = pd.concat(
-            [self._client.list_journal_entries(fiscal_period_id=id) for id in ids],
-            ignore_index=True,
-        )
-        return self._map_journal_entries(journal)
+            fiscal_period_names = matched_period["name"].tolist()
+
+        ids = [self._client.fiscal_period_to_id(name) for name in fiscal_period_names]
+        journal_entries = [self._client.list_journal_entries(fiscal_period_id=id) for id in ids]
+        return self._map_journal_entries(pd.concat(journal_entries, ignore_index=True))
 
     def _map_journal_entries(self, journal: pd.DataFrame) -> pd.DataFrame:
         """Converts CashCtrl journal entries format to standard pyledger format.
@@ -467,13 +467,8 @@ class CashCtrlLedger(LedgerEngine):
         Raises:
             Exception: If any gap is detected between consecutive fiscal periods.
         """
-        fiscal_periods = self._client.get("fiscalperiod/list.json")["data"]
-        fiscal_periods = enforce_schema(pd.DataFrame(fiscal_periods), FISCAL_PERIOD_SCHEMA)
-        fp = fiscal_periods.sort_values("start").reset_index(drop=True)
-
-        # Normalize start and end dates dropping timezone information
-        fp["start"] = fp["start"].dt.tz_localize(None).dt.floor('D')
-        fp["end"] = fp["end"].dt.tz_localize(None).dt.floor('D')
+        fiscal_periods = self._client.list_fiscal_periods()
+        fp = enforce_schema(pd.DataFrame(fiscal_periods), FISCAL_PERIOD_SCHEMA)
 
         # Calculate the gap between consecutive periods (next start - current end)
         consecutive_gap = fp["start"].dt.date.shift(-1) - fp["end"].dt.date
@@ -499,6 +494,7 @@ class CashCtrlLedger(LedgerEngine):
             "name": name
         }
         self._client.post("fiscalperiod/create.json", data=data)
+        self._client.list_fiscal_periods.cache_clear()
 
     def ensure_fiscal_periods_exist(self, start: datetime.date, end: datetime.date):
         """
