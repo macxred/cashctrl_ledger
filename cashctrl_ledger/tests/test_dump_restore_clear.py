@@ -32,7 +32,6 @@ CONFIGURATION = {
             "rounding": 0.05,
             "mode": "HALF_UP",
             "value": None,
-            "referenced": False
         },
         {
             "account": 4001,
@@ -40,7 +39,6 @@ CONFIGURATION = {
             "rounding": 1.0,
             "mode": "HALF_UP",
             "value": None,
-            "referenced": False
         }
     ]
 }
