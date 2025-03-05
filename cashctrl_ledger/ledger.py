@@ -461,6 +461,8 @@ class CashCtrlLedger(LedgerEngine):
             "isCustom": True,
             "start": start.strftime("%Y-%m-%d"),
             "end": end.strftime("%Y-%m-%d"),
+            "salaryStart": start.strftime("%Y-%m-%d"),
+            "salaryEnd": end.strftime("%Y-%m-%d"),
             "name": name
         }
         self._client.post("fiscalperiod/create.json", data=data)
