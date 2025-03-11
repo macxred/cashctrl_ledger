@@ -324,7 +324,7 @@ class CashCtrlLedger(LedgerEngine):
         return self._map_journal_entries(pd.concat(journal_entries, ignore_index=True))
 
     def _map_journal_entries(self, journal: pd.DataFrame) -> pd.DataFrame:
-        """Converts CashCtrl journal entries format to standard pyledger format.
+        """Convert CashCtrl journal entries to pyledger format.
 
         Args:
             journal (pd.DataFrame): Raw journal entries from CashCtrl.

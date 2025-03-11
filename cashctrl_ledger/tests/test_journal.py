@@ -173,7 +173,7 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
         )
         restored_engine.journal.mirror(target=journal_df, delete=True)
 
-        # Test journal entries retrieval for specific fiscal periods
+        # Test listing journal entries for specific fiscal periods
         for year in journal_df["date"].dt.year.unique():
             assert_frame_equal(
                 restored_engine.journal.list(fiscal_period=str(year)),
