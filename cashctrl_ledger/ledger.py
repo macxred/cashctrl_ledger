@@ -314,21 +314,12 @@ class CashCtrlLedger(LedgerEngine):
         Raises:
             ValueError: If the fiscal period does not exist or no current period is defined.
         """
-        fiscal_periods = self.fiscal_period_list()
         if fiscal_period is None:
-            fiscal_period_names = fiscal_periods["name"].tolist()
+            ids = self.fiscal_period_list()["id"]
         elif fiscal_period == "current":
-            current_period = fiscal_periods.query("isCurrent == True")
-            if current_period.empty:
-                raise ValueError("No current fiscal period is defined.")
-            fiscal_period_names = current_period["name"].tolist()
+            ids = [None]
         else:
-            matched_period = fiscal_periods.loc[fiscal_periods["name"] == fiscal_period]
-            if matched_period.empty:
-                raise ValueError(f"No fiscal period named '{fiscal_period}' was found.")
-            fiscal_period_names = matched_period["name"].tolist()
-
-        ids = [self._client.fiscal_period_to_id(name) for name in fiscal_period_names]
+            ids = [self._client.fiscal_period_to_id(fiscal_period)]
         journal_entries = [self._client.list_journal_entries(fiscal_period_id=id) for id in ids]
         return self._map_journal_entries(pd.concat(journal_entries, ignore_index=True))
 
