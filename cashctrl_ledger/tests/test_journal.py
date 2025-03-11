@@ -21,17 +21,16 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
 
     @pytest.fixture()
     def restore_fiscal_periods(self, engine):
-        fiscal_periods = engine._client.get("fiscalperiod/list.json")['data']
-        initial_ids = [fp["id"] for fp in fiscal_periods]
+        initial_ids = engine._client.list_fiscal_periods()["id"]
+        initial_ledger = engine.journal.list()
 
         yield
 
         # Delete any created journal
-        engine.journal.mirror(pd.DataFrame({}), delete=True)
+        engine.journal.mirror(initial_ledger, delete=True)
 
         # Delete any created fiscal period
-        fiscal_periods = engine._client.get("fiscalperiod/list.json")['data']
-        new_ids = [fp["id"] for fp in fiscal_periods]
+        new_ids = engine._client.list_fiscal_periods()["id"]
         created_ids = set(new_ids) - set(initial_ids)
         if len(created_ids):
             ids = ",".join([str(id) for id in created_ids])
@@ -201,5 +200,5 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
         )
 
         # Test journal entries retrieval for invalid fiscal period raise an error
-        with pytest.raises(ValueError, match="No fiscal period named"):
+        with pytest.raises(ValueError, match="No id found for fiscal period"):
             restored_engine.journal.list("test_fiscal_period")
