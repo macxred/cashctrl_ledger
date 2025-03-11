@@ -34,7 +34,7 @@ def mock_directory(tmp_path_for_module):
 
 @pytest.fixture(scope="module")
 def files(mock_directory):
-    """Create a CachedCashCtrlClient, populate with files and folders."""
+    """Create a CashCtrlClient, populate with files and folders."""
     cc_client = CashCtrlLedger()
     initial_files = cc_client._client.list_files()
     cc_client._client.mirror_directory(mock_directory, delete_files=False)
@@ -98,7 +98,7 @@ def test_get_journal_attachments(files, journal_ids):
         "journal/update_attachments.json",
         data={"id": journal_ids[0], "fileIds": files["id"].iat[0]},
     )
-    engine._client.invalidate_journal_cache()
+    engine._client.list_journal_entries.cache_clear()
     expected = initial | {journal_ids[0]: ["/file1.txt"]}
     assert engine._get_journal_attachments() == expected
 
@@ -106,7 +106,7 @@ def test_get_journal_attachments(files, journal_ids):
         "journal/update_attachments.json",
         data={"id": journal_ids[1], "fileIds": files["id"].iat[1]},
     )
-    engine._client.invalidate_journal_cache()
+    engine._client.list_journal_entries.cache_clear()
     expected = initial | {
         journal_ids[0]: ["/file1.txt"],
         journal_ids[1]: ["/subdir/file2.txt"],
@@ -118,7 +118,7 @@ def test_get_journal_attachments(files, journal_ids):
         "journal/update_attachments.json",
         data={"id": journal_ids[1], "fileIds": file_ids},
     )
-    engine._client.invalidate_journal_cache()
+    engine._client.list_journal_entries.cache_clear()
     expected = initial | {
         journal_ids[0]: ["/file1.txt"],
         journal_ids[1]: ["/file1.txt", "/subdir/file2.txt"],
@@ -143,7 +143,7 @@ def test_attach_journal_files(files, journal_attached_ids):
         "journal/update_attachments.json",
         data={"id": journal_attached_ids[2], "fileIds": files["id"].iat[0]},
     )
-    engine._client.invalidate_journal_cache()
+    engine._client.list_journal_entries.cache_clear()
 
     # Update attachments with detach=False
     engine.attach_journal_files(detach=False)
@@ -176,7 +176,7 @@ def test_attach_ledger_files_that_dont_match_remote_files(files, journal_attache
         "journal/update_attachments.json",
         data={"id": journal_attached_ids[4], "fileIds": files["id"].iat[0]},
     )
-    engine._client.invalidate_journal_cache()
+    engine._client.list_journal_entries.cache_clear()
 
     # With detach=false attached file should left the same
     engine.attach_journal_files(detach=False)
@@ -202,7 +202,7 @@ def test_attach_journal_files_to_journal_with_multiple_attachments(files, journa
             "fileIds": f"{files['id'].iat[0]}, {files['id'].iat[1]}",
         },
     )
-    engine._client.invalidate_journal_cache()
+    engine._client.list_journal_entries.cache_clear()
 
     # Should update attachments from multiple to only one specified
     engine.attach_journal_files(detach=False)

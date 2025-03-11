@@ -39,7 +39,7 @@ class Account(CashCtrlAccountingEntity):
                 "categoryId": self._client.account_category_to_id(row["group"]),
             }
             self._client.post("account/create.json", data=payload)
-        self._client.invalidate_accounts_cache()
+        self._client.list_accounts.cache_clear()
 
     def modify(self, data: pd.DataFrame):
         data = pd.DataFrame(data)
@@ -75,7 +75,7 @@ class Account(CashCtrlAccountingEntity):
                 payload["taxId"] = None if pd.isna(row["tax_code"]) else \
                     self._client.tax_code_to_id(row["tax_code"])
             self._client.post("account/update.json", data=payload)
-        self._client.invalidate_accounts_cache()
+        self._client.list_accounts.cache_clear()
 
     def delete(self, id: pd.DataFrame, allow_missing: bool = False) -> None:
         incoming = enforce_schema(pd.DataFrame(id), self._schema.query("id"))
@@ -86,7 +86,7 @@ class Account(CashCtrlAccountingEntity):
                 ids.append(str(id))
         if len(ids):
             self._client.post("account/delete.json", {"ids": ", ".join(ids)})
-            self._client.invalidate_accounts_cache()
+            self._client.list_accounts.cache_clear()
 
     def mirror(self, target: pd.DataFrame, delete: bool = False):
         """Synchronize remote CashCtrl accounts with the target DataFrame.
