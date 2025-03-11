@@ -14,9 +14,6 @@ def engine():
 
     yield cashctrl
 
-    # Delete any created journal
-    cashctrl.journal.mirror(pd.DataFrame({}), delete=True)
-
     # Delete any created fiscal period
     fiscal_periods = cashctrl._client.get("fiscalperiod/list.json")['data']
     new_ids = [fp["id"] for fp in fiscal_periods]
@@ -24,6 +21,14 @@ def engine():
     if len(created_ids):
         ids = ",".join([str(id) for id in created_ids])
         cashctrl._client.post("fiscalperiod/delete.json", params={"ids": ids})
+    cashctrl._client.list_fiscal_periods.cache_clear()
+
+
+@pytest.fixture
+def restore_journal(engine):
+    initial_journal = engine.journal.list()
+    yield
+    engine.journal.mirror(initial_journal, delete=True)
 
 
 def test_ensure_fiscal_periods_exist(engine):
@@ -68,7 +73,7 @@ def test_fiscal_period_list_raises_error_on_gap_between_fiscal_periods(engine):
         engine.fiscal_period_list()
 
 
-def test_add_and_modify_journal_entry_creates_missing_fiscal_period(engine):
+def test_add_and_modify_journal_entry_creates_missing_fiscal_period(engine, restore_journal):
     fiscal_periods = engine.fiscal_period_list()
     latest_end = fiscal_periods["end"].max()
 
