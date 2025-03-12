@@ -3,7 +3,7 @@
 import datetime
 import json
 import re
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple
 import zipfile
 from cashctrl_api import CashCtrlClient
 import numpy as np
@@ -260,41 +260,54 @@ class CashCtrlLedger(LedgerEngine):
         return df
 
     def _single_account_balance(
-        self, account: int, date: Union[datetime.date, None] = None,
-        profit_centers: list[str] | str = None
+        self, account: int, profit_centers: list[str] | str = None,
+        start: datetime.date = None, end: datetime.date = None,
     ) -> dict:
         """Calculate the balance of a single account in both account currency
         and reporting currency.
 
         Args:
             account (int): The account number.
-            date (datetime.date, optional): The date for the balance. Defaults to None,
-                in which case the balance on the last day of the current fiscal period is returned.
+            start (datetime.date, optional): Start date for the balance calculation.
+                                             Defaults to None.
+            end (datetime.date, optional): End date for the balance calculation.
+                                           Defaults to None.
 
         Returns:
             dict: A dictionary with the balance in the account currency and the reporting currency.
         """
-        account_id = self._client.account_to_id(account)
-        params = {"id": account_id, "date": date}
-        response = self._client.request("GET", "account/balance", params=params)
-        balance = float(response.text)
+        if start is None:
+            account_id = self._client.account_to_id(account)
+            params = {"id": account_id, "date": end}
+            response = self._client.request("GET", "account/balance", params=params)
+            balance = float(response.text)
 
-        group = self.accounts.list().query("account == @account")["group"].item()
-        root_category = re.sub("/.*", "", re.sub("^/", "", group))
-        if root_category in ACCOUNT_CATEGORIES_NEED_TO_NEGATE:
-            balance = balance * -1
+            group = self.accounts.list().query("account == @account")["group"].item()
+            root_category = re.sub("/.*", "", re.sub("^/", "", group))
+            if root_category in ACCOUNT_CATEGORIES_NEED_TO_NEGATE:
+                balance = balance * -1
 
-        account_currency = self._client.account_to_currency(account)
-        if self.reporting_currency == account_currency:
-            reporting_currency_balance = balance
+            account_currency = self._client.account_to_currency(account)
+            if self.reporting_currency == account_currency:
+                reporting_currency_balance = balance
+            else:
+                response = self._client.get("fiscalperiod/exchangediff.json", params={"date": end})
+                exchange_diff = pd.DataFrame(response["data"])
+                reporting_currency_balance = exchange_diff.loc[
+                    exchange_diff["accountId"] == account_id, "dcBalance"
+                ].item()
+
+            result = {account_currency: balance, "reporting_currency": reporting_currency_balance}
         else:
-            response = self._client.get("fiscalperiod/exchangediff.json", params={"date": date})
-            exchange_diff = pd.DataFrame(response["data"])
-            reporting_currency_balance = exchange_diff.loc[
-                exchange_diff["accountId"] == account_id, "dcBalance"
-            ].item()
+            start = start - datetime.timedelta(days=1)
+            at_start = self._single_account_balance(account=account, end=start)
+            at_end = self._single_account_balance(account=account, end=end)
+            result = {
+                currency: at_end.get(currency, 0) - at_start.get(currency, 0)
+                for currency in (at_start | at_end).keys()
+            }
 
-        return {account_currency: balance, "reporting_currency": reporting_currency_balance}
+        return result
 
     # ----------------------------------------------------------------------
     # Journal
