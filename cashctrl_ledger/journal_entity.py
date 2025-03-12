@@ -45,8 +45,8 @@ class Journal(JournalEntity, CashCtrlAccountingEntity):
         self._delete = delete
         self._standardize = standardize
 
-    def list(self) -> pd.DataFrame:
-        return self._list()
+    def list(self, fiscal_period: str | None = None) -> pd.DataFrame:
+        return self._list(fiscal_period=fiscal_period)
 
     def add(self, data: pd.DataFrame) -> None:
         return self._add(data)

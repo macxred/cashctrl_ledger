@@ -6,6 +6,7 @@ from requests import RequestException
 # flake8: noqa: F401
 from base_test import BaseTestCashCtrl
 from pyledger.tests import BaseTestJournal
+from consistent_df import assert_frame_equal
 from io import StringIO
 
 
@@ -17,6 +18,23 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
         initial_engine.restore(configuration=self.CONFIGURATION)
         initial_engine.transitory_account = 9999
         return initial_engine
+
+    @pytest.fixture()
+    def restore_fiscal_periods(self, engine):
+        initial_ids = engine._client.list_fiscal_periods()["id"]
+        initial_ledger = engine.journal.list()
+
+        yield
+
+        # Delete any created journal
+        engine.journal.mirror(initial_ledger, delete=True)
+
+        # Delete any created fiscal period
+        new_ids = engine._client.list_fiscal_periods()["id"]
+        created_ids = set(new_ids) - set(initial_ids)
+        if len(created_ids):
+            ids = ",".join([str(id) for id in created_ids])
+            engine._client.post("fiscalperiod/delete.json", params={"ids": ids})
 
     def test_journal_accessor_mutators(self, restored_engine):
         # Journal entries need to be sanitized before adding to the CashCtrl
@@ -141,3 +159,46 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
         assert spit_txn.query("account == @transitory_account")["report_amount"].sum() == 0, (
             "Expecting transitory account to be balanced"
         )
+
+    def test_list_journal_with_fiscal_periods(self, restored_engine, restore_fiscal_periods):
+        JOURNAL_CSV = """
+            id,       date, account, contra, currency,      amount, tax_code,  description
+            1, 2023-01-24,    1000,   4000,      USD,     1000.00,         ,  Sell cakes
+            2, 2024-01-24,    1000,   4000,      USD,     2000.00,         ,  Sell donuts
+            3, 2025-01-24,    1000,   4000,      USD,     3000.00,         ,  Sell candies
+            4, 2026-01-24,    1000,   4000,      USD,     4000.00,         ,  Sell chocolate
+        """
+        journal_df = restored_engine.sanitize_journal(
+            pd.read_csv(StringIO(JOURNAL_CSV), skipinitialspace=True)
+        )
+        restored_engine.journal.mirror(target=journal_df, delete=True)
+
+        # Test journal entries retrieval for specific fiscal periods
+        for year in journal_df["date"].dt.year.unique():
+            assert_frame_equal(
+                restored_engine.journal.list(fiscal_period=str(year)),
+                journal_df.query("date.dt.year == @year"),
+                ignore_columns=["id"], check_like=True, ignore_index=True
+            )
+
+        # Test retrieving all journal entries
+        assert_frame_equal(restored_engine.journal.list(), journal_df,
+            ignore_columns=["id"], check_like=True, ignore_index=True
+        )
+
+        # Test journal entries retrieval for current fiscal period
+        fiscal_periods = restored_engine.fiscal_period_list()
+        new_fiscal_period = fiscal_periods.query("isCurrent == False").iloc[0]
+        restored_engine._client.post(
+            "fiscalperiod/switch.json", data={"id": new_fiscal_period["id"].item()}
+        )
+        restored_engine._client.list_fiscal_periods.cache_clear()
+        new_fiscal_period_name = int(new_fiscal_period["name"]) # noqa: F841
+        expected_df = journal_df.query("date.dt.year == @new_fiscal_period_name")
+        assert_frame_equal(restored_engine.journal.list("current"), expected_df,
+            ignore_columns=["id"], check_like=True, ignore_index=True
+        )
+
+        # Test journal entries retrieval for invalid fiscal period raise an error
+        with pytest.raises(ValueError, match="No id found for fiscal period"):
+            restored_engine.journal.list("test_fiscal_period")

@@ -299,15 +299,40 @@ class CashCtrlLedger(LedgerEngine):
     # ----------------------------------------------------------------------
     # Journal
 
-    def _journal_list(self) -> pd.DataFrame:
-        """Retrieves journal entries from the remote CashCtrl account and converts
-        the entries to standard pyledger format.
+    def _journal_list(self, fiscal_period: str | None = None) -> pd.DataFrame:
+        """Retrieves journal entries from the remote CashCtrl account.
+
+        Args:
+            fiscal_period (str | None, optional): Specifies which fiscal period to retrieve:
+                - `None` (default): Returns entries for all fiscal periods.
+                - `"current"`: Returns entries for the selected fiscal period.
+                - Any other string: Returns entries for the given fiscal period (e.g., `"2025"`).
 
         Returns:
-            pd.DataFrame: A DataFrame with LedgerEngine.JOURNAL_SCHEMA column schema.
-        """
-        journal = self._client.list_journal_entries()
+            pd.DataFrame: A DataFrame following the `LedgerEngine.JOURNAL_SCHEMA` column schema.
 
+        Raises:
+            ValueError: If the fiscal period does not exist or no current period is defined.
+        """
+        if fiscal_period is None:
+            ids = self.fiscal_period_list()["id"]
+        elif fiscal_period == "current":
+            ids = [None]
+        else:
+            ids = [self._client.fiscal_period_to_id(fiscal_period)]
+        journal_entries = [self._client.list_journal_entries(fiscal_period_id=id) for id in ids]
+        return self._map_journal_entries(pd.concat(journal_entries, ignore_index=True))
+
+    def _map_journal_entries(self, journal: pd.DataFrame) -> pd.DataFrame:
+        """Converts CashCtrl journal entries format to standard pyledger format.
+
+        Args:
+            journal (pd.DataFrame): Raw journal entries from CashCtrl.
+
+        Returns:
+            pd.DataFrame: Standardized journal DataFrame following the
+                `LedgerEngine.JOURNAL_SCHEMA` column schema.
+        """
         # Individual ledger entries represent a single transaction and
         # map to a single row in the resulting data frame.
         individual = journal[journal["type"] != "COLLECTIVE"]
@@ -434,13 +459,8 @@ class CashCtrlLedger(LedgerEngine):
         Raises:
             Exception: If any gap is detected between consecutive fiscal periods.
         """
-        fiscal_periods = self._client.get("fiscalperiod/list.json")["data"]
-        fiscal_periods = enforce_schema(pd.DataFrame(fiscal_periods), FISCAL_PERIOD_SCHEMA)
-        fp = fiscal_periods.sort_values("start").reset_index(drop=True)
-
-        # Normalize start and end dates dropping timezone information
-        fp["start"] = fp["start"].dt.tz_localize(None).dt.floor('D')
-        fp["end"] = fp["end"].dt.tz_localize(None).dt.floor('D')
+        fiscal_periods = self._client.list_fiscal_periods()
+        fp = enforce_schema(pd.DataFrame(fiscal_periods), FISCAL_PERIOD_SCHEMA)
 
         # Calculate the gap between consecutive periods (next start - current end)
         consecutive_gap = fp["start"].dt.date.shift(-1) - fp["end"].dt.date
@@ -466,6 +486,7 @@ class CashCtrlLedger(LedgerEngine):
             "name": name
         }
         self._client.post("fiscalperiod/create.json", data=data)
+        self._client.list_fiscal_periods.cache_clear()
 
     def ensure_fiscal_periods_exist(self, start: datetime.date, end: datetime.date):
         """
