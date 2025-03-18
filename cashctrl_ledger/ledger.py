@@ -377,6 +377,8 @@ class CashCtrlLedger(LedgerEngine):
             ),
             currency
         )
+        amount = np.where(is_fx_adjustment, 0, individual["amount"])
+        reporting_amount = individual["amount"] * individual["currencyRate"]
 
         result = pd.DataFrame(
             {
@@ -385,8 +387,8 @@ class CashCtrlLedger(LedgerEngine):
                 "account": individual["debit_account"],
                 "contra": individual["credit_account"],
                 "currency": currency,
-                "amount": np.where(is_fx_adjustment, 0, individual["amount"]),
-                "report_amount": individual["amount"] * individual["currencyRate"],
+                "amount": self.round_to_precision(amount, currency),
+                "report_amount": self.round_to_precision(reporting_amount, reporting_currency),
                 "tax_code": individual["taxName"],
                 "description": individual["title"],
                 "document": individual["reference"],
