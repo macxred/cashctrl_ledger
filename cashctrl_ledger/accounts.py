@@ -117,7 +117,7 @@ class Account(CashCtrlAccountingEntity):
             delete=delete,
             ignore_account_root_nodes=True,
         )
-        super().mirror(target, delete)
+        return super().mirror(target, delete)
 
     def _get_nodes_list(self, path: str) -> List[str]:
         """Split a path into a list of node paths."""
