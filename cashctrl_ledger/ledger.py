@@ -282,6 +282,7 @@ class CashCtrlLedger(LedgerEngine):
             response = self._client.request("GET", "account/balance", params=params)
             balance = float(response.text)
 
+
             group = self.accounts.list().query("account == @account")["group"].item()
             root_category = re.sub("/.*", "", re.sub("^/", "", group))
             if root_category in ACCOUNT_CATEGORIES_NEED_TO_NEGATE:
