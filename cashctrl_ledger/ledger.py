@@ -282,11 +282,6 @@ class CashCtrlLedger(LedgerEngine):
             response = self._client.request("GET", "account/balance", params=params)
             balance = float(response.text)
 
-            group = self.accounts.list().query("account == @account")["group"].item()
-            root_category = re.sub("/.*", "", re.sub("^/", "", group))
-            if root_category in ACCOUNT_CATEGORIES_NEED_TO_NEGATE:
-                balance = balance * -1
-
             account_currency = self._client.account_to_currency(account)
             if self.reporting_currency == account_currency:
                 reporting_currency_balance = balance
@@ -296,6 +291,12 @@ class CashCtrlLedger(LedgerEngine):
                 reporting_currency_balance = exchange_diff.loc[
                     exchange_diff["accountId"] == account_id, "dcBalance"
                 ].item()
+
+            group = self.accounts.list().query("account == @account")["group"].item()
+            root_category = re.sub("/.*", "", re.sub("^/", "", group))
+            if root_category in ACCOUNT_CATEGORIES_NEED_TO_NEGATE:
+                balance = balance * -1
+                reporting_currency_balance = reporting_currency_balance * -1
 
             result = {account_currency: balance, "reporting_currency": reporting_currency_balance}
         else:
