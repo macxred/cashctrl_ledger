@@ -217,10 +217,10 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             (["Expens/Subgroup"], ["/Expense/Subgroup"]),
             # Top-level groups
             (["Balance"], ["/Balance"]),
-            (["/Liabilities"], ["/Liabilities"]),
+            (["/Liabilities & Equity"], ["/Liabilities & Equity"]),
             ([], []),  # Empty input
             (["Assets"], ["/Assets"]),  # Single valid group
-            (["Invalid"], ["/Liabilities"]),  # Single invalid group
+            (["Invalid"], ["/Balance"]),  # Single invalid group
             (["/RandomGroup/Subgroup"], ["/Revenue/Subgroup"]),  # No match
         ]
     )
