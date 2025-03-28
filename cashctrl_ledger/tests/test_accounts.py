@@ -4,9 +4,10 @@ from io import StringIO
 import pandas as pd
 import pytest
 from pyledger.tests import BaseTestAccounts
+from pyledger.constants import ACCOUNT_BALANCE_SCHEMA, AGGREGATED_BALANCE_SCHEMA
 from base_test import BaseTestCashCtrl
 from requests.exceptions import RequestException
-from consistent_df import assert_frame_equal
+from consistent_df import assert_frame_equal, enforce_schema
 from cashctrl_ledger.constants import ACCOUNT_ROOT_CATEGORIES
 from cashctrl_ledger import CashCtrlLedger
 
@@ -204,6 +205,52 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             assert expected == actual, (
                 f"Account balance for {account} on {period} of {actual} differs from {expected}."
             )
+
+    def test_account_balances(self, engine):
+        engine.transitory_account = 9999
+        accounts = pd.concat(
+            [self.ACCOUNTS, engine.accounts.list()], ignore_index=True
+        ).drop_duplicates(["account"])
+        engine.restore(
+            accounts=accounts, configuration=self.CONFIGURATION, tax_codes=self.TAX_CODES,
+            journal=self.JOURNAL, assets=self.ASSETS, price_history=self.PRICES,
+        )
+        engine.book_revaluations(self.REVALUATIONS)
+
+        # Extract unique test cases
+        df = self.EXPECTED_BALANCES.copy()
+        argument_cols = ["period", "accounts", "profit_center"]
+        df[argument_cols] = df[argument_cols].ffill()
+        cases = df.drop_duplicates(subset=argument_cols).sort_values("period")
+
+        # Test account balances without specified profit centers
+        cases_without_profit_centers = cases.query("profit_center.isna()")[argument_cols]
+        for period, accounts, _ in cases_without_profit_centers.itertuples(index=False):
+            expected = df.query(
+                "period == @period and accounts == @accounts and profit_center.isna()"
+            ).drop(columns=argument_cols)
+            expected = enforce_schema(expected, ACCOUNT_BALANCE_SCHEMA)
+            expected["group"] = "/" + expected["group"]
+            actual = engine.account_balances(period=period, accounts=accounts)
+            assert_frame_equal(expected, actual, ignore_index=True)
+
+    def test_aggregate_account_balances(self, engine):
+        engine.transitory_account = 9999
+        accounts = pd.concat(
+            [self.ACCOUNTS, engine.accounts.list()], ignore_index=True
+        ).drop_duplicates(["account"])
+        engine.restore(
+            accounts=accounts, configuration=self.CONFIGURATION, tax_codes=self.TAX_CODES,
+            journal=self.JOURNAL, assets=self.ASSETS, price_history=self.PRICES,
+        )
+        engine.book_revaluations(self.REVALUATIONS)
+
+        account_balances = engine.account_balances(period="2024", accounts="1000:9999")
+        actual = engine.aggregate_account_balances(account_balances, n=2)
+        actual = actual.query("description != 'Transitory account'")
+        expected = enforce_schema(self.EXPECTED_AGGREGATED_BALANCES, AGGREGATED_BALANCE_SCHEMA)
+        expected["group"] = engine.sanitize_account_groups(expected["group"])
+        assert_frame_equal(actual, expected, ignore_index=True)
 
     @pytest.mark.parametrize(
         "input_groups, expected_groups",
