@@ -207,6 +207,11 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             )
 
     def test_account_balances(self, engine):
+        """This method overrides base implementation since revaluations
+        in the CashCtrlLedger package cannot be restored and should be manually booked.
+        Additionally, account groups in the expected data should be sanitized
+        to comply with CashCtrl requirements.
+        """
         engine.transitory_account = 9999
         accounts = pd.concat(
             [self.ACCOUNTS, engine.accounts.list()], ignore_index=True
@@ -230,11 +235,16 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
                 "period == @period and accounts == @accounts and profit_center.isna()"
             ).drop(columns=argument_cols)
             expected = enforce_schema(expected, ACCOUNT_BALANCE_SCHEMA)
-            expected["group"] = "/" + expected["group"]
+            expected["group"] = engine.sanitize_account_groups(expected["group"])
             actual = engine.account_balances(period=period, accounts=accounts)
             assert_frame_equal(expected, actual, ignore_index=True)
 
     def test_aggregate_account_balances(self, engine):
+        """This method overrides base implementation since revaluations
+        in the CashCtrlLedger package cannot be restored and should be manually booked.
+        Additionally, account groups in the expected data should be sanitized
+        to comply with CashCtrl requirements.
+        """
         engine.transitory_account = 9999
         accounts = pd.concat(
             [self.ACCOUNTS, engine.accounts.list()], ignore_index=True
