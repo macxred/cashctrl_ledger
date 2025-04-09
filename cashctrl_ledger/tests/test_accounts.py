@@ -289,3 +289,8 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         assert output_series.equals(expected_series), (
             f"Expected {expected_series.tolist()} but got {output_series.tolist()}"
         )
+
+    # TODO: adapt this test
+    @pytest.mark.skip(reason="This test need to be adapted to work in this package")
+    def test_account_history(self):
+        pass
