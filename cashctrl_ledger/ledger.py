@@ -736,7 +736,6 @@ class CashCtrlLedger(LedgerEngine):
         Raises:
             ValueError: If more than one non-reporting currency is present or if no
                         coherent exchange rate is found.
-            ValueError: If there are incoherent FX rates in the collective booking.
         """
         if not isinstance(entry, pd.DataFrame) or entry.empty:
             raise ValueError("`entry` must be a pd.DataFrame with at least one row.")
@@ -789,7 +788,7 @@ class CashCtrlLedger(LedgerEngine):
         if min_fx_rate <= max_fx_rate:
             fx_rate = min(max(preferred_rate, min_fx_rate), max_fx_rate)
         else:
-            raise ValueError("Incoherent FX rates in collective booking.")
+            fx_rate = round(preferred_rate, 8)
 
         return currency, fx_rate
 
