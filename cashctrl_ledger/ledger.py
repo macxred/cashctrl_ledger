@@ -700,9 +700,7 @@ class CashCtrlLedger(LedgerEngine):
                 result[str(id)] = paths
         return result
 
-    def _collective_transaction_currency_and_rate(
-        self, entry: pd.DataFrame, suppress_error: bool = False
-    ) -> Tuple[str, float]:
+    def _collective_transaction_currency_and_rate(self, entry: pd.DataFrame) -> Tuple[str, float]:
         """Extract a single currency and exchange rate from a collective transaction in pyledger
         format.
 
@@ -731,8 +729,6 @@ class CashCtrlLedger(LedgerEngine):
             entry (pd.DataFrame): The DataFrame representing individual entries of a collective
                                   transaction with columns 'currency', 'amount',
                                   and 'report_amount'.
-            suppress_error (bool): If True, suppresses ValueError when incoherent FX rates are
-                                   found, otherwise raises ValueError. Defaults to False.
 
         Returns:
             Tuple[str, float]: The single currency and the corresponding exchange rate.
@@ -740,8 +736,6 @@ class CashCtrlLedger(LedgerEngine):
         Raises:
             ValueError: If more than one non-reporting currency is present or if no
                         coherent exchange rate is found.
-            ValueError: If there are incoherent FX rates in the collective booking
-                        and suppress_error is False.
         """
         if not isinstance(entry, pd.DataFrame) or entry.empty:
             raise ValueError("`entry` must be a pd.DataFrame with at least one row.")
@@ -793,21 +787,8 @@ class CashCtrlLedger(LedgerEngine):
         preferred_rate = fx_rates.loc[is_max_abs].median()
         if min_fx_rate <= max_fx_rate:
             fx_rate = min(max(preferred_rate, min_fx_rate), max_fx_rate)
-        elif suppress_error:
-            fx_rate = round(preferred_rate, 8)
         else:
-            raise ValueError("Incoherent FX rates in collective booking.")
-
-        # Confirm fx_rate converts amounts to the expected reporting currency amount
-        if not suppress_error:
-            rounded_amounts = self.round_to_precision(
-                fx_entries["amount"] * fx_rate, self.reporting_currency,
-            )
-            expected_rounded_amounts = self.round_to_precision(
-                fx_entries["report_amount"], self.reporting_currency
-            )
-            if rounded_amounts != expected_rounded_amounts:
-                raise ValueError("Incoherent FX rates in collective booking.")
+            fx_rate = round(preferred_rate, 8)
 
         return currency, fx_rate
 

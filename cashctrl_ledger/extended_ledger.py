@@ -271,9 +271,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
 
         elif len(entry) > 1:
             # Collective transaction: multiple rows in the journal data frame
-            currency, fx_rate = self._collective_transaction_currency_and_rate(
-                entry, suppress_error=True
-            )
+            currency, fx_rate = self._collective_transaction_currency_and_rate(entry)
             fx_rate = round(fx_rate, 8)
             if currency == reporting_currency:
                 return entry
