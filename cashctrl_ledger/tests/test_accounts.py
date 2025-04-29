@@ -236,7 +236,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             ).drop(columns=argument_cols)
             expected = enforce_schema(expected, ACCOUNT_BALANCE_SCHEMA)
             expected["group"] = engine.sanitize_account_groups(expected["group"])
-            actual = engine.account_balances(period=period, accounts=accounts)
+            actual = engine.individual_account_balances(period=period, accounts=accounts)
             assert_frame_equal(expected, actual, ignore_index=True)
 
     def test_aggregate_account_balances(self, engine):
@@ -255,7 +255,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         )
         engine.book_revaluations(self.REVALUATIONS)
 
-        account_balances = engine.account_balances(period="2024", accounts="1000:9999")
+        account_balances = engine.individual_account_balances(period="2024", accounts="1000:9999")
         actual = engine.aggregate_account_balances(account_balances, n=2)
         actual = actual.query("description != 'Transitory account'")
         expected = enforce_schema(self.EXPECTED_AGGREGATED_BALANCES, AGGREGATED_BALANCE_SCHEMA)
