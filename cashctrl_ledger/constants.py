@@ -10,6 +10,7 @@ JOURNAL_ITEM_COLUMNS = {
     "debit": "float64",
     "credit": "float64",
     "taxName": "string[python]",
+    "associateName": "string[python]",
 }
 
 
@@ -53,3 +54,5 @@ REPORT_ELEMENT = pd.read_csv(StringIO(REPORT_ELEMENT_SCHEMA_CSV), skipinitialspa
 
 ACCOUNT_ROOT_CATEGORIES = ["Assets", "Balance", "Expense", "Liabilities & Equity", "Revenue"]
 ACCOUNT_CATEGORIES_NEED_TO_NEGATE = ["/Liabilities & Equity", "/Revenue"]
+
+REPORTING_CURRENCY_TAG = "Reporting currency"
