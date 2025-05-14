@@ -956,8 +956,8 @@ class CashCtrlLedger(LedgerEngine):
                         # the original currency is the reporting currency. This helps recover
                         # the original row-level currency intent lost during Cashctrl import.
                         "associateId": REPORTING_CURRENCY_TAG
-                        if row["currency"] == reporting_currency
-                        else None,
+                        if (row["currency"] != currency) and (row["currency"] == reporting_currency)
+                        else None
                     }
                 )
 
