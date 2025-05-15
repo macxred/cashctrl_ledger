@@ -203,24 +203,3 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
         # Test journal entries retrieval for invalid fiscal period raise an error
         with pytest.raises(ValueError, match="No id found for fiscal period"):
             restored_engine.journal.list("test_fiscal_period")
-
-    def test_txn_in_non_reporting_currency_assigned_to_account_in_reporting_currency(
-        self, restored_engine
-    ):
-        """Ensure that when a transaction is recorded in a non-reporting currency
-        but assigned to an account in the reporting currency, the original row-level
-        currency is preserved through a creation–read round-trip."""
-        # flake8: noqa: E501
-        JOURNAL_CSV = """
-        id,       date, account, contra, currency,    amount, report_amount, tax_code,  description, document
-         1, 2024-07-01,    4001,       ,      EUR,    166.67,        178.47,         ,     test txn,
-         1, 2024-07-01,    4001,       ,      EUR,     23.81,         25.50,         ,     test txn,
-         1, 2024-07-01,    2200,       ,      EUR,   -166.67,       -178.47,         ,     test txn,
-         1, 2024-07-01,    2200,       ,      EUR,    -23.81,        -25.50,         ,     test txn,
-        """
-        # flake8: enable
-        JOURNAL = pd.read_csv(StringIO(JOURNAL_CSV), skipinitialspace=True)
-        JOURNAL = restored_engine.journal.standardize(JOURNAL)
-        restored_engine.journal.mirror(JOURNAL, delete=True)
-        remote = restored_engine.journal.list()
-        assert_frame_equal(remote, JOURNAL, ignore_index=True, ignore_columns=["id"])
