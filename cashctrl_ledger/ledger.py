@@ -30,7 +30,8 @@ from .constants import (
     ACCOUNT_ROOT_CATEGORIES,
     FISCAL_PERIOD_SCHEMA,
     JOURNAL_ITEM_COLUMNS,
-    CONFIGURATION_KEYS
+    CONFIGURATION_KEYS,
+    REPORT_ELEMENT
 )
 from consistent_df import unnest, enforce_dtypes, enforce_schema
 from pyledger.time import parse_date_span
@@ -305,13 +306,11 @@ class CashCtrlLedger(LedgerEngine):
                 "GET", "report/element/data.json",
                 params={"elementId": element_id, "startDate": start, "endDate": end},
             )
-            return pd.DataFrame(extract_nodes(resp["data"]))
+            return enforce_schema(pd.DataFrame(extract_nodes(resp["data"])), REPORT_ELEMENT)
 
-        start = start or "2020-01-01"
+        start = start or "2020-01-01" # Should find a better default start date
         df = pd.concat([fetch_element(1), fetch_element(2)], ignore_index=True)
-        df = df[df["accountId"].notna()].loc[
-            :, ["endAmount2", "dcEndAmount2", "accountId", "currencyCode", "path"]
-        ]
+        df = df[df["accountId"].notna()]
         df["account"] = df["accountId"].map(self._client.account_from_id)
         df["currency"] = df["currencyCode"].fillna(self.reporting_currency)
         prefixes = tuple(ACCOUNT_CATEGORIES_NEED_TO_NEGATE)
