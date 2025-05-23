@@ -2,13 +2,9 @@
 
 import datetime
 import json
-import math
 import re
 from typing import Dict, List, Tuple
-from xml.etree.ElementInclude import include
 import zipfile
-
-from requests import patch
 from cashctrl_api import CashCtrlClient
 import numpy as np
 import pandas as pd
@@ -308,7 +304,7 @@ class CashCtrlLedger(LedgerEngine):
             )
             return enforce_schema(pd.DataFrame(extract_nodes(resp["data"])), REPORT_ELEMENT)
 
-        start = start or "2020-01-01" # Should find a better default start date
+        start = start or "2020-01-01"  # Should find a better default start date
         df = pd.concat([fetch_element(1), fetch_element(2)], ignore_index=True)
         df = df[df["accountId"].notna()]
         df["account"] = df["accountId"].map(self._client.account_from_id)
@@ -323,18 +319,22 @@ class CashCtrlLedger(LedgerEngine):
     def account_balances(
         self, df: pd.DataFrame, reporting_currency_only: bool = False
     ) -> pd.DataFrame:
+        df[["start", "end"]] = df["period"].apply(lambda p: pd.Series(parse_date_span(p)))
+        df["start"] = df["start"].apply(lambda d: d - datetime.timedelta(days=1) if d else None)
+        df[["start", "end"]] = df[["start", "end"]].fillna("None")
+        unique_dates = df[["start", "end"]].stack().unique()
+        balance_lookup = {date: self._account_balances(end=date) for date in unique_dates}
+
         def _calc_balances(row):
-            start, end = parse_date_span(row["period"])
+            start, end = row["start"], row["end"]
             accounts = self.parse_account_range(row["account"])
-            if start is not None:
-                start = start - datetime.timedelta(days=1)
-            end_balance = self._account_balances(end=end)
-            start_balance = self._account_balances(end=start)
+            end_balance, start_balance = balance_lookup[end], balance_lookup[start]
             balances = (
-                pd.concat([end_balance,
+                pd.concat([
+                    end_balance,
                     start_balance.assign(
-                        amount = lambda df: -df.amount,
-                        report_amount = lambda df: -df.report_amount
+                        amount=lambda df: -df.amount,
+                        report_amount=lambda df: -df.report_amount
                     )
                 ], ignore_index=True)
                 .groupby(["account", "currency"], as_index=False)[["amount", "report_amount"]]
