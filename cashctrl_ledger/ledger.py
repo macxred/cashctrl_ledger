@@ -289,20 +289,11 @@ class CashCtrlLedger(LedgerEngine):
         ]
         return pd.DataFrame(data, columns=["account", "multiplier"])
 
-    def _account_balances(
-        self, start: datetime.date | str = None, end: datetime.date | str = None,
-    ) -> pd.DataFrame:
+    def _account_balances(self, period: str) -> pd.DataFrame:
         """Generate a report of account balances for a chosen period.
 
-        Retrieve end-of-period balances and corresponding reporting balances for all
-        accounts from the reports sheet. Signs are automatically flipped based on
-        account category, and each row includes the account name and currency.
-
         Args:
-            start (datetime.date | str, optional):
-                Start date for the report (defaults to "2020-01-01").
-            end (datetime.date | str, optional):
-                End date for the report (if omitted, the API default is used).
+            period (datetime.date | str): Target period for the report.
 
         Returns:
             pd.DataFrame: With these columns:
@@ -311,7 +302,10 @@ class CashCtrlLedger(LedgerEngine):
                 - account (str): Account name.
                 - currency (str): Currency code.
         """
+        prefixes = tuple(ACCOUNT_CATEGORIES_NEED_TO_NEGATE)
+
         def extract_nodes(items: list[dict], parent_path: str = "") -> list[dict]:
+            """Flatten a hierarchical node structure into a list of leaf nodes with full paths."""
             nodes: list[dict] = []
             for node in items:
                 path = f"{parent_path}/{node.get('text', '')}"
@@ -322,54 +316,50 @@ class CashCtrlLedger(LedgerEngine):
                 elif isinstance(node.get("data"), list):
                     nodes.extend(extract_nodes(node["data"], parent_path=path))
                 else:
-                    raise ValueError(f"Unexpected data at {path}.")
+                    raise ValueError(f"Unexpected data format at {path}.")
             return nodes
 
-        def fetch_element(element_id: int) -> pd.DataFrame:
+        def fetch_element(element_id: int, end) -> pd.DataFrame:
             resp = self._client.json_request(
                 "GET", "report/element/data.json",
-                params={"elementId": element_id, "startDate": start, "endDate": end},
+                params={"elementId": element_id, "startDate": datetime.date.min, "endDate": end},
             )
             return enforce_schema(pd.DataFrame(extract_nodes(resp["data"])), REPORT_ELEMENT)
 
-        start = start or "2020-01-01"  # Should find a better default start date
-        df = pd.concat([fetch_element(1), fetch_element(2)], ignore_index=True)
-        df = df[df["accountId"].notna()]
-        df["account"] = df["accountId"].map(self._client.account_from_id)
-        df["currency"] = df["currencyCode"].fillna(self.reporting_currency)
-        prefixes = tuple(ACCOUNT_CATEGORIES_NEED_TO_NEGATE)
-        to_negate = df["path"].str.startswith(prefixes)
-        df["amount"] = np.where(to_negate, -df["endAmount2"], df["endAmount2"])
-        df["report_amount"] = np.where(to_negate, -df["dcEndAmount2"], df["dcEndAmount2"])
+        def adjust_sign(values: pd.Series, paths: pd.Series) -> pd.Series:
+            return np.where(paths.str.startswith(prefixes), -values, values)
 
-        return df.loc[:, ["amount", "report_amount", "account", "currency"]].reset_index(drop=True)
+        def fetch_balances(end) -> pd.DataFrame:
+            df = pd.concat([fetch_element(1, end), fetch_element(2, end)], ignore_index=True)
+            df = df[df["accountId"].notna()].copy()
+            df["account"] = df["accountId"].map(self._client.account_from_id)
+            df["currency"] = df["currencyCode"].fillna(self.reporting_currency)
+            df["amount"] = adjust_sign(df["endAmount2"], df["path"])
+            df["report_amount"] = adjust_sign(df["dcEndAmount2"], df["path"])
+            return df.loc[:, ["amount", "report_amount", "account", "currency"]]
+
+        start, end = parse_date_span(period)
+        balance = fetch_balances(end=end)
+        if start is not None:
+            start = start - datetime.timedelta(days=1)
+            start_balance = fetch_balances(end=start)
+            balance = balance.merge(start_balance, on="account", how="outer", suffixes=("", "_s"))
+            for col in ["amount", "report_amount"]:
+                balance[col] = balance[col].fillna(0) - balance.get(f"{col}_s", 0).fillna(0)
+                balance.drop(columns=[f"{col}_s"], inplace=True)
+
+        return balance.reset_index(drop=True)
 
     def account_balances(
         self, df: pd.DataFrame, reporting_currency_only: bool = False
     ) -> pd.DataFrame:
-        df[["start", "end"]] = df["period"].apply(lambda p: pd.Series(parse_date_span(p)))
-        df["start"] = df["start"].apply(lambda d: d - datetime.timedelta(days=1) if d else None)
-        df[["start", "end"]] = df[["start", "end"]].fillna("None")
-        unique_dates = df[["start", "end"]].stack().unique()
-        balance_lookup = {date: self._account_balances(end=date) for date in unique_dates}
+        unique_periods = df["period"].unique()
+        balance_lookup = {p: self._account_balances(period=p) for p in unique_periods}
 
         def _calc_balances(row):
-            start, end = row["start"], row["end"]
-            end_balance, start_balance = balance_lookup[end], balance_lookup[start]
-            balances = (
-                pd.concat([
-                    end_balance,
-                    start_balance.assign(
-                        amount=lambda df: -df.amount,
-                        report_amount=lambda df: -df.report_amount
-                    )
-                ], ignore_index=True)
-                .groupby(["account", "currency"], as_index=False)[["amount", "report_amount"]]
-                .sum()
-            )
-
+            balance = balance_lookup[row["period"]]
             multipliers = self.account_multipliers(self.parse_account_range(row["account"]))
-            df = balances.merge(multipliers, on="account", how="inner")
+            df = balance.merge(multipliers, on="account", how="inner")
             df["amount"] *= df["multiplier"]
             df["report_amount"] *= df["multiplier"]
             report_balance = df["report_amount"].sum()
@@ -385,7 +375,6 @@ class CashCtrlLedger(LedgerEngine):
             currencies, amounts = zip(*balance.items()) if balance else ([], [])
             rounded = self.round_to_precision(amounts, currencies)
             balance = dict(zip(currencies, rounded))
-
             return pd.Series({"report_balance": report_balance, "balance": balance})
 
         return df.apply(_calc_balances, axis=1).reset_index(drop=True)
