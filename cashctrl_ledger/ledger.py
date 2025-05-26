@@ -262,6 +262,7 @@ class CashCtrlLedger(LedgerEngine):
         df = super().sanitize_accounts(df, tax_codes=tax_codes)
         return df
 
+    # TODO: Move this method to the LedgerEngine class
     @staticmethod
     def account_multipliers(accounts: dict) -> pd.DataFrame:
         """
