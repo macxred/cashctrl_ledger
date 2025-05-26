@@ -1,5 +1,6 @@
 """Module that implements the pyledger interface by connecting to the CashCtrl API."""
 
+from collections import Counter
 import datetime
 import json
 import re
@@ -261,6 +262,32 @@ class CashCtrlLedger(LedgerEngine):
         df = super().sanitize_accounts(df, tax_codes=tax_codes)
         return df
 
+    @staticmethod
+    def account_multipliers(accounts: dict) -> pd.DataFrame:
+        """
+        Compute net multipliers for accounts based on their frequency in the
+        'add' and 'subtract' lists. Each occurrence in 'add' contributes +1,
+        each in 'subtract' contributes -1.
+
+        Args:
+            accounts (dict): Dictionary with two keys:
+                - 'add': list of accounts to include positively
+                - 'subtract': list of accounts to include negatively
+
+        Returns:
+            pd.DataFrame: A DataFrame with columns:
+                - 'account': account identifier
+                - 'multiplier': net multiplier
+        """
+        add_counts = Counter(accounts.get("add", []))
+        sub_counts = Counter(accounts.get("subtract", []))
+        all_accounts = set(add_counts) | set(sub_counts)
+        data = [
+            (acc, add_counts.get(acc, 0) - sub_counts.get(acc, 0))
+            for acc in all_accounts
+        ]
+        return pd.DataFrame(data, columns=["account", "multiplier"])
+
     def _account_balances(
         self, start: datetime.date | str = None, end: datetime.date | str = None,
     ) -> pd.DataFrame:
@@ -327,7 +354,6 @@ class CashCtrlLedger(LedgerEngine):
 
         def _calc_balances(row):
             start, end = row["start"], row["end"]
-            accounts = self.parse_account_range(row["account"])
             end_balance, start_balance = balance_lookup[end], balance_lookup[start]
             balances = (
                 pd.concat([
@@ -341,20 +367,17 @@ class CashCtrlLedger(LedgerEngine):
                 .sum()
             )
 
-            account_sign = {acc: 1 for acc in accounts["add"]}
-            account_sign.update({acc: -1 for acc in accounts["subtract"]})
-            account_currency = {acc: self.account_currency(acc) for acc in set(account_sign)}
-            df = balances.loc[balances["account"].isin(account_sign)].copy()
-            df = df.assign(
-                amount=df["amount"] * df["account"].map(account_sign),
-                report_amount=df["report_amount"] * df["account"].map(account_sign)
-            )
+            multipliers = self.account_multipliers(self.parse_account_range(row["account"]))
+            df = balances.merge(multipliers, on="account", how="inner")
+            df["amount"] *= df["multiplier"]
+            df["report_amount"] *= df["multiplier"]
             report_balance = df["report_amount"].sum()
             report_balance = self.round_to_precision([report_balance], ["reporting_currency"])[0]
 
             if reporting_currency_only:
                 return pd.Series({"report_balance": report_balance})
 
+            account_currency = {acc: self.account_currency(acc) for acc in multipliers["account"]}
             balance = {cur: 0.0 for cur in set(account_currency.values())}
             for _, row in df.iterrows():
                 balance[row["currency"]] += row["amount"]
