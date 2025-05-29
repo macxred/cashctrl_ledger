@@ -9,6 +9,7 @@ from cashctrl_api import CashCtrlClient
 import numpy as np
 import pandas as pd
 from pathlib import Path
+from cashctrl_ledger.profir_center import ProfitCenter
 from .tax_code import TaxCode
 from .accounts import Account
 from .journal_entity import Journal
@@ -81,11 +82,7 @@ class CashCtrlLedger(LedgerEngine):
             standardize=self._journal_standardize,
             prepare_for_mirroring=self.sanitize_journal
         )
-        # TODO: replace CSV implementation with entity that integrates to CashCtrl
-        self._profit_centers = CSVAccountingEntity(
-            schema=PROFIT_CENTER_SCHEMA,
-            path=profit_centers_path,
-        )
+        self._profit_centers = ProfitCenter(client=client, schema=PROFIT_CENTER_SCHEMA)
 
     # ----------------------------------------------------------------------
     # File operations
