@@ -413,7 +413,7 @@ class CashCtrlLedger(LedgerEngine):
                 ].item()
 
             group = self.accounts.list().query("account == @account")["group"].item()
-            root_category = re.sub("/.*", "", re.sub("^/", "", group))
+            root_category = "/" + re.sub("/.*", "", re.sub("^/", "", group))
             if root_category in ACCOUNT_CATEGORIES_NEED_TO_NEGATE:
                 balance = balance * -1
                 reporting_currency_balance = reporting_currency_balance * -1
@@ -1047,7 +1047,7 @@ class CashCtrlLedger(LedgerEngine):
                 fx_gain_loss_account = revaluation['credit']
             elif not pd.isna(revaluation['credit']) and not pd.isna(revaluation['debit']):
                 # Book positive amounts to 'credit' and negative amounts to 'debit'.
-                balance = self.account_balance(account, period=revaluation['date'])
+                balance = self._account_balance(account, period=revaluation['date'])
                 amount = balance[account_currency] * price - balance["reporting_currency"]
                 if amount > 0:
                     fx_gain_loss_account = revaluation['credit']

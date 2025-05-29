@@ -201,7 +201,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             period = row['period']
             account = row['account']
             expected = row['balance']
-            actual = engine.account_balance(period=period, account=row['account'])
+            actual = engine._account_balance(period=period, account=row['account'])
             assert expected == actual, (
                 f"Account balance for {account} on {period} of {actual} differs from {expected}."
             )
