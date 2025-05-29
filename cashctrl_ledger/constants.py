@@ -11,6 +11,7 @@ JOURNAL_ITEM_COLUMNS = {
     "credit": "float64",
     "taxName": "string[python]",
     "associateName": "string[python]",
+    "allocations": "object",
 }
 
 

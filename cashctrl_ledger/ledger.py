@@ -458,6 +458,35 @@ class CashCtrlLedger(LedgerEngine):
         amount = np.where(is_fx_adjustment, 0, individual["amount"])
         reporting_amount = individual["amount"] * individual["currencyRate"]
 
+        def resolve_profit_center(raw_id: int | str | None) -> str | None:
+            """Resolve a profit center name from an integer or a list.
+            If the input is malformed, ambiguous (e.g. multiple IDs), or resolution fails,
+            a warning is logged and None is returned.
+            """
+            result = None
+            if raw_id is None:
+                return result
+            try:
+                if isinstance(raw_id, int):
+                    result = self._client.profit_center_from_id(raw_id)
+                else:
+                    parsed = json.loads(raw_id)
+                    if isinstance(parsed, list) and len(parsed) == 1:
+                        result = self._client.profit_center_from_id(int(parsed[0]))
+                    else:
+                        self._logger.warning(
+                            f"Ledger entry can have only one assigned profit center, got: {raw_id}. "
+                            "Setting profit center to None for this ledger entry."
+                        )
+            except Exception as e:
+                self._logger.warning(
+                    f"Failed to resolve profit center {raw_id}: {e}. "
+                    "Setting profit center to None for this ledger entry."
+                )
+
+            return result
+
+        profit_centers = individual["costCenterIds"].apply(resolve_profit_center)
         result = pd.DataFrame(
             {
                 "id": individual["id"],
@@ -468,6 +497,7 @@ class CashCtrlLedger(LedgerEngine):
                 "amount": self.round_to_precision(amount, currency),
                 "report_amount": self.round_to_precision(reporting_amount, reporting_currency),
                 "tax_code": individual["taxName"],
+                "profit_center": profit_centers,
                 "description": individual["title"],
                 "document": individual["reference"],
             }
@@ -525,6 +555,9 @@ class CashCtrlLedger(LedgerEngine):
                 amount * collective["fx_rate"],
                 np.where(is_fx_adjustment, 0, amount),
             )
+            profit_centers = collective["allocations"].apply(
+                lambda x: resolve_profit_center(x[0].get("toCostCenterId")) if isinstance(x, list) and x else None
+            )
             mapped_collective = pd.DataFrame({
                 "id": collective["id"],
                 "date": collective["date"],
@@ -533,8 +566,9 @@ class CashCtrlLedger(LedgerEngine):
                 "amount": self.round_to_precision(foreign_amount, currency),
                 "report_amount": self.round_to_precision(reporting_amount, reporting_currency),
                 "tax_code": collective["taxName"],
+                "profit_center": profit_centers,
                 "description": collective["description"],
-                "document": collective["document"]
+                "document": collective["document"],
             })
             result = pd.concat([
                 self.journal.standardize(result),
@@ -904,6 +938,10 @@ class CashCtrlLedger(LedgerEngine):
                     fx_rate = 1
                 else:
                     fx_rate = reporting_amount / amount
+            if pd.isna(entry["profit_center"].iat[0]):
+                profit_center = None
+            else:
+                profit_center = self._client.profit_center_to_id(entry["profit_center"].iat[0])
             payload = {
                 "dateAdded": entry["date"].iat[0],
                 "amount": amount,
@@ -920,6 +958,9 @@ class CashCtrlLedger(LedgerEngine):
                 "reference": None
                 if pd.isna(entry["document"].iat[0])
                 else entry["document"].iat[0],
+                "allocations": None
+                if profit_center is None
+                else [{"share": 1.0, "toCostCenterId": profit_center}],
             }
 
         # Collective journal entry
@@ -940,6 +981,10 @@ class CashCtrlLedger(LedgerEngine):
                         "allowed in CashCtrl collective transactions."
                     )
                 amount = self.round_to_precision(amount, currency)
+                if pd.isna(row["profit_center"]):
+                    profit_center = None
+                else:
+                    profit_center = self._client.profit_center_to_id(row["profit_center"])
                 items.append(
                     {
                         "accountId": self._client.account_to_id(row["account"]),
@@ -954,7 +999,10 @@ class CashCtrlLedger(LedgerEngine):
                         # the original row-level currency intent lost during Cashctrl import.
                         "associateId": REPORTING_CURRENCY_TAG
                         if (row["currency"] != currency) and (row["currency"] == reporting_currency)
-                        else None
+                        else None,
+                        "allocations": None
+                        if profit_center is None
+                        else [{"share": 1.0, "toCostCenterId": profit_center}],
                     }
                 )
 
