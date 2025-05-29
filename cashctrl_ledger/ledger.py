@@ -475,8 +475,8 @@ class CashCtrlLedger(LedgerEngine):
                         result = self._client.profit_center_from_id(int(parsed[0]))
                     else:
                         self._logger.warning(
-                            f"Ledger entry can have only one assigned profit center, got: {raw_id}. "
-                            "Setting profit center to None for this ledger entry."
+                            "Ledger entry can have only one assigned profit center, "
+                            f"got: {raw_id}. Setting profit center to None for this ledger entry."
                         )
             except Exception as e:
                 self._logger.warning(
@@ -556,7 +556,8 @@ class CashCtrlLedger(LedgerEngine):
                 np.where(is_fx_adjustment, 0, amount),
             )
             profit_centers = collective["allocations"].apply(
-                lambda x: resolve_profit_center(x[0].get("toCostCenterId")) if isinstance(x, list) and x else None
+                lambda allocation: resolve_profit_center(allocation[0].get("toCostCenterId"))
+                if isinstance(allocation, list) and allocation else None
             )
             mapped_collective = pd.DataFrame({
                 "id": collective["id"],
