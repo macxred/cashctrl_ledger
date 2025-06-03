@@ -3,7 +3,6 @@
 from collections import Counter
 import datetime
 import json
-import re
 from typing import Dict, List, Tuple
 import zipfile
 from cashctrl_api import CashCtrlClient
@@ -264,7 +263,7 @@ class CashCtrlLedger(LedgerEngine):
 
     # TODO: Move this method to the LedgerEngine class
     @staticmethod
-    def account_multipliers(accounts: dict) -> pd.DataFrame:
+    def account_multipliers(accounts: dict) -> dict[str, int]:
         """
         Compute net multipliers for accounts based on their frequency in the
         'add' and 'subtract' lists. Each occurrence in 'add' contributes +1,
@@ -276,18 +275,14 @@ class CashCtrlLedger(LedgerEngine):
                 - 'subtract': list of accounts to include negatively
 
         Returns:
-            pd.DataFrame: A DataFrame with columns:
-                - 'account': account identifier
-                - 'multiplier': net multiplier
+            dict[str, int]: Mapping of account identifier to net multiplier.
         """
         add_counts = Counter(accounts.get("add", []))
         sub_counts = Counter(accounts.get("subtract", []))
-        all_accounts = set(add_counts) | set(sub_counts)
-        data = [
-            (acc, add_counts.get(acc, 0) - sub_counts.get(acc, 0))
-            for acc in all_accounts
-        ]
-        return pd.DataFrame(data, columns=["account", "multiplier"])
+        return {
+            acc: add_counts.get(acc, 0) - sub_counts.get(acc, 0)
+            for acc in set(add_counts) | set(sub_counts)
+        }
 
     def _account_balances(self, period: str) -> pd.DataFrame:
         """Generate a report of account balances for a chosen period.
@@ -343,11 +338,14 @@ class CashCtrlLedger(LedgerEngine):
         if start is not None:
             start = start - datetime.timedelta(days=1)
             start_balance = fetch_balances(end=start)
-            balance = balance.merge(start_balance, on="account", how="outer", suffixes=("", "_s"))
-            for col in ["amount", "report_amount"]:
-                balance[col] = balance[col].fillna(0) - balance.get(f"{col}_s", 0).fillna(0)
-                balance.drop(columns=[f"{col}_s"], inplace=True)
-
+            balance = balance.merge(
+                start_balance, on="account", how="outer", suffixes=("", "_start")
+            )
+            balance["amount"] = balance["amount"].fillna(0) - \
+                balance["amount_start"].fillna(0)
+            balance["report_amount"] = balance["report_amount"].fillna(0) - \
+                balance["report_amount_start"].fillna(0)
+            balance.drop(columns=["amount_start", "report_amount_start"], inplace=True)
         return balance.reset_index(drop=True)
 
     def account_balances(
@@ -356,9 +354,13 @@ class CashCtrlLedger(LedgerEngine):
         unique_periods = df["period"].unique()
         balance_lookup = {p: self._account_balances(period=p) for p in unique_periods}
 
-        def _calc_balances(row):
-            balance = balance_lookup[row["period"]]
-            multipliers = self.account_multipliers(self.parse_account_range(row["account"]))
+        def _calc_balances(period, account):
+            balance = balance_lookup[period]
+            _, end = parse_date_span(period)
+            multipliers = self.account_multipliers(self.parse_account_range(account))
+            multipliers = pd.DataFrame(
+                list(multipliers.items()), columns=["account", "multiplier"]
+            )
             df = balance.merge(multipliers, on="account", how="inner")
             df["amount"] *= df["multiplier"]
             df["report_amount"] *= df["multiplier"]
@@ -366,69 +368,22 @@ class CashCtrlLedger(LedgerEngine):
             report_balance = self.round_to_precision([report_balance], ["reporting_currency"])[0]
 
             if reporting_currency_only:
-                return pd.Series({"report_balance": report_balance})
+                return {"report_balance": report_balance}
 
             account_currency = {acc: self.account_currency(acc) for acc in multipliers["account"]}
             balance = {cur: 0.0 for cur in set(account_currency.values())}
             for _, row in df.iterrows():
                 balance[row["currency"]] += row["amount"]
             currencies, amounts = zip(*balance.items()) if balance else ([], [])
-            rounded = self.round_to_precision(amounts, currencies)
+            rounded = self.round_to_precision(amounts, currencies, end)
             balance = dict(zip(currencies, rounded))
-            return pd.Series({"report_balance": report_balance, "balance": balance})
+            return {"report_balance": report_balance, "balance": balance}
 
-        return df.apply(_calc_balances, axis=1).reset_index(drop=True)
-
-    def _single_account_balance(
-        self, account: int, profit_centers: list[str] | str = None,
-        start: datetime.date = None, end: datetime.date = None,
-    ) -> dict:
-        """Calculate the balance of a single account in both account currency
-        and reporting currency.
-
-        Args:
-            account (int): The account number.
-            start (datetime.date, optional): Start date for the balance calculation.
-                                             Defaults to None.
-            end (datetime.date, optional): End date for the balance calculation.
-                                           Defaults to None.
-
-        Returns:
-            dict: A dictionary with the balance in the account currency and the reporting currency.
-        """
-        if start is None:
-            account_id = self._client.account_to_id(account)
-            params = {"id": account_id, "date": end}
-            response = self._client.request("GET", "account/balance", params=params)
-            balance = float(response.text)
-
-            account_currency = self._client.account_to_currency(account)
-            if self.reporting_currency == account_currency:
-                reporting_currency_balance = balance
-            else:
-                response = self._client.get("fiscalperiod/exchangediff.json", params={"date": end})
-                exchange_diff = pd.DataFrame(response["data"])
-                reporting_currency_balance = exchange_diff.loc[
-                    exchange_diff["accountId"] == account_id, "dcBalance"
-                ].item()
-
-            group = self.accounts.list().query("account == @account")["group"].item()
-            root_category = "/" + re.sub("/.*", "", re.sub("^/", "", group))
-            if root_category in ACCOUNT_CATEGORIES_NEED_TO_NEGATE:
-                balance = balance * -1
-                reporting_currency_balance = reporting_currency_balance * -1
-
-            result = {account_currency: balance, "reporting_currency": reporting_currency_balance}
-        else:
-            start = start - datetime.timedelta(days=1)
-            at_start = self._single_account_balance(account=account, end=start)
-            at_end = self._single_account_balance(account=account, end=end)
-            result = {
-                currency: at_end.get(currency, 0) - at_start.get(currency, 0)
-                for currency in (at_start | at_end).keys()
-            }
-
-        return result
+        results = [
+            _calc_balances(period=row["period"], account=row["account"])
+            for _, row in df.iterrows()
+        ]
+        return pd.DataFrame(results)
 
     # ----------------------------------------------------------------------
     # Journal
@@ -1047,8 +1002,9 @@ class CashCtrlLedger(LedgerEngine):
                 fx_gain_loss_account = revaluation['credit']
             elif not pd.isna(revaluation['credit']) and not pd.isna(revaluation['debit']):
                 # Book positive amounts to 'credit' and negative amounts to 'debit'.
-                balance = self._account_balance(account, period=revaluation['date'])
-                amount = balance[account_currency] * price - balance["reporting_currency"]
+                row = pd.DataFrame([{'account': account, 'period': revaluation['date']}])
+                result = self.account_balances(row).iloc[0]
+                amount = result['balance'][account_currency] * price - result['report_balance']
                 if amount > 0:
                     fx_gain_loss_account = revaluation['credit']
                 else:
