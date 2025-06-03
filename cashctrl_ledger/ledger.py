@@ -361,23 +361,20 @@ class CashCtrlLedger(LedgerEngine):
             multipliers = pd.DataFrame(
                 list(multipliers.items()), columns=["account", "multiplier"]
             )
-            df = balance.merge(multipliers, on="account", how="inner")
-            df["amount"] *= df["multiplier"]
-            df["report_amount"] *= df["multiplier"]
-            report_balance = df["report_amount"].sum()
+            balance = balance.merge(multipliers, on="account", how="inner")
+            balance["amount"] *= balance["multiplier"]
+            balance["report_amount"] *= balance["multiplier"]
+            report_balance = balance["report_amount"].sum()
             report_balance = self.round_to_precision([report_balance], ["reporting_currency"])[0]
 
             if reporting_currency_only:
                 return {"report_balance": report_balance}
 
-            account_currency = {acc: self.account_currency(acc) for acc in multipliers["account"]}
-            balance = {cur: 0.0 for cur in set(account_currency.values())}
-            for _, row in df.iterrows():
-                balance[row["currency"]] += row["amount"]
-            currencies, amounts = zip(*balance.items()) if balance else ([], [])
-            rounded = self.round_to_precision(amounts, currencies, end)
-            balance = dict(zip(currencies, rounded))
-            return {"report_balance": report_balance, "balance": balance}
+            currencies = {self.account_currency(acc) for acc in multipliers["account"]}
+            grouped = balance.groupby("currency", sort=False)["amount"].sum().to_dict()
+            amounts = [grouped.get(cur, 0.0) for cur in currencies]
+            rounded = self.round_to_precision(amounts, list(currencies), end)
+            return {"report_balance": report_balance, "balance": dict(zip(currencies, rounded))}
 
         results = [
             _calc_balances(period=row["period"], account=row["account"])
