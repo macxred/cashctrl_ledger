@@ -206,6 +206,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             actual = {
                 "reporting_currency": actual["report_balance"].iloc[0], **actual["balance"].iloc[0]
             }
+            expected = {k: v for k, v in expected.items() if v != 0.0 or k == "reporting_currency"}
             assert expected == actual, (
                 f"Account balance for {account} on {period} of {actual} differs from {expected}."
             )

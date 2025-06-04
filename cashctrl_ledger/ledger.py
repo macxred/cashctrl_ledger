@@ -370,11 +370,19 @@ class CashCtrlLedger(LedgerEngine):
             if reporting_currency_only:
                 return {"report_balance": report_balance}
 
-            currencies = {self.account_currency(acc) for acc in multipliers["account"]}
-            grouped = balance.groupby("currency", sort=False)["amount"].sum().to_dict()
-            amounts = [grouped.get(cur, 0.0) for cur in currencies]
-            rounded = self.round_to_precision(amounts, list(currencies), end)
-            return {"report_balance": report_balance, "balance": dict(zip(currencies, rounded))}
+            balance = (
+                balance.groupby("currency", sort=False, observed=True)["amount"]
+                .sum()
+                .reset_index()
+            )
+            balance["amount"] = self.round_to_precision(
+                balance["amount"], balance["currency"], end
+            )
+            balance = balance.query("amount != 0.0")
+            return {
+                "report_balance": report_balance,
+                "balance": dict(zip(balance["currency"], balance["amount"]))
+            }
 
         results = [
             _calc_balances(period=row["period"], account=row["account"])
@@ -1001,7 +1009,8 @@ class CashCtrlLedger(LedgerEngine):
                 # Book positive amounts to 'credit' and negative amounts to 'debit'.
                 row = pd.DataFrame([{'account': account, 'period': revaluation['date']}])
                 result = self.account_balances(row).iloc[0]
-                amount = result['balance'][account_currency] * price - result['report_balance']
+                balance = result['balance'].get(account_currency, 0.0)
+                amount = balance * price - result['report_balance']
                 if amount > 0:
                     fx_gain_loss_account = revaluation['credit']
                 else:
