@@ -9,7 +9,7 @@ from cashctrl_api import CashCtrlClient
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from cashctrl_ledger.profir_center import ProfitCenter
+from cashctrl_ledger.profit_center import ProfitCenter
 from .tax_code import TaxCode
 from .accounts import Account
 from .journal_entity import Journal
