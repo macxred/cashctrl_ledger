@@ -27,7 +27,8 @@ from .constants import (
     FISCAL_PERIOD_SCHEMA,
     JOURNAL_ITEM_COLUMNS,
     CONFIGURATION_KEYS,
-    REPORT_ELEMENT
+    REPORT_ELEMENT,
+    REPORTING_CURRENCY_TAG
 )
 from consistent_df import unnest, enforce_dtypes, enforce_schema
 from pyledger.time import parse_date_span
@@ -509,7 +510,14 @@ class CashCtrlLedger(LedgerEngine):
             )
 
             amount = collective["debit"].fillna(0) - collective["credit"].fillna(0)
-            currency = collective["account_currency"]
+            # Use reporting currency if the row was tagged with REPORTING_CURRENCY_TAG,
+            # else use transaction-level currency, and fallback to account currency.
+            # This recovers the original row-level currency intent lost during Cashctrl export.
+            currency = pd.Series(np.where(
+                collective["associateName"].fillna("") == REPORTING_CURRENCY_TAG,
+                reporting_currency,
+                collective["currency"]
+            ), index=collective.index).fillna(collective["account_currency"])
             reporting_amount = np.where(
                 currency == reporting_currency,
                 pd.NA,
@@ -944,6 +952,12 @@ class CashCtrlLedger(LedgerEngine):
                         if pd.isna(row["tax_code"])
                         else self._client.tax_code_to_id(row["tax_code"]),
                         "description": row["description"],
+                        # Use the associateId field (not its original purpose) to tag the row if
+                        # the original currency is the reporting currency. This helps recover
+                        # the original row-level currency intent lost during Cashctrl import.
+                        "associateId": REPORTING_CURRENCY_TAG
+                        if (row["currency"] != currency) and (row["currency"] == reporting_currency)
+                        else None
                     }
                 )
 

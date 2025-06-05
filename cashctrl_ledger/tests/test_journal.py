@@ -35,6 +35,7 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
         if len(created_ids):
             ids = ",".join([str(id) for id in created_ids])
             engine._client.post("fiscalperiod/delete.json", params={"ids": ids})
+            engine._client.list_fiscal_periods.cache_clear()
 
     def test_journal_accessor_mutators(self, restored_engine):
         # Journal entries need to be sanitized before adding to the CashCtrl
