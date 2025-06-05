@@ -931,10 +931,10 @@ class CashCtrlLedger(LedgerEngine):
             items = []
             currency, fx_rate = self._collective_transaction_currency_and_rate(entry)
             for _, row in entry.iterrows():
-                if currency == reporting_currency and row["currency"] != currency:
-                    amount = row["report_amount"]
-                elif row["currency"] == currency:
+                if row["currency"] == currency:
                     amount = row["amount"]
+                elif currency == reporting_currency:
+                    amount = row["report_amount"]
                 elif row["currency"] == reporting_currency:
                     amount = row["amount"] / fx_rate
                 else:
