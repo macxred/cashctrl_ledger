@@ -378,7 +378,6 @@ class CashCtrlLedger(LedgerEngine):
             balance["amount"] = self.round_to_precision(
                 balance["amount"], balance["currency"], end
             )
-            balance = balance.query("amount != 0.0")
             return {
                 "report_balance": report_balance,
                 "balance": dict(zip(balance["currency"], balance["amount"]))
