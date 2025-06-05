@@ -201,7 +201,13 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             period = row['period']
             account = row['account']
             expected = row['balance']
-            actual = engine.account_balance(period=period, account=row['account'])
+            df = pd.DataFrame([{'account': account, 'period': period}])
+            actual = engine.account_balances(df)
+            actual = {
+                "reporting_currency": actual["report_balance"].iloc[0], **actual["balance"].iloc[0]
+            }
+            actual = {k: v for k, v in actual.items() if v != 0.0 or k == "reporting_currency"}
+            expected = {k: v for k, v in expected.items() if v != 0.0 or k == "reporting_currency"}
             assert expected == actual, (
                 f"Account balance for {account} on {period} of {actual} differs from {expected}."
             )

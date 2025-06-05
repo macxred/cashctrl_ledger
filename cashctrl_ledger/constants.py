@@ -40,5 +40,16 @@ FISCAL_PERIOD_SCHEMA_CSV = """
 FISCAL_PERIOD_SCHEMA = pd.read_csv(StringIO(FISCAL_PERIOD_SCHEMA_CSV), skipinitialspace=True)
 
 
+REPORT_ELEMENT_SCHEMA_CSV = """
+       column,              dtype,   mandatory,     id
+   endAmount2,            float64,       False,     False
+ dcEndAmount2,            float64,       False,     False
+    accountId,              Int64,       False,     True
+ currencyCode,     string[python],       False,     False
+         path,     string[python],       False,     False
+"""
+REPORT_ELEMENT = pd.read_csv(StringIO(REPORT_ELEMENT_SCHEMA_CSV), skipinitialspace=True)
+
+
 ACCOUNT_ROOT_CATEGORIES = ["Assets", "Balance", "Expense", "Liabilities & Equity", "Revenue"]
-ACCOUNT_CATEGORIES_NEED_TO_NEGATE = ["Liabilities & Equity", "Revenue"]
+ACCOUNT_CATEGORIES_NEED_TO_NEGATE = ["/Liabilities & Equity", "/Revenue"]
