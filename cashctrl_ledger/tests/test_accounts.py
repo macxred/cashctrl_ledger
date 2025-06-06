@@ -193,6 +193,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         engine.restore(
             accounts=accounts, configuration=self.CONFIGURATION, tax_codes=self.TAX_CODES,
             journal=self.JOURNAL, assets=self.ASSETS, price_history=self.PRICES,
+            profit_centers=self.PROFIT_CENTERS
         )
         engine.book_revaluations(self.REVALUATIONS)
 
@@ -225,6 +226,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         engine.restore(
             accounts=accounts, configuration=self.CONFIGURATION, tax_codes=self.TAX_CODES,
             journal=self.JOURNAL, assets=self.ASSETS, price_history=self.PRICES,
+            profit_centers=self.PROFIT_CENTERS
         )
         engine.book_revaluations(self.REVALUATIONS)
 
@@ -258,6 +260,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         engine.restore(
             accounts=accounts, configuration=self.CONFIGURATION, tax_codes=self.TAX_CODES,
             journal=self.JOURNAL, assets=self.ASSETS, price_history=self.PRICES,
+            profit_centers=self.PROFIT_CENTERS
         )
         engine.book_revaluations(self.REVALUATIONS)
 

@@ -1,6 +1,5 @@
 """Definition of CashCtrl base class for testing."""
 
-import pandas as pd
 import pytest
 from cashctrl_ledger import ExtendedCashCtrlLedger
 from pyledger.tests import BaseTest
@@ -13,12 +12,6 @@ class BaseTestCashCtrl(BaseTest):
     TAX_CODES = BaseTest.TAX_CODES.copy()
     default_account = TAX_CODES.query("id == 'IN_STD'")["account"].values[0]
     TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = default_account
-
-    # TODO: Remove when profit centers entity integrates with CashCtrl
-    JOURNAL = BaseTest.JOURNAL.copy()
-    JOURNAL.loc[:, "profit_center"] = pd.NA
-    columns = [col for col in JOURNAL.columns if col != "profit_center"] + ["profit_center"]
-    JOURNAL = JOURNAL[columns]
 
     @pytest.fixture(scope="module")
     def initial_engine(self, tmp_path_factory):
