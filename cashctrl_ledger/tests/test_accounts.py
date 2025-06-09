@@ -197,23 +197,20 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         )
         engine.book_revaluations(self.REVALUATIONS)
 
-        EXPECTED_BALANCE_NO_PROFIT_CENTERS = self.EXPECTED_BALANCE.query("profit_center.isna()")
-        for _, row in EXPECTED_BALANCE_NO_PROFIT_CENTERS.iterrows():
-            period = row['period']
-            account = row['account']
-            expected = row['balance']
-            df = pd.DataFrame([{'account': account, 'period': period}])
-            actual = engine.account_balances(df)
-            actual = {
-                "reporting_currency": actual["report_balance"].iloc[0], **actual["balance"].iloc[0]
-            }
-            actual = {k: v for k, v in actual.items() if v != 0.0 or k == "reporting_currency"}
-            expected = {k: v for k, v in expected.items() if v != 0.0 or k == "reporting_currency"}
-            assert expected == actual, (
-                f"Account balance for {account} on {period} of {actual} differs from {expected}."
-            )
+        columns_to_drop = ["period", "account", "profit_center"]
 
-    def test_account_balances(self, engine):
+        def drop_zero_balances(balance_dict):
+            return {k: v for k, v in balance_dict.items() if v != 0.0}
+
+        # Test account balance without specified profit centers
+        expected_without_pc = self.EXPECTED_BALANCES.query("profit_center.isna()")
+        balances = engine.account_balances(expected_without_pc)
+        expected_without_pc = expected_without_pc.drop(columns=columns_to_drop)
+        expected_without_pc["balance"] = expected_without_pc["balance"].apply(drop_zero_balances)
+        balances["balance"] = balances["balance"].apply(drop_zero_balances)
+        assert_frame_equal(balances, expected_without_pc, ignore_index=True, check_like=True)
+
+    def test_individual_account_balances(self, engine):
         """This method overrides base implementation since revaluations
         in the CashCtrlLedger package cannot be restored and should be manually booked.
         Additionally, account groups in the expected data should be sanitized
@@ -231,7 +228,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         engine.book_revaluations(self.REVALUATIONS)
 
         # Extract unique test cases
-        df = self.EXPECTED_BALANCES.copy()
+        df = self.EXPECTED_INDIVIDUAL_BALANCES.copy()
         argument_cols = ["period", "accounts", "profit_center"]
         df[argument_cols] = df[argument_cols].ffill()
         cases = df.drop_duplicates(subset=argument_cols).sort_values("period")
