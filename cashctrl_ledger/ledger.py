@@ -1,6 +1,5 @@
 """Module that implements the pyledger interface by connecting to the CashCtrl API."""
 
-from collections import Counter
 import datetime
 import json
 from typing import Dict, List, Tuple
@@ -258,29 +257,6 @@ class CashCtrlLedger(LedgerEngine):
         df["group"] = self.sanitize_account_groups(df["group"])
         df = super().sanitize_accounts(df, tax_codes=tax_codes)
         return df
-
-    # TODO: Move this method to the LedgerEngine class
-    @staticmethod
-    def account_multipliers(accounts: dict) -> dict[str, int]:
-        """
-        Compute net multipliers for accounts based on their frequency in the
-        'add' and 'subtract' lists. Each occurrence in 'add' contributes +1,
-        each in 'subtract' contributes -1.
-
-        Args:
-            accounts (dict): Dictionary with two keys:
-                - 'add': list of accounts to include positively
-                - 'subtract': list of accounts to include negatively
-
-        Returns:
-            dict[str, int]: Mapping of account identifier to net multiplier.
-        """
-        add_counts = Counter(accounts.get("add", []))
-        sub_counts = Counter(accounts.get("subtract", []))
-        return {
-            acc: add_counts.get(acc, 0) - sub_counts.get(acc, 0)
-            for acc in set(add_counts) | set(sub_counts)
-        }
 
     def _account_balances(self, period: str) -> pd.DataFrame:
         """Generate a report of account balances for a chosen period.
