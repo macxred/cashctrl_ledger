@@ -1,6 +1,5 @@
 """Module that implements the pyledger interface by connecting to the CashCtrl API."""
 
-from collections import Counter
 import datetime
 import json
 from typing import Dict, List, Tuple
@@ -20,7 +19,8 @@ from pyledger.constants import (
     PRICE_SCHEMA,
     JOURNAL_SCHEMA,
     ASSETS_SCHEMA,
-    PROFIT_CENTER_SCHEMA
+    PROFIT_CENTER_SCHEMA,
+    TARGET_BALANCE_SCHEMA
 )
 from .constants import (
     ACCOUNT_CATEGORIES_NEED_TO_NEGATE,
@@ -52,6 +52,7 @@ class CashCtrlLedger(LedgerEngine):
         client: CashCtrlClient | None = None,
         price_history_path: Path = Path.cwd() / "price_history.csv",
         assets_path: Path = Path.cwd() / "assets.csv",
+        target_balance: Path = Path.cwd() / "target_balance.csv",
         profit_centers_path: Path = Path.cwd() / "profit_centers.csv",
     ):
         super().__init__()
@@ -83,6 +84,10 @@ class CashCtrlLedger(LedgerEngine):
             prepare_for_mirroring=self.sanitize_journal
         )
         self._profit_centers = ProfitCenter(client=client, schema=PROFIT_CENTER_SCHEMA)
+        self._target_balance = CSVAccountingEntity(
+            schema=TARGET_BALANCE_SCHEMA,
+            path=target_balance,
+        )
 
     # ----------------------------------------------------------------------
     # File operations
@@ -96,11 +101,12 @@ class CashCtrlLedger(LedgerEngine):
             archive.writestr('journal.csv', self.journal.list().to_csv(index=False))
             archive.writestr('assets.csv', self.assets.list().to_csv(index=False))
             archive.writestr('profit_centers.csv', self.profit_centers.list().to_csv(index=False))
+            archive.writestr('target_balance.csv', self.target_balance.list().to_csv(index=False))
 
     def restore_from_zip(self, archive_path: str):
         required_files = {
             'journal.csv', 'tax_codes.csv', 'accounts.csv', 'configuration.json', 'assets.csv',
-            'price_history.csv'
+            'price_history.csv', 'target_balance.csv'
         }
 
         with zipfile.ZipFile(archive_path, 'r') as archive:
@@ -118,6 +124,7 @@ class CashCtrlLedger(LedgerEngine):
             assets = pd.read_csv(archive.open('assets.csv'))
             price_history = pd.read_csv(archive.open('price_history.csv'))
             profit_centers = pd.read_csv(archive.open('profit_centers.csv'))
+            target_balance = pd.read_csv(archive.open('target_balance.csv'))
             self.restore(
                 configuration=configuration,
                 journal=journal,
@@ -126,7 +133,8 @@ class CashCtrlLedger(LedgerEngine):
                 assets=assets,
                 price_history=price_history,
                 profit_centers=profit_centers,
-                revaluations=None
+                revaluations=None,
+                target_balance=target_balance
             )
 
     def restore(
@@ -139,6 +147,7 @@ class CashCtrlLedger(LedgerEngine):
         assets: pd.DataFrame | None = None,
         revaluations: pd.DataFrame | None = None,
         profit_centers: pd.DataFrame | None = None,
+        target_balance: pd.DataFrame | None = None,
     ):
         self.clear()
         if revaluations is not None:
@@ -164,6 +173,8 @@ class CashCtrlLedger(LedgerEngine):
             self.profit_centers.mirror(profit_centers, delete=True)
         if journal is not None:
             self.journal.mirror(journal, delete=True)
+        if target_balance is not None:
+            self.target_balance.mirror(target_balance, delete=True)
 
     def clear(self):
         self.journal.mirror(None, delete=True)
@@ -177,6 +188,7 @@ class CashCtrlLedger(LedgerEngine):
         self.profit_centers.mirror(None, delete=True)
         self.price_history.mirror(None, delete=True)
         self.assets.mirror(None, delete=True)
+        self.target_balance.mirror(None, delete=True)
 
     # ----------------------------------------------------------------------
     # configuration
@@ -258,29 +270,6 @@ class CashCtrlLedger(LedgerEngine):
         df["group"] = self.sanitize_account_groups(df["group"])
         df = super().sanitize_accounts(df, tax_codes=tax_codes)
         return df
-
-    # TODO: Move this method to the LedgerEngine class
-    @staticmethod
-    def account_multipliers(accounts: dict) -> dict[str, int]:
-        """
-        Compute net multipliers for accounts based on their frequency in the
-        'add' and 'subtract' lists. Each occurrence in 'add' contributes +1,
-        each in 'subtract' contributes -1.
-
-        Args:
-            accounts (dict): Dictionary with two keys:
-                - 'add': list of accounts to include positively
-                - 'subtract': list of accounts to include negatively
-
-        Returns:
-            dict[str, int]: Mapping of account identifier to net multiplier.
-        """
-        add_counts = Counter(accounts.get("add", []))
-        sub_counts = Counter(accounts.get("subtract", []))
-        return {
-            acc: add_counts.get(acc, 0) - sub_counts.get(acc, 0)
-            for acc in set(add_counts) | set(sub_counts)
-        }
 
     def _account_balances(self, period: str) -> pd.DataFrame:
         """Generate a report of account balances for a chosen period.
