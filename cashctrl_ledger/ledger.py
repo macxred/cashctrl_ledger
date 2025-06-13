@@ -1005,6 +1005,66 @@ class CashCtrlLedger(LedgerEngine):
             raise ValueError("The journal entry contains no transaction.")
         return payload
 
+    def book_automated_entries(self, revaluations: pd.DataFrame):
+        revaluations = self.sanitize_revaluations(revaluations)
+        target_balances = self.sanitize_target_balance(self.target_balance.list())
+        dates = pd.Series(
+            list(revaluations["date"]) + list(target_balances["date"])
+        ).dropna().drop_duplicates().sort_values()
+
+        for date in dates:
+            # Book target balance entries
+            target_balance_rows = target_balances.query("date == @date")
+            if not target_balance_rows.empty:
+                self.book_target_balance_entries(target_balance=target_balance_rows)
+
+            # Book revaluation entries
+            revaluation_rows = revaluations.query("date == @date")
+            if not revaluation_rows.empty:
+                self.book_revaluations(revaluations=revaluation_rows)
+
+    def book_target_balance_entries(self, target_balance: pd.DataFrame) -> pd.DataFrame:
+        reporting_currency = self.reporting_currency
+
+        for row in target_balance.to_dict("records"):
+            df = pd.DataFrame({
+                "account": [row["lookup_accounts"]], "period": [row["lookup_period"]],
+            })
+            current = self.account_balances(df, reporting_currency_only=False)
+            delta = row["balance"] - current.at[0, "report_balance"]
+            delta = self.round_to_precision(delta, ticker=reporting_currency, date=row["date"])
+            report_delta = self.report_amount([delta], [reporting_currency], [row["date"]])[0]
+
+            if delta != 0:
+                entry_id = (
+                    f"target_balance:{row['lookup_period']}:{row['lookup_accounts']}:"
+                    f"{row['lookup_profit_centers']}"
+                )
+                base_entry = {
+                    "id": entry_id,
+                    "date": row["date"],
+                    "currency": reporting_currency,
+                    "description": row["description"],
+                    "document": row["document"],
+                }
+                entry = pd.DataFrame([{
+                    **base_entry,
+                    "account": row["account"],
+                    "contra": row["contra"],
+                    "amount": delta,
+                    "report_amount": report_delta,
+                }])
+
+                contra_entry = pd.DataFrame([{
+                    **base_entry,
+                    "account": row["contra"],
+                    "contra": row["account"],
+                    "amount": -delta,
+                    "report_amount": -report_delta,
+                }])
+
+                self.journal.add(pd.concat([entry, contra_entry]))
+
     def book_revaluations(self, revaluations: pd.DataFrame) -> pd.DataFrame:
         """
         Book FX revaluations.

@@ -193,9 +193,9 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         engine.restore(
             accounts=accounts, configuration=self.CONFIGURATION, tax_codes=self.TAX_CODES,
             journal=self.JOURNAL, assets=self.ASSETS, price_history=self.PRICES,
-            profit_centers=self.PROFIT_CENTERS
+            profit_centers=self.PROFIT_CENTERS, target_balance=self.TARGET_BALANCE
         )
-        engine.book_revaluations(self.REVALUATIONS)
+        engine.book_automated_entries(self.REVALUATIONS)
 
         columns_to_drop = ["period", "account", "profit_center"]
 
