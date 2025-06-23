@@ -183,7 +183,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             engine.accounts.mirror(ACCOUNT, delete=True)
 
     def test_account_balance(self, engine):
-        """This method overrides base implementation since revaluations
+        """This method overrides base implementation since revaluations and target balance
         in the CashCtrlLedger package can not be restored and should be manually booked.
         """
         engine.transitory_account = 9999
@@ -193,22 +193,20 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         engine.restore(
             accounts=accounts, configuration=self.CONFIGURATION, tax_codes=self.TAX_CODES,
             journal=self.JOURNAL, assets=self.ASSETS, price_history=self.PRICES,
-            profit_centers=self.PROFIT_CENTERS, target_balance=self.TARGET_BALANCE
+            profit_centers=self.PROFIT_CENTERS,
         )
-        engine.book_automated_entries(self.REVALUATIONS)
+        engine.book_automated_entries(self.REVALUATIONS, target_balance=self.TARGET_BALANCE)
 
         columns_to_drop = ["period", "account", "profit_center"]
 
         def drop_zero_balances(balance_dict):
             return {k: v for k, v in balance_dict.items() if v != 0.0}
 
-        # Test account balance without specified profit centers
-        expected_without_pc = self.EXPECTED_BALANCES.query("profit_center.isna()")
-        balances = engine.account_balances(expected_without_pc)
-        expected_without_pc = expected_without_pc.drop(columns=columns_to_drop)
-        expected_without_pc["balance"] = expected_without_pc["balance"].apply(drop_zero_balances)
+        balances = engine.account_balances(self.EXPECTED_BALANCES)
+        expected_balances = self.EXPECTED_BALANCES.drop(columns=columns_to_drop)
+        expected_balances["balance"] = expected_balances["balance"].apply(drop_zero_balances)
         balances["balance"] = balances["balance"].apply(drop_zero_balances)
-        assert_frame_equal(balances, expected_without_pc, ignore_index=True, check_like=True)
+        assert_frame_equal(balances, expected_balances, ignore_index=True, check_like=True)
 
     def test_individual_account_balances(self, engine):
         """This method overrides base implementation since revaluations
