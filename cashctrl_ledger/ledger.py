@@ -1005,7 +1005,7 @@ class CashCtrlLedger(LedgerEngine):
             raise ValueError("The journal entry contains no transaction.")
         return payload
 
-    def book_automated_entries(self, revaluations: pd.DataFrame, target_balance: pd.DataFrame):
+    def generate_automated_entries(self, revaluations: pd.DataFrame, target_balance: pd.DataFrame):
         revaluations = self.sanitize_revaluations(revaluations)
         target_balances = self.sanitize_target_balance(target_balance)
         dates = pd.Series(

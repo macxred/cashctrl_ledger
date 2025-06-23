@@ -195,7 +195,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             journal=self.JOURNAL, assets=self.ASSETS, price_history=self.PRICES,
             profit_centers=self.PROFIT_CENTERS,
         )
-        engine.book_automated_entries(self.REVALUATIONS, target_balance=self.TARGET_BALANCE)
+        engine.generate_automated_entries(self.REVALUATIONS, target_balance=self.TARGET_BALANCE)
 
         columns_to_drop = ["period", "account", "profit_center"]
 

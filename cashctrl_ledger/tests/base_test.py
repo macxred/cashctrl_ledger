@@ -15,9 +15,22 @@ class BaseTestCashCtrl(BaseTest):
     default_account = TAX_CODES.query("id == 'IN_STD'")["account"].values[0]
     TAX_CODES.loc[TAX_CODES["account"].isna(), "account"] = default_account
 
+    # In CashCtrl, the account balance dictionary includes only the total amount in the account’s
+    # denominated currency, even when transactions involve multiple currencies. In contrast,
+    # PyLedger provides a granular breakdown of balances by all transaction currencies.
+    # For example, PyLedger might report:
+    #     {'EUR': -380.96, 'USD': -200.0}
+    # for a USD-denominated account with mixed-currency transactions, whereas CashCtrl would report:
+    #     {'USD': -607.94}
+    # as it converts and aggregates all amounts into the denominated currency.
+    # Because of this discrepancy, we must override the base test data with CashCtrl-style expected
+    # balances to ensure compatibility in test assertions.
+    # We also exclude entries with profit centers, as CashCtrl doesn’t support filtering balances
+    # by them.
+    override_entries_dates = ["2024-12-31", "2024", "2024-Q4", "2025-01-02"]
     filtered_balances = BaseTest.EXPECTED_BALANCES.query("profit_center.isna()")
-    end_year_entries = ["2024-12-31", "2024", "2024-Q4", "2025-01-02"]
-    filtered_balances = filtered_balances.query("period not in @ end_year_entries")
+    filtered_balances = filtered_balances.query("period not in @ override_entries_dates")
+    # flake8: noqa: E501
     EXPECTED_BALANCES_CSV = """
         period,       account,            profit_center, report_balance,   balance
         2024-12-31,      4001,                         ,       -1198.26,   "{EUR: -1119.04}"
@@ -39,6 +52,7 @@ class BaseTestCashCtrl(BaseTest):
     EXPECTED_BALANCES["profit_center"] = EXPECTED_BALANCES["profit_center"].apply(BaseTest.parse_profit_center)
     EXPECTED_BALANCES["balance"] = BaseTest.parse_balance_series(EXPECTED_BALANCES["balance"])
     EXPECTED_BALANCES = pd.concat([filtered_balances, EXPECTED_BALANCES])
+    # flake8: enable
 
     @pytest.fixture(scope="module")
     def initial_engine(self, tmp_path_factory):
