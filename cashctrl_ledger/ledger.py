@@ -863,7 +863,7 @@ class CashCtrlLedger(LedgerEngine):
         currency = fx_entries["currency"].iat[0]
 
         # Define precision parameters for exchange rate calculation
-        precision = self.precision(reporting_currency)
+        precision = self.precision_vectorized([reporting_currency], [None])[0]
         fx_rate_precision = 1e-8  # Precision for exchange rates in CashCtrl
 
         # Calculate the range of acceptable exchange rates
