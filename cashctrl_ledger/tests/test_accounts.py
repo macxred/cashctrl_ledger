@@ -196,6 +196,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             profit_centers=self.PROFIT_CENTERS,
         )
         engine.book_revaluations(self.REVALUATIONS)
+        engine.journal.mirror(self.TARGET_BALANCE_JOURNAL, delete=False)
 
         columns_to_drop = ["period", "account", "profit_center"]
 

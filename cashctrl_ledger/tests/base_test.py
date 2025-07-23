@@ -52,6 +52,17 @@ class BaseTestCashCtrl(BaseTest):
     EXPECTED_BALANCES["profit_center"] = EXPECTED_BALANCES["profit_center"].apply(BaseTest.parse_profit_center)
     EXPECTED_BALANCES["balance"] = BaseTest.parse_balance_series(EXPECTED_BALANCES["balance"])
     EXPECTED_BALANCES = pd.concat([filtered_balances, EXPECTED_BALANCES])
+
+    # CashCtrlLedger lacks target balance support.
+    # We manually post predefined entries to simulate expected closing balances
+    # (e.g. cleared P&L, VAT) for alignment with pyledger expectations.
+    TARGET_BALANCE_JOURNAL_CSV = """
+                  id,       date, account, contra, currency,      amount, report_amount, tax_code, profit_center, description, document
+    target_balance:0, 2024-12-31,    2979,   9200,      USD, -12756871.6,   -12756871.6,          ,              , P&L for the year 2024,
+    target_balance:1, 2024-12-31,    2200,   1175,      USD,      -200.0,        -200.0,          ,              , VAT return 2024 sales tax,
+    target_balance:2, 2025-01-02,    2979,   2970,      USD, -25513743.2,   -25513743.2,          ,              , Move P&L for the year to P&L Carried Forward,
+    """
+    TARGET_BALANCE_JOURNAL = pd.read_csv(StringIO(TARGET_BALANCE_JOURNAL_CSV), skipinitialspace=True)
     # flake8: enable
 
     @pytest.fixture(scope="module")
