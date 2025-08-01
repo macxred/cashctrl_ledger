@@ -1005,59 +1005,6 @@ class CashCtrlLedger(LedgerEngine):
             raise ValueError("The journal entry contains no transaction.")
         return payload
 
-    def generate_automated_entries(self, revaluations: pd.DataFrame, target_balance: pd.DataFrame):
-        revaluations = self.sanitize_revaluations(revaluations)
-        target_balances = self.sanitize_target_balance(target_balance)
-        dates = pd.Series(
-            list(revaluations["date"]) + list(target_balances["date"])
-        ).dropna().drop_duplicates().sort_values()
-
-        for date in dates:
-            # Book revaluation entries
-            revaluation_rows = revaluations.query("date == @date")
-            if not revaluation_rows.empty:
-                self.book_revaluations(revaluations=revaluation_rows)
-
-            # Book target balance entries
-            target_balance_rows = target_balances.query("date == @date")
-            if not target_balance_rows.empty:
-                self.book_target_balances(target_balance=target_balance_rows)
-
-    def book_target_balances(self, target_balance: pd.DataFrame):
-        reporting_currency = self.reporting_currency
-
-        for row in target_balance.to_dict("records"):
-            df = pd.DataFrame({
-                "account": [row["lookup_accounts"]], "period": [row["lookup_period"]],
-            })
-            balance = self.account_balances(df, reporting_currency_only=False)
-            if row["currency"] == "reporting_currency":
-                current_balance = balance.iloc[0]["report_balance"]
-            else:
-                current_balance = balance.iloc[0]["balance"].get(row["currency"], 0.0)
-            currency = (
-                reporting_currency if row["currency"] == "reporting_currency" else row["currency"]
-            )
-            delta = row["balance"] - current_balance
-            delta = self.round_to_precision(delta, ticker=currency, date=row["date"])
-            report_delta = self.report_amount(
-                amount=[delta], currency=[currency], date=[row["date"]]
-            )[0]
-
-            if delta == 0 and report_delta == 0:
-                continue
-
-            self.journal.add(pd.DataFrame([{
-                "date": row["date"],
-                "currency": currency,
-                "description": row["description"],
-                "document": row["document"],
-                "account": row["account"],
-                "contra": row["contra"],
-                "amount": delta,
-                "report_amount": report_delta,
-            }]))
-
     def book_revaluations(self, revaluations: pd.DataFrame) -> pd.DataFrame:
         """
         Book FX revaluations.

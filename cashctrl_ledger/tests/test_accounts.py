@@ -195,7 +195,8 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             journal=self.JOURNAL, assets=self.ASSETS, price_history=self.PRICES,
             profit_centers=self.PROFIT_CENTERS,
         )
-        engine.generate_automated_entries(self.REVALUATIONS, target_balance=self.TARGET_BALANCE)
+        engine.book_revaluations(self.REVALUATIONS)
+        engine.journal.mirror(self.TARGET_BALANCE_JOURNAL, delete=False)
 
         columns_to_drop = ["period", "account", "profit_center"]
 

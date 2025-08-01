@@ -27,31 +27,38 @@ class BaseTestCashCtrl(BaseTest):
     # balances to ensure compatibility in test assertions.
     # We also exclude entries with profit centers, as CashCtrl doesn’t support filtering balances
     # by them.
-    override_entries_dates = ["2024-12-31", "2024", "2024-Q4", "2025-01-02"]
+    override_entries_dates = ["2024-12-31", "2024"]
     filtered_balances = BaseTest.EXPECTED_BALANCES.query("profit_center.isna()")
     filtered_balances = filtered_balances.query("period not in @ override_entries_dates")
     # flake8: noqa: E501
     EXPECTED_BALANCES_CSV = """
         period,       account,            profit_center, report_balance,   balance
         2024-12-31,      4001,                         ,       -1198.26,   "{EUR: -1119.04}"
-        2024-Q4,    1000:1999,                         ,    11654997.69,   "{USD: 299392.06, EUR: 10076638.88, JPY: 0.0, CHF: 14285714.3}"
-        2024,       1000:1999,                         ,    12756171.60,   "{USD: 1075964.7, EUR: 10026667.1, JPY: 54345678.0, CHF: 14285714.3}"
+        2024,       1000:1999,                         ,    12756979.54,   "{USD: 1076772.64, EUR: 10026667.1, JPY: 54345678.0, CHF: 14285714.3}"
         2024-08,    1000:1999,                         ,         -700.0,   "{USD: -700.0}"
-        2024-12-31,      2970,                         ,           0.00,   "{USD:  0.00}"
-        2024-12-31,      9200,                         ,   -12756871.60,   "{USD: -12756871.60}"
-        2024-12-31,      2979,                         ,    12756871.60,   "{USD: 12756871.60}"
+        2024-12-31,      2970,                         ,           0.00,   "{USD: 0.00}"
+        2024-12-31,      9200,                         ,    12756871.60,   "{USD: 12756871.60}"
+        2024-12-31,      2979,                         ,   -12756871.60,   "{USD: -12756871.60}"
         2024-12-31,      1170,                         ,           0.00,   "{USD: 0.00}"
         2024-12-31,      1171,                         ,           0.00,   "{USD: 0.00}"
-        2024-12-31,      1175,                         ,        -607.94,   "{USD: -607.94}"
-        2024-12-31,      2200,                         ,           0.00,   "{USD: 0.00}"
-        2025-01-02,      2979,                         ,          -0.00,   "{USD: 0.00}"
-        2025-01-02,      2970,                         ,    12756871.60,   "{USD: 12756871.60}"
-        2025-01-02,      9200,                         ,   -12756871.60,   "{USD: -12756871.60}"
+        2024-12-31,      1175,                         ,         200.00,   "{USD: 200.00}"
+        2024-12-31,      2200,                         ,        -807.94,   "{USD: -807.94}"
     """
     EXPECTED_BALANCES = pd.read_csv(StringIO(EXPECTED_BALANCES_CSV), skipinitialspace=True)
     EXPECTED_BALANCES["profit_center"] = EXPECTED_BALANCES["profit_center"].apply(BaseTest.parse_profit_center)
     EXPECTED_BALANCES["balance"] = BaseTest.parse_balance_series(EXPECTED_BALANCES["balance"])
     EXPECTED_BALANCES = pd.concat([filtered_balances, EXPECTED_BALANCES])
+
+    # CashCtrlLedger lacks target balance support.
+    # We manually post predefined entries to simulate expected closing balances
+    # (e.g. cleared P&L, VAT) for alignment with pyledger expectations.
+    TARGET_BALANCE_JOURNAL_CSV = """
+                  id,       date, account, contra, currency,      amount, report_amount, tax_code, profit_center, description, document
+    target_balance:0, 2024-12-31,    2979,   9200,      USD, -12756871.6,   -12756871.6,          ,              , P&L for the year 2024,
+    target_balance:1, 2024-12-31,    2200,   1175,      USD,      -200.0,        -200.0,          ,              , VAT return 2024 sales tax,
+    target_balance:2, 2025-01-02,    2979,   2970,      USD, -25513743.2,   -25513743.2,          ,              , Move P&L for the year to P&L Carried Forward,
+    """
+    TARGET_BALANCE_JOURNAL = pd.read_csv(StringIO(TARGET_BALANCE_JOURNAL_CSV), skipinitialspace=True)
     # flake8: enable
 
     @pytest.fixture(scope="module")
