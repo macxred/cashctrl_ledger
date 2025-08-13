@@ -3,6 +3,7 @@
 from io import StringIO
 import pandas as pd
 import pytest
+from pyledger import MemoryLedger
 from pyledger.tests import BaseTestAccounts
 from pyledger.constants import ACCOUNT_BALANCE_SCHEMA, AGGREGATED_BALANCE_SCHEMA
 from base_test import BaseTestCashCtrl
@@ -19,6 +20,21 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
     def engine(self, initial_engine):
         initial_engine.clear()
         return initial_engine
+
+    @pytest.fixture()
+    def complete_journal(self) -> pd.DataFrame:
+        source = MemoryLedger()
+        source.restore(
+            accounts=self.ACCOUNTS, configuration=self.CONFIGURATION, tax_codes=self.TAX_CODES,
+            assets=self.ASSETS, price_history=self.PRICES,
+            profit_centers=self.PROFIT_CENTERS,
+        )
+        journal, _ = source.complete_journal(
+            self.JOURNAL, target_balances=self.TARGET_BALANCE, revaluations=self.REVALUATIONS
+        )
+        journal = journal.query("origin != 'tax'")
+        journal["date"] = journal["date"].where(~journal.duplicated(subset="id"), pd.NA)
+        return journal
 
     def test_account_accessor_mutators(self, restored_engine):
         self.ACCOUNTS = restored_engine.sanitize_accounts(self.ACCOUNTS)
@@ -182,7 +198,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         with pytest.raises(ValueError, match="Cannot create new root nodes"):
             engine.accounts.mirror(ACCOUNT, delete=True)
 
-    def test_account_balance(self, engine):
+    def test_account_balance(self, engine, complete_journal):
         """This method overrides base implementation since revaluations and target balance
         in the CashCtrlLedger package can not be restored and should be manually booked.
         """
@@ -192,12 +208,9 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         ).drop_duplicates(["account"])
         engine.restore(
             accounts=accounts, configuration=self.CONFIGURATION, tax_codes=self.TAX_CODES,
-            journal=self.JOURNAL, assets=self.ASSETS, price_history=self.PRICES,
+            journal=complete_journal, assets=self.ASSETS, price_history=self.PRICES,
             profit_centers=self.PROFIT_CENTERS,
         )
-        engine.book_revaluations(self.REVALUATIONS)
-        engine.journal.mirror(self.TARGET_BALANCE_JOURNAL, delete=False)
-
         columns_to_drop = ["period", "account", "profit_center"]
 
         def drop_zero_balances(balance_dict):
@@ -209,7 +222,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         balances["balance"] = balances["balance"].apply(drop_zero_balances)
         assert_frame_equal(balances, expected_balances, ignore_index=True, check_like=True)
 
-    def test_individual_account_balances(self, engine):
+    def test_individual_account_balances(self, engine, complete_journal):
         """This method overrides base implementation since revaluations
         in the CashCtrlLedger package cannot be restored and should be manually booked.
         Additionally, account groups in the expected data should be sanitized
@@ -221,10 +234,9 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         ).drop_duplicates(["account"])
         engine.restore(
             accounts=accounts, configuration=self.CONFIGURATION, tax_codes=self.TAX_CODES,
-            journal=self.JOURNAL, assets=self.ASSETS, price_history=self.PRICES,
+            journal=complete_journal, assets=self.ASSETS, price_history=self.PRICES,
             profit_centers=self.PROFIT_CENTERS
         )
-        engine.book_revaluations(self.REVALUATIONS)
 
         # Extract unique test cases
         df = self.EXPECTED_INDIVIDUAL_BALANCES.copy()
@@ -243,7 +255,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             actual = engine.individual_account_balances(period=period, accounts=accounts)
             assert_frame_equal(expected, actual, ignore_index=True)
 
-    def test_aggregate_account_balances(self, engine):
+    def test_aggregate_account_balances(self, engine, complete_journal):
         """This method overrides base implementation since revaluations
         in the CashCtrlLedger package cannot be restored and should be manually booked.
         Additionally, account groups in the expected data should be sanitized
@@ -253,12 +265,12 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         accounts = pd.concat(
             [self.ACCOUNTS, engine.accounts.list()], ignore_index=True
         ).drop_duplicates(["account"])
+        complete_journal = complete_journal.query("origin != 'target_balance'")
         engine.restore(
             accounts=accounts, configuration=self.CONFIGURATION, tax_codes=self.TAX_CODES,
-            journal=self.JOURNAL, assets=self.ASSETS, price_history=self.PRICES,
+            journal=complete_journal, assets=self.ASSETS, price_history=self.PRICES,
             profit_centers=self.PROFIT_CENTERS
         )
-        engine.book_revaluations(self.REVALUATIONS)
 
         account_balances = engine.individual_account_balances(period="2024", accounts="1000:9999")
         actual = engine.aggregate_account_balances(account_balances, n=2)
@@ -299,3 +311,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
     @pytest.mark.skip(reason="This test need to be adapted to work in this package")
     def test_account_history(self):
         pass
+
+    def test_account_history_entry_in_both_accounts(self, engine):
+        engine.transitory_account = 9999
+        super().test_account_history_entry_in_both_accounts(engine)
