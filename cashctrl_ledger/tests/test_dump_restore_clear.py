@@ -44,24 +44,11 @@ CONFIGURATION = {
 }
 
 
-# Revaluations are not implemented in CashCtrl.
-# A placeholder class is used to fulfill the test interface.
-class Revaluations:
-    def list(self):
-        return pd.DataFrame({})
-
-    def mirror(self, target):
-        pass
-
-
 class TestDumpRestoreClear(BaseTestCashCtrl, BaseTestDumpRestoreClear):
     JOURNAL = BaseTestCashCtrl.JOURNAL.query("id.isin(['2', '5', '6', '7'])")
-    # CashCtrl doesn't support revaluations, use an empty DataFrame
-    REVALUATIONS = pd.DataFrame({})
 
     @pytest.fixture(scope="class")
     def engine(self, initial_engine):
-        initial_engine._revaluations = Revaluations()
         # Temporarily set the transitory account to the first listed account for simpler testing
         initial_transitory_account = initial_engine.transitory_account
         initial_engine.transitory_account = self.ACCOUNTS.iloc[0]["account"].item()
