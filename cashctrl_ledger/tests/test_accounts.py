@@ -33,7 +33,6 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             self.JOURNAL, target_balances=self.TARGET_BALANCE, revaluations=self.REVALUATIONS
         )
         journal = journal.query("origin != 'tax'")
-        journal["date"] = journal["date"].where(~journal.duplicated(subset="id"), pd.NA)
         return journal
 
     def test_account_accessor_mutators(self, restored_engine):
