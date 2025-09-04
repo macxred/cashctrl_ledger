@@ -33,12 +33,13 @@ class TaxCode(CashCtrlAccountingEntity):
         incoming = self.standardize(pd.DataFrame(data))
         for _, row in incoming.iterrows():
             self._client.account_to_id(row["account"])
+            calcType = "NET" if pd.notna(row["is_inclusive"]) and row["is_inclusive"] else "GROSS"
             payload = {
                 "name": row["id"],
                 "percentage": row["rate"] * 100,
                 "accountId": self._client.account_to_id(row["account"]),
                 "documentName": row["description"],
-                "calcType": "NET" if row["is_inclusive"] else "GROSS",
+                "calcType": calcType,
             }
             self._client.post("tax/create.json", data=payload)
         self._client.list_tax_rates.cache_clear()
