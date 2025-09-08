@@ -31,6 +31,7 @@ class TaxCode(CashCtrlAccountingEntity):
 
     def add(self, data: pd.DataFrame) -> None:
         incoming = self.standardize(pd.DataFrame(data))
+        incoming["is_inclusive"] = incoming["is_inclusive"].fillna(False)
         for _, row in incoming.iterrows():
             self._client.account_to_id(row["account"])
             payload = {
