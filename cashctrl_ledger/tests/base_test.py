@@ -49,6 +49,14 @@ class BaseTestCashCtrl(BaseTest):
     EXPECTED_BALANCES["profit_center"] = EXPECTED_BALANCES["profit_center"].apply(BaseTest.parse_profit_center)
     EXPECTED_BALANCES["balance"] = BaseTest.parse_balance_series(EXPECTED_BALANCES["balance"])
     EXPECTED_BALANCES = pd.concat([filtered_balances, EXPECTED_BALANCES])
+    balances = pd.Series([
+        "{USD: 1076311.79}", "{USD: -100.0, EUR: -20.0}", "{EUR: 10026687.1}",
+        "{JPY: 54345678.0}", "{CHF: 14285714.3}", "{}", "{USD: 360.85}", "{USD: 700.0}",
+        "{}", "{USD: -607.94}", "{}", "{}", "{USD: -11098332.82}", "{USD: -1000.0}",
+        "{EUR: -1119.04}", "{USD: 3502.64}", "{USD: -1622168.17}", "{USD: -5.55}", "{}"
+    ])
+    EXPECTED_AGGREGATED_BALANCES = BaseTest.EXPECTED_AGGREGATED_BALANCES
+    EXPECTED_AGGREGATED_BALANCES["balance"] = BaseTest.parse_balance_series(balances)
     # flake8: enable
 
     @pytest.fixture(scope="module")
