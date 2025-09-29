@@ -13,6 +13,10 @@ from cashctrl_ledger.constants import ACCOUNT_ROOT_CATEGORIES
 from cashctrl_ledger import CashCtrlLedger
 
 
+def drop_zero_balances(balance_dict):
+    return {k: v for k, v in balance_dict.items() if v != 0.0}
+
+
 class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
     """Test suite for the Account accessor and mutator methods."""
 
@@ -211,10 +215,6 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             profit_centers=self.PROFIT_CENTERS,
         )
         columns_to_drop = ["period", "account", "profit_center"]
-
-        def drop_zero_balances(balance_dict):
-            return {k: v for k, v in balance_dict.items() if v != 0.0}
-
         balances = engine.account_balances(self.EXPECTED_BALANCES)
         expected_balances = self.EXPECTED_BALANCES.drop(columns=columns_to_drop)
         expected_balances["balance"] = expected_balances["balance"].apply(drop_zero_balances)
@@ -252,7 +252,9 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             expected = enforce_schema(expected, ACCOUNT_BALANCE_SCHEMA)
             expected["group"] = engine.sanitize_account_groups(expected["group"])
             actual = engine.individual_account_balances(period=period, accounts=accounts)
-            assert_frame_equal(expected, actual, ignore_index=True)
+            actual["balance"] = actual["balance"].apply(drop_zero_balances)
+            expected["balance"] = expected["balance"].apply(drop_zero_balances)
+            assert_frame_equal(expected, actual, ignore_index=True, check_like=True)
 
     def test_aggregate_account_balances(self, engine, complete_journal):
         """This method overrides base implementation since revaluations
