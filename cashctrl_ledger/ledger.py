@@ -324,7 +324,7 @@ class CashCtrlLedger(LedgerEngine):
         def _calc_balances(period, account):
             balance = balance_lookup[period]
             _, end = parse_date_span(period)
-            multipliers = self.account_multipliers(self.parse_account_range(account))
+            multipliers = self.account_multipliers(self.account_range(account, mode="parts"))
             multipliers = pd.DataFrame(
                 list(multipliers.items()), columns=["account", "multiplier"]
             )
