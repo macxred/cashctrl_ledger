@@ -11,7 +11,6 @@ setup(
     python_requires='>3.9',
     install_requires=[
         'pandas',
-        'pyledger @ https://github.com/macxred/pyledger/tarball/main',
         'cashctrl_api @ https://github.com/macxred/cashctrl_api/tarball/main',
         'consistent_df @ https://github.com/macxred/consistent_df/tarball/main'
     ],
