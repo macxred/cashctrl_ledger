@@ -45,6 +45,9 @@ jobs:
         with:
           python-version: "3.x"
 
+      - name: Install pyledger
+        run: pip install git+https://x-access-token:${{ secrets.PYLEDGER_CI_ACCESS_TOKEN }}@github.com/macxred/pyledger.git@main
+
       - name: Install dependencies
         run: pip install coverage pytest setuptools .
 
