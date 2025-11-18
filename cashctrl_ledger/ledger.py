@@ -49,16 +49,21 @@ class CashCtrlLedger(LedgerEngine):
     def __init__(
         self,
         client: CashCtrlClient | None = None,
-        price_history_path: Path = Path.cwd() / "price_history.csv",
-        assets_path: Path = Path.cwd() / "assets.csv",
-        profit_centers_path: Path = Path.cwd() / "profit_centers.csv",
+        root: Path = Path.cwd(),
+        price_history_path: str = "settings/price_history.csv",
+        assets_path: str = "settings/assets.csv",
     ):
         super().__init__()
+        self.root = Path(root).expanduser()
         client = CashCtrlClient() if client is None else client
         self._client = client
         self._tax_codes = TaxCode(client=client, schema=TAX_CODE_SCHEMA)
         self._accounts = Account(client=client, schema=ACCOUNT_SCHEMA)
-        self._price_history = CSVAccountingEntity(schema=PRICE_SCHEMA, path=price_history_path)
+        self._price_history = CSVAccountingEntity(
+            schema=PRICE_SCHEMA,
+            root=self.root,
+            path=price_history_path,
+        )
         # CashCtrl does not allow to store Assets with corresponding precision
         # in the historical order, which prevents the implementation of coherent
         # accessors and mutators storing assets on the remote instance.
@@ -67,6 +72,7 @@ class CashCtrlLedger(LedgerEngine):
         # ensure all tickers present in the local text file also exists remotely as currencies.
         self._assets = CSVAccountingEntity(
             schema=ASSETS_SCHEMA,
+            root=self.root,
             path=assets_path,
             on_change=self._on_assets_change
         )
