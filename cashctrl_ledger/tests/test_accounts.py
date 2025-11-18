@@ -34,7 +34,8 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             profit_centers=self.PROFIT_CENTERS,
         )
         journal, _ = source.complete_journal(
-            self.JOURNAL, target_balances=self.TARGET_BALANCE, revaluations=self.REVALUATIONS
+            self.JOURNAL, target_balances=self.TARGET_BALANCE,
+            revaluations=self.REVALUATIONS, loans=None
         )
         journal = journal.query("origin != 'tax'")
         return journal

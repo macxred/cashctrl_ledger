@@ -55,14 +55,25 @@ class CashCtrlLedger(LedgerEngine):
     ):
         super().__init__()
         self.root = Path(root).expanduser()
+        settings_dir = self.root / "settings"
+        settings_dir.mkdir(parents=True, exist_ok=True)
         client = CashCtrlClient() if client is None else client
         self._client = client
-        self._tax_codes = TaxCode(client=client, schema=TAX_CODE_SCHEMA)
-        self._accounts = Account(client=client, schema=ACCOUNT_SCHEMA)
+        self._tax_codes = TaxCode(
+            client=client,
+            schema=TAX_CODE_SCHEMA,
+            source_column="source",
+        )
+        self._accounts = Account(
+            client=client,
+            schema=ACCOUNT_SCHEMA,
+            source_column="source",
+        )
         self._price_history = CSVAccountingEntity(
             schema=PRICE_SCHEMA,
             root=self.root,
             path=price_history_path,
+            source_column="source"
         )
         # CashCtrl does not allow to store Assets with corresponding precision
         # in the historical order, which prevents the implementation of coherent
@@ -74,12 +85,14 @@ class CashCtrlLedger(LedgerEngine):
             schema=ASSETS_SCHEMA,
             root=self.root,
             path=assets_path,
-            on_change=self._on_assets_change
+            on_change=self._on_assets_change,
+            source_column="source",
         )
         self._ensure_currencies_exist()
         self._journal = Journal(
             client=client,
             schema=JOURNAL_SCHEMA,
+            source_column="source",
             list=self._journal_list,
             add=self._journal_add,
             modify=self._journal_modify,
@@ -87,7 +100,11 @@ class CashCtrlLedger(LedgerEngine):
             standardize=self._journal_standardize,
             prepare_for_mirroring=self.sanitize_journal
         )
-        self._profit_centers = ProfitCenter(client=client, schema=PROFIT_CENTER_SCHEMA)
+        self._profit_centers = ProfitCenter(
+            client=client,
+            schema=PROFIT_CENTER_SCHEMA,
+            source_column="source",
+        )
 
     # ----------------------------------------------------------------------
     # File operations

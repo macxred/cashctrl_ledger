@@ -64,8 +64,9 @@ class BaseTestCashCtrl(BaseTest):
         tmp_path = tmp_path_factory.mktemp("temp")
         engine = ExtendedCashCtrlLedger(
             transitory_account=9999,
-            price_history_path=tmp_path / "price_history.csv",
-            assets_path=tmp_path / "assets.csv",
+            root=tmp_path,
+            price_history_path = "settings/price_history.csv",
+            assets_path="settings/assets.csv",
         )
         engine.dump_to_zip(tmp_path / "ledger.zip")
         self.ACCOUNTS = engine.sanitize_accounts(df=self.ACCOUNTS, tax_codes=self.TAX_CODES)

@@ -26,6 +26,12 @@ class TestAssets(BaseTestCashCtrl, BaseTestAssets):
             ids = ",".join([str(id) for id in created_ids])
             engine._client.post("currency/delete.json", params={"ids": ids})
 
+    def test_asset_accessor_mutators(self, engine):
+        super().test_asset_accessor_mutators(engine, ignore_columns=["source"])
+
+    def test_mirror_assets(self, engine):
+        super().test_mirror_assets(engine, ignore_columns=["source"])
+
     def test_ensure_currency_exist(self, engine, restore_currencies):
         new_asset = {"ticker": "AAA", "increment": 1, "date": "2023-01-01"}
         codes = engine._client.list_currencies()["code"].to_list()
