@@ -44,6 +44,10 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         self.ACCOUNTS = restored_engine.sanitize_accounts(self.ACCOUNTS)
         super().test_account_accessor_mutators(restored_engine, ignore_row_order=True)
 
+    def test_mirror_accounts(self, restored_engine):
+        self.ACCOUNTS = restored_engine.sanitize_accounts(self.ACCOUNTS)
+        super().test_mirror_accounts(restored_engine)
+
     def test_add_existing_account_raise_error(self, engine):
         """Override base test to include `group` field, required for CashCtrl."""
         account = {
@@ -144,7 +148,9 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             /Balance/Node,            9993,      EUR,         , Transitory Account EUR
             /Balance/Node/Subnode,    9994,      CHF,         , Transitory Account CHF
         """
-        ACCOUNTS = pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
+        ACCOUNTS = engine.sanitize_accounts(
+            pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
+        )
 
         initial_accounts = engine.accounts.list()
         initial_categories = engine._client.list_categories("account", include_system=True)

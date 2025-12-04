@@ -18,7 +18,14 @@ class Account(CashCtrlAccountingEntity):
             "tax_code": accounts["taxName"],
             "group": accounts["path"],
         })
-        return self.standardize(result)
+        result = self.standardize(result)
+        # Fill persistent and multiplier columns with values based on account number
+        # (same logic as LedgerEngine.sanitize_accounts) since CashCtrl doesn't store them
+        result["persistent"] = (result["account"] < 3000).astype("boolean")
+        result["multiplier"] = result["account"].apply(
+            lambda acc: 1 if acc < 2000 else -1
+        ).astype("Int64")
+        return result
 
     def add(self, data: pd.DataFrame):
         incoming = self.standardize(pd.DataFrame(data))
