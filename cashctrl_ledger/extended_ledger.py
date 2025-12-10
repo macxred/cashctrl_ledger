@@ -295,8 +295,9 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 )
                 balance = np.array(self.round_to_precision(balance, reporting_currency))
                 if all(balance == 0.0):
-                    return entry
+                    result = entry
                 else:
+                    entry["report_amount"] =  entry["report_amount"] - balance
                     fx_adjust = entry.copy()
                     fx_adjust["currency"] = reporting_currency
                     fx_adjust["report_amount"] = balance
@@ -309,17 +310,41 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
 
                     result = pd.concat([self.journal.standardize(entry),
                                         self.journal.standardize(fx_adjust)], ignore_index=True)
-                    result["amount"] = self.round_to_precision(
-                        result["amount"], result["currency"]
-                    )
-                    result["report_amount"] = self.round_to_precision(
-                        result["report_amount"], reporting_currency
-                    )
-                    multiplier = result["account"].notna().astype(int) - result["contra"].notna().astype(int)
-                    mismatch = (result["report_amount"] * multiplier).sum()
-                    if mismatch > 0.005:
-                        print(f"Mismatch: {round(mismatch, 2)} in {entry["id"].iloc[0]}.")
-                    return self.journal.standardize(result)
+                result["amount"] = self.round_to_precision(
+                    result["amount"], result["currency"]
+                )
+                result["report_amount"] = self.round_to_precision(
+                    result["report_amount"], reporting_currency
+                )
+                multiplier = result["account"].notna().astype(int) - result["contra"].notna().astype(int)
+                amount = np.where(result["currency"] == reporting_currency, result["amount"], result["report_amount"])
+                rounding_error = (multiplier * amount).sum(skipna=False)
+                currency_precision = self.precision_vectorized([currency], [entry["date"].iloc[0]])[0]
+                if abs(rounding_error) > currency_precision / 2:
+                    # Rounding after converting foreign currency amounts to reporting currency amounts
+                    # by multipying with FX rate leads to rounding differences that sum up to a net
+                    # rounding difference equal or largen than currency precision (0.01 for CHF, EUR, USD, etc.).
+                    # -> We compensate this roundig difference by creating transactions that have rounding
+                    #    differences with the same amount but opposite sign.
+                    # 1. Create a transaction with one cent rounding difference
+                    rounding_compensation = entry.to_dict("records")[0]
+                    id = rounding_compensation["id"] + ":rounding"
+                    rounding_compensation |= {
+                        "description": "Compensation of CashCtrl rounding differences",
+                        "account": transitory_account,
+                        "currency": currency,
+                        "report_amount": balance,
+                        "amount": [np.sign(rounding_error) * x for x in [-0.01, -0.01, 0.02]],
+                        "report_amount": [np.sign(rounding_error) * x for x in [-0.01, -0.01, 0.01]],
+                    }
+                    rounding_compensation = self.journal.standardize(pd.DataFrame(rounding_compensation))
+                    # 2. Duplicate this transaction as often as needed to compensate the full rounding error
+                    rounding_compensation = [
+                        rounding_compensation.assign(id = f"{id}-{i}")
+                        for i in range(abs(round(rounding_error / currency_precision)))
+                    ]
+                    result = pd.concat([result, *rounding_compensation], ignore_index=True)
+                return self.journal.standardize(result)
 
         else:
             raise ValueError("Expecting at least one `entry` row.")
@@ -330,6 +355,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         if balance != 0:
             balancing_leg = entry.head(1).copy()
             balancing_leg["currency"] = currency
+            balancing_leg["description"] = "Balancing foreign currency amount"
             balancing_leg["amount"] = balance
             balancing_leg["account"] = account
             balancing_leg["report_amount"] = self.round_to_precision(
