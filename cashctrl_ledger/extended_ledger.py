@@ -244,6 +244,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 balance = reporting_amount - self.round_to_precision(
                     amount * fx_rate, reporting_currency
                 )
+                entry["fx_rate"] = fx_rate
                 if balance == 0.0:
                     return entry
                 else:
@@ -273,6 +274,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
             # Collective transaction: multiple rows in the journal data frame
             currency, fx_rate = self._collective_transaction_currency_and_rate(entry)
             fx_rate = round(fx_rate, 8)
+            self.fx_rates_hack[entry["id"].iloc[0]] = currency, fx_rate
             if currency == reporting_currency:
                 return entry
             else:

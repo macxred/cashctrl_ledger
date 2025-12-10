@@ -54,6 +54,7 @@ class CashCtrlLedger(LedgerEngine):
         assets_path: str = "settings/assets.csv",
     ):
         super().__init__()
+        self.fx_rates_hack = {}
         self.root = Path(root).expanduser()
         settings_dir = self.root / "settings"
         settings_dir.mkdir(parents=True, exist_ok=True)
@@ -960,7 +961,11 @@ class CashCtrlLedger(LedgerEngine):
         elif len(entry) > 1:
             # Individual transaction entries (line items)
             items = []
-            currency, fx_rate = self._collective_transaction_currency_and_rate(entry)
+            cached = self.fx_rates_hack.get(entry["id"].iat[0])
+            if cached is None:
+                currency, fx_rate = self._collective_transaction_currency_and_rate(entry)
+            else:
+                currency, fx_rate = cached[0], cached[1]
             for _, row in entry.iterrows():
                 if row["currency"] == currency:
                     amount = row["amount"]
