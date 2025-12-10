@@ -37,6 +37,13 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
             engine._client.post("fiscalperiod/delete.json", params={"ids": ids})
             engine._client.list_fiscal_periods.cache_clear()
 
+    @pytest.fixture()
+    def restore_transitory_account(self, engine):
+        """Save and restore transitory account after test."""
+        original_transitory = engine.transitory_account
+        yield
+        engine.transitory_account = original_transitory
+
     def test_journal_accessor_mutators(self, restored_engine):
         # Journal entries need to be sanitized before adding to the CashCtrl
         self.JOURNAL = restored_engine.sanitize_journal(self.JOURNAL)
@@ -203,3 +210,105 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
         # Test journal entries retrieval for invalid fiscal period raise an error
         with pytest.raises(ValueError, match="No id found for fiscal period"):
             restored_engine.journal.list("test_fiscal_period")
+
+    def test_multi_currency_journal_transitory_balance(self, engine, restore_transitory_account):
+        """Test that multi-currency journal entries can be mirrored without imbalance errors.
+
+        Motivation:
+            CashCtrl has an 8-digit precision limit for FX rates and restricts collective
+            journal entries to a single foreign currency plus the reporting currency.
+            When processing multi-currency transactions (e.g., USD and CAD entries in a
+            CHF-reporting ledger), ExtendedCashCtrlLedger splits them into separate
+            transactions and uses a transitory account to balance residual amounts.
+
+            The original problem: CashCtrl was rejecting these journal entries with
+            "Total debit and total credit must be equal" errors due to 0.01 rounding
+            differences. This occurred because CashCtrl recalculates report_amount as
+            `amount * fx_rate`, and the 8-digit FX precision causes small discrepancies
+            that accumulate across transaction legs.
+
+            This test verifies that the sanitize_journal and rounding compensation
+            mechanisms correctly handle these FX precision issues, allowing the
+            entries to be successfully mirrored to CashCtrl with a balanced
+            transitory account.
+
+        Test scenario:
+            - Three multi-currency journal entries representing interest income with
+              withholding tax deductions (real-world Swiss bank transaction pattern)
+            - Each entry involves the reporting currency (CHF) plus one foreign currency
+              (USD or CAD)
+            - The test verifies that entries can be mirrored without CashCtrl rejecting
+              them, and that the transitory account (1999) has a zero balance.
+        """
+        ACCOUNTS_CSV = """
+        group,    account, currency, description
+        /Assets,     1176,      CHF, Accounts Receivable VAT Cleared
+        /Assets,     1903,      USD, Transitory account - USD
+        /Assets,     1904,      CAD, Transitory account - CAD
+        /Assets,     1999,      CHF, Transitory Account for CashCtrl rounding precision
+        /Revenue,    6953,      USD, Interest Income USD
+        /Revenue,    6954,      CAD, Interest Income CAD
+        """
+        ASSETS_CSV = """
+        ticker, increment
+           CAD,      0.01
+           USD,      0.01
+           CHF,      0.01
+        """
+        PRICE_CSV = """
+        ticker,       date, currency,    price
+           CAD, 2024-01-01,      CHF,   0.6523
+           CAD, 2024-02-01,      CHF,   0.6458
+           CAD, 2024-03-01,      CHF,   0.6545
+           CAD, 2024-04-01,      CHF,   0.6594
+           CAD, 2024-05-01,      CHF,   0.6714
+           CAD, 2024-06-01,      CHF,   0.6725
+           CAD, 2024-07-01,      CHF,   0.6617
+           CAD, 2024-08-01,      CHF,   0.6617
+           CAD, 2024-09-01,      CHF,   0.6369
+           CAD, 2024-10-01,      CHF,   0.6326
+           CAD, 2024-11-01,      CHF,   0.6335
+           CAD, 2024-12-01,      CHF,   0.6346
+           USD, 2024-01-01,      CHF,   0.8808
+           USD, 2024-02-01,      CHF,   0.8639
+           USD, 2024-03-01,      CHF,   0.8817
+           USD, 2024-04-01,      CHF,   0.8918
+           USD, 2024-05-01,      CHF,   0.9165
+           USD, 2024-06-01,      CHF,   0.9197
+           USD, 2024-07-01,      CHF,   0.9061
+           USD, 2024-08-01,      CHF,   0.9049
+           USD, 2024-09-01,      CHF,   0.8754
+           USD, 2024-10-01,      CHF,   0.8564
+           USD, 2024-11-01,      CHF,    0.865
+           USD, 2024-12-01,      CHF,   0.8846
+        """
+        JOURNAL_CSV = """
+              date, account, contra, currency,     amount, report_amount, description
+        2024-08-26,        ,   6953,      USD,    2408.10,       2060.85, Bruttozins Festgeldanlage 1
+                  ,    1176,       ,      CHF,     721.30,              , Verrechnungssteuer 35%
+                  ,    1903,       ,      USD,    1565.27,       1339.55, Nettozins Festgeldanlage 1
+        2024-09-06,        ,   6954,      CAD,    1618.17,       1015.30, Bruttozins Festgeldanlage 2
+                  ,    1176,       ,      CHF,     355.35,              , Verrechnungssteuer 35%
+                  ,    1904,       ,      CAD,    1051.81,        659.95, Nettozins Festgeldanlage 2
+        2024-10-11,        ,   6954,      CAD,    1522.11,        955.50, Bruttozins Festgeldanlage 3
+                  ,    1176,       ,      CHF,     334.40,              , Verrechnungssteuer 35%
+                  ,    1904,       ,      CAD,     989.37,        621.10, Nettozins Festgeldanlage 3
+        """
+
+        accounts = pd.read_csv(StringIO(ACCOUNTS_CSV), skipinitialspace=True)
+        assets = pd.read_csv(StringIO(ASSETS_CSV), skipinitialspace=True)
+        price_history = pd.read_csv(StringIO(PRICE_CSV), skipinitialspace=True)
+        journal = pd.read_csv(StringIO(JOURNAL_CSV), skipinitialspace=True)
+
+        engine.reporting_currency = "CHF"
+        engine.transitory_account = 1999
+        engine.restore(
+            accounts=accounts,
+            assets=assets,
+            price_history=price_history,
+            journal=journal
+        )
+
+        # Check that transitory account (1999) balances to zero
+        balance = engine.individual_account_balances(accounts=1999, period="2024")
+        assert balance.query("account == 1999")["report_balance"].iloc[0] == 0.0
