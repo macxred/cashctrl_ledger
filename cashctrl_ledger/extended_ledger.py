@@ -297,53 +297,74 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 if all(balance == 0.0):
                     result = entry
                 else:
-                    entry["report_amount"] =  entry["report_amount"] - balance
+                    entry["report_amount"] = entry["report_amount"] - balance
                     fx_adjust = entry.copy()
                     fx_adjust["currency"] = reporting_currency
                     fx_adjust["report_amount"] = balance
                     fx_adjust["amount"] = fx_adjust["report_amount"]
                     fx_adjust["id"] = fx_adjust["id"] + ":fx"
-                    fx_adjust["description"] = "Currency adjustments: " + fx_adjust["description"]
+                    fx_adjust["description"] = (
+                        "Currency adjustments: " + fx_adjust["description"]
+                    )
                     fx_adjust = fx_adjust[fx_adjust["report_amount"] != 0]
-                    fx_adjust = self._add_balancing_leg(fx_adjust, fx_rate=1,
-                        account=transitory_account, currency=reporting_currency)
+                    fx_adjust = self._add_balancing_leg(
+                        fx_adjust, fx_rate=1,
+                        account=transitory_account, currency=reporting_currency
+                    )
 
-                    result = pd.concat([self.journal.standardize(entry),
-                                        self.journal.standardize(fx_adjust)], ignore_index=True)
+                    result = pd.concat(
+                        [self.journal.standardize(entry),
+                         self.journal.standardize(fx_adjust)], ignore_index=True
+                    )
                 result["amount"] = self.round_to_precision(
                     result["amount"], result["currency"]
                 )
                 result["report_amount"] = self.round_to_precision(
                     result["report_amount"], reporting_currency
                 )
-                multiplier = result["account"].notna().astype(int) - result["contra"].notna().astype(int)
-                amount = np.where(result["currency"] == reporting_currency, result["amount"], result["report_amount"])
+                multiplier = (
+                    result["account"].notna().astype(int)
+                    - result["contra"].notna().astype(int)
+                )
+                amount = np.where(
+                    result["currency"] == reporting_currency,
+                    result["amount"], result["report_amount"]
+                )
                 rounding_error = (multiplier * amount).sum(skipna=False)
-                currency_precision = self.precision_vectorized([currency], [entry["date"].iloc[0]])[0]
+                currency_precision = self.precision_vectorized(
+                    [currency], [entry["date"].iloc[0]]
+                )[0]
                 if abs(rounding_error) > currency_precision / 2:
-                    # Rounding after converting foreign currency amounts to reporting currency amounts
-                    # by multipying with FX rate leads to rounding differences that sum up to a net
-                    # rounding difference equal or largen than currency precision (0.01 for CHF, EUR, USD, etc.).
-                    # -> We compensate this roundig difference by creating transactions that have rounding
-                    #    differences with the same amount but opposite sign.
+                    # Rounding after converting foreign currency amounts to reporting
+                    # currency amounts by multipying with FX rate leads to rounding
+                    # differences that sum up to a net rounding difference equal or
+                    # larger than currency precision (0.01 for CHF, EUR, USD, etc.).
+                    # -> We compensate this rounding difference by creating
+                    #    transactions that have rounding differences with the same
+                    #    amount but opposite sign.
                     # 1. Create a transaction with one cent rounding difference
                     rounding_compensation = entry.to_dict("records")[0]
-                    id = rounding_compensation["id"] + ":rounding"
+                    txn_id = rounding_compensation["id"] + ":rounding"
+                    sign = np.sign(rounding_error)
                     rounding_compensation |= {
                         "description": "Compensation of CashCtrl rounding differences",
                         "account": transitory_account,
                         "currency": currency,
-                        "report_amount": balance,
-                        "amount": [np.sign(rounding_error) * x for x in [-0.01, -0.01, 0.02]],
-                        "report_amount": [np.sign(rounding_error) * x for x in [-0.01, -0.01, 0.01]],
+                        "amount": [sign * x for x in [-0.01, -0.01, 0.02]],
+                        "report_amount": [sign * x for x in [-0.01, -0.01, 0.01]],
                     }
-                    rounding_compensation = self.journal.standardize(pd.DataFrame(rounding_compensation))
-                    # 2. Duplicate this transaction as often as needed to compensate the full rounding error
+                    rounding_compensation = self.journal.standardize(
+                        pd.DataFrame(rounding_compensation)
+                    )
+                    # 2. Duplicate this transaction as often as needed to compensate
+                    #    the full rounding error
                     rounding_compensation = [
-                        rounding_compensation.assign(id = f"{id}-{i}")
+                        rounding_compensation.assign(id=f"{txn_id}-{i}")
                         for i in range(abs(round(rounding_error / currency_precision)))
                     ]
-                    result = pd.concat([result, *rounding_compensation], ignore_index=True)
+                    result = pd.concat(
+                        [result, *rounding_compensation], ignore_index=True
+                    )
                 return self.journal.standardize(result)
 
         else:
