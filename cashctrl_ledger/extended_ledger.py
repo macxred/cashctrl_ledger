@@ -1,27 +1,14 @@
-"""This module extends CashCtrlLedger to handle transactions that can not be
-directly represented in CahCtrl.
-"""
+"""Extends CashCtrlLedger to handle transactions incompatible with CashCtrl."""
 
 import pandas as pd
 from .ledger import CashCtrlLedger
 
 
 class ExtendedCashCtrlLedger(CashCtrlLedger):
-    """
-    Extends `CashCtrlLedger` to handle transactions that cannot be directly
-    represented due to CashCtrl's limitations.
+    """Handles CashCtrl limitations: 8-digit FX precision, single currency per transaction.
 
-    CashCtrl's data model imposes constraints, such as restricting FX rates
-    to eight-digit precision and limiting collective journal entries to a single
-    currency beyond the reporting currency. This class ensures that transactions
-    conform to CashCtrl's standards by splitting unrepresentable transactions
-    into multiple simpler ones that can be accommodated, while preserving the
-    overall financial result.
-
-    To use this class, a special `transitory_account` must be defined in the
-    chart of accounts. Residual amounts arising from split transactions are
-    recorded in this account. The account is balanced for any group of split
-    transactions that together represent a single original transaction.
+    Splits multi-currency transactions and creates compensating entries via a transitory
+    account to preserve financial accuracy. See docs/CASHCTRL_FX_CONSTRAINTS.md for details.
     """
 
     _transitory_account = None
@@ -52,16 +39,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
 
     @property
     def transitory_account(self) -> int:
-        """Returns the transitory account used to book residual amounts when complex
-        transactions are broken into simpler ones for compatibility with CashCtrl.
-
-        Raises:
-            ValueError: If the transitory account is not set, does not exist, or is
-            denominated in a different currency than the reporting currency.
-
-        Returns:
-            int: The transitory account number.
-        """
+        """Account for residual amounts when splitting complex transactions."""
         if self._transitory_account is None:
             raise ValueError("transitory_account is not set.")
         if self._transitory_account not in set(
@@ -95,21 +73,8 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
     # Journal
 
     def sanitize_journal(self, journal: pd.DataFrame) -> pd.DataFrame:
-        """Modify journal to ensure coherence and compatibility with CashCtrl.
-
-        Extends the base `sanitize_journal` to address CashCtrl-specific constraints:
-        - Splits collective journal entries with multiple currencies (other than
-          the reporting currency) into separate entries for each currency that can
-          be represented in CashCtrl.
-        - Ensures transactions conform to CashCtrl's eight-digit precision limit.
-        - Creates additional compensating transactions to balance residual amounts
-          using the designated `transitory_account`.
-
-        Args:
-            journal (pd.DataFrame): The journal DataFrame with transactions to be processed.
-
-        Returns:
-            pd.DataFrame: The modified journal DataFrame.
+        """Prepare journal for CashCtrl by splitting multi-currency transactions
+        and adding FX adjustment entries to handle 8-digit precision limits.
         """
         journal = self.journal.standardize(journal)
 
@@ -160,24 +125,10 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
 
     def split_multi_currency_transactions(self, journal: pd.DataFrame,
                                           transitory_account: int | None = None) -> pd.DataFrame:
-        """
-        Splits multi-currency transactions into individual transactions for each currency.
+        """Split multi-currency transactions into one transaction per currency.
 
-        CashCtrl restricts collective transactions to a single currency beyond the reporting
-        currency. This method splits multi-currency transactions into several transactions
-        compatible with CashCtrl, each involving a single currency and possibly
-        the reporting currency. If there is a residual balance in any currency, it is
-        recorded in the `transitory_account`. The total of all entries in the transitory
-        account across these transactions will balance to zero.
-
-        Args:
-            journal (pd.DataFrame): The journal DataFrame containing transactions to be split.
-            transitory_account (int, optional): The account number for recording balancing
-                entries. If not provided, the instance's `transitory_account` will be used.
-
-        Returns:
-            pd.DataFrame: Modified journal entries with split transactions and any necessary
-                balancing entries.
+        CashCtrl allows only one foreign currency per collective transaction. This splits
+        them and uses transitory_account for clearing entries that balance to zero overall.
         """
         reporting_currency = self.reporting_currency
         is_reporting_currency = journal["currency"] == reporting_currency
@@ -217,24 +168,10 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
     def _add_fx_adjustment(
         self, entry: pd.DataFrame, transitory_account: int, reporting_currency: str
     ) -> pd.DataFrame:
-        """
-        Adjusts journal entries to conform with CashCtrl's eight-digit FX rate precision.
+        """Adjust entries for CashCtrl's 8-digit FX precision and single-rate constraint.
 
-        CashCtrl uses a SINGLE FX rate per transaction and recalculates all report_amounts
-        as amount * fx_rate. Per-entry custom rates are ignored. This method:
-        1. Calculates what CashCtrl will actually store after recalculation
-        2. Adds a balancing leg in foreign currency (using transaction FX rate)
-        3. Creates a :rounding entry in REPORTING CURRENCY to compensate for
-           the difference between desired and actual total (CashCtrl preserves
-           reporting currency amounts without recalculation).
-
-        Args:
-            entry (pd.DataFrame): The journal entry or entries to be adjusted.
-            transitory_account (int): The account number for recording balancing transactions.
-            reporting_currency (str): The reporting currency against which adjustments are made.
-
-        Returns:
-            pd.DataFrame: The adjusted journal entries and any necessary balancing entries.
+        Creates :rounding entries to compensate for differences between desired and
+        actual report_amounts after CashCtrl's recalculation (amount * fx_rate).
         """
         if len(entry) == 1:
             # Individual transaction: one row in the journal data frame
@@ -279,11 +216,10 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     return self.journal.standardize(result)
 
         elif len(entry) > 1:
-            # Collective transaction: multiple rows in the journal data frame
-            # CashCtrl constraint: ONE FX rate per transaction, recalculates all report_amounts
+            # Collective transaction: CashCtrl uses single FX rate, recalculates all report_amounts
             currency, fx_rate = self._collective_transaction_currency_and_rate(entry)
             fx_rate = round(fx_rate, 8)
-            self.fx_rates_hack[entry["id"].iloc[0]] = currency, fx_rate
+            self._sanitized_fx_rates[entry["id"].iloc[0]] = currency, fx_rate
             if currency == reporting_currency:
                 return entry
 
@@ -298,8 +234,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
 
             original_reports = entry[entry["account"] != transitory_account].copy()
 
-            # Step 2: Convert reporting-currency entries to foreign currency using smart splitting
-            # This finds foreign currency amounts that balance BOTH currencies after rounding
+            # Step 2: Convert to foreign currency with smart splitting (balances both currencies)
             entry = self._smart_convert_to_foreign(
                 entry, fx_rate, currency, transitory_account, reporting_currency
             )
@@ -356,9 +291,10 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                         rounding_amount = self.round_to_precision(
                             adjustment / fx_rate, currency
                         )
-                        # Ensure the converted amount gives correct report_amount after recalc
+                        # Ensure the converted amount gives correct report_amount
                         if rounding_amount == 0 and adjustment != 0:
-                            rounding_amount = foreign_precision if adjustment > 0 else -foreign_precision
+                            sign = 1 if adjustment > 0 else -1
+                            rounding_amount = sign * foreign_precision
 
                     if adjustment > 0:
                         acc, contra = account, transitory_account
@@ -440,14 +376,10 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
     def _smart_convert_to_foreign(
         self, entry, fx_rate, currency, transitory_account, reporting_currency
     ):
-        """Convert reporting-currency entries to foreign currency using smart splitting.
+        """Convert reporting-currency entries to foreign currency with smart splitting.
 
-        This method converts USD clearing entries to foreign currency AND adds
-        a balancing leg, choosing amounts that make BOTH currencies balance
+        Searches for clearing/balancing amounts that make both currencies balance
         after CashCtrl's recalculation (amount * fx_rate).
-
-        The key insight: instead of naively converting USD→foreign and rounding,
-        we search for a clearing/balancing split that gives exact USD balance.
         """
         multiplier = entry["account"].notna().astype(int) - entry["contra"].notna().astype(int)
 
@@ -466,42 +398,33 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         entry.loc[usd_mask, "amount"] = entry.loc[usd_mask, "report_amount"] / fx_rate
         entry.loc[usd_mask, "currency"] = currency
         currency_precision = self.precision_vectorized([currency], [entry["date"].iloc[0]])[0]
+        reporting_precision = self.precision_vectorized(
+            [reporting_currency], [entry["date"].iloc[0]]
+        )[0]
         entry["amount"] = self.round_to_precision(entry["amount"], entry["currency"])
 
-        # Calculate what USD CashCtrl will compute for original entries
-        # (This is fixed - we can't change the original entries)
+        # USD that CashCtrl will compute for original foreign entries (fixed)
         foreign_usd = self.round_to_precision(
             total_foreign_orig * fx_rate, reporting_currency
         )
 
-        # Calculate total foreign amount after conversion
         total_foreign_now = (entry["amount"] * multiplier).sum()
-
-        # What balancing amount do we need for foreign currency to balance?
         balance_foreign = self.round_to_precision(-total_foreign_now, currency)
 
         if balance_foreign == 0:
-            # No balancing needed
             return entry
 
-        # Smart splitting: find clearing/balancing amounts that give exact USD balance
-        # We need: total_usd = 0 after CashCtrl recalculates everything
-
-        # Search for optimal split of balance_foreign into (clearing_adjust, balancing)
-        # where clearing_adjust adjusts an existing entry and balancing is a new entry
+        # Search for clearing/balancing split that gives total_usd = 0 after recalculation
         best_split = None
         best_diff = float('inf')
 
-        # Try different splits
         for balancing in range(int(-50 / currency_precision), int(51 / currency_precision)):
             balancing_amount = balancing * currency_precision
             clearing_amount = balance_foreign - balancing_amount
 
-            # USD that CashCtrl will calculate
             clearing_usd = self.round_to_precision(clearing_amount * fx_rate, reporting_currency)
             balancing_usd = self.round_to_precision(balancing_amount * fx_rate, reporting_currency)
 
-            # Also need to consider the USD from converted entries
             converted_usd = 0
             for idx in entry.index[usd_mask]:
                 converted_usd += self.round_to_precision(
@@ -515,12 +438,11 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 best_diff = diff
                 best_split = (clearing_amount, balancing_amount, clearing_usd, balancing_usd)
 
-            if diff < 0.001:
+            if diff < reporting_precision / 2:
                 break
 
         clearing_amount, balancing_amount, _, _ = best_split
 
-        # Add clearing entry to transitory
         if abs(clearing_amount) >= currency_precision / 2:
             clearing_leg = entry.head(1).copy()
             clearing_leg["currency"] = currency
@@ -532,7 +454,6 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 self.journal.standardize(clearing_leg),
             ])
 
-        # Add balancing entry to transitory (separate entry for the split)
         if abs(balancing_amount) >= currency_precision / 2:
             balancing_leg = entry.head(1).copy()
             balancing_leg["currency"] = currency
@@ -547,19 +468,9 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         return entry
 
     def _add_balancing_leg(self, entry, fx_rate, account, currency):
-        """Add balancing leg to ensure foreign currency amounts balance.
-
-        CashCtrl requires foreign currency (e.g., JPY) amounts to balance within
-        a collective transaction. This adds a single clearing entry to transitory.
-
-        Note: CashCtrl uses a SINGLE FX rate per transaction. The report_amount
-        is recalculated as amount * fx_rate. Any USD imbalance is handled by
-        :rounding entries created in _add_fx_adjustment.
-        """
+        """Add clearing entry to balance foreign currency amounts in collective transactions."""
         multiplier = entry["account"].notna().astype(int) - entry["contra"].notna().astype(int)
         reporting_currency = self.reporting_currency
-
-        # Calculate foreign amount needed to balance
         balance_foreign = self.round_to_precision(
             -1.0 * (entry["amount"] * multiplier).sum(), currency
         )
@@ -570,7 +481,6 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
             balancing_leg["description"] = "Balancing foreign currency amount"
             balancing_leg["amount"] = balance_foreign
             balancing_leg["account"] = account
-            # report_amount will be recalculated by CashCtrl as amount * fx_rate
             balancing_leg["report_amount"] = self.round_to_precision(
                 balance_foreign * fx_rate, reporting_currency
             )
