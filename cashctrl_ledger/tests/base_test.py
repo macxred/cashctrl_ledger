@@ -43,7 +43,7 @@ class BaseTestCashCtrl(BaseTest):
         2024-12-31,      1171,                         ,           0.00,   "{USD: 0.00}"
         2024-12-31,      1175,                         ,         200.00,   "{USD: 200.00}"
         2024-12-31,      2200,                         ,        -807.94,   "{USD: -807.94}"
-        2024-12-31, 3000:9999,                         ,          -0.01,   "{USD: 1198.25, EUR: -1119.04}"
+        2024-12-31, 3000:9999,                         ,          -0.00,   "{USD: 1198.26, EUR: -1119.04}"
     """
     EXPECTED_BALANCES = pd.read_csv(StringIO(EXPECTED_BALANCES_CSV), skipinitialspace=True)
     EXPECTED_BALANCES["profit_center"] = EXPECTED_BALANCES["profit_center"].apply(BaseTest.parse_profit_center)

@@ -2,7 +2,6 @@
 directly represented in CahCtrl.
 """
 
-import numpy as np
 import pandas as pd
 from .ledger import CashCtrlLedger
 
@@ -114,6 +113,9 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         """
         journal = self.journal.standardize(journal)
 
+        if len(journal) == 0:
+            return journal
+
         # Insert missing base currency amounts
         mask = journal['report_amount'].isna()
         journal.loc[mask, 'report_amount'] = self.report_amount(
@@ -149,6 +151,10 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
             result = pd.concat(result)
         else:
             result = df
+
+        # Drop internal fx_rate column - not part of journal schema
+        if "fx_rate" in result.columns:
+            result = result.drop(columns=["fx_rate"])
 
         return result
 
@@ -214,11 +220,13 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         """
         Adjusts journal entries to conform with CashCtrl's eight-digit FX rate precision.
 
-        This method ensures that the reporting currency amounts in a journal entry match
-        CashCtrl's precision limit for foreign exchange rates of eight digits after
-        the decimal point. If an adjustment is needed due to rounding differences,
-        it adds a balancing journal entry using the `transitory_account`, so the
-        financial result remains consistent.
+        CashCtrl uses a SINGLE FX rate per transaction and recalculates all report_amounts
+        as amount * fx_rate. Per-entry custom rates are ignored. This method:
+        1. Calculates what CashCtrl will actually store after recalculation
+        2. Adds a balancing leg in foreign currency (using transaction FX rate)
+        3. Creates a :rounding entry in REPORTING CURRENCY to compensate for
+           the difference between desired and actual total (CashCtrl preserves
+           reporting currency amounts without recalculation).
 
         Args:
             entry (pd.DataFrame): The journal entry or entries to be adjusted.
@@ -272,122 +280,302 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
 
         elif len(entry) > 1:
             # Collective transaction: multiple rows in the journal data frame
+            # CashCtrl constraint: ONE FX rate per transaction, recalculates all report_amounts
             currency, fx_rate = self._collective_transaction_currency_and_rate(entry)
             fx_rate = round(fx_rate, 8)
             self.fx_rates_hack[entry["id"].iloc[0]] = currency, fx_rate
             if currency == reporting_currency:
                 return entry
-            else:
-                mask = (entry["currency"] == reporting_currency) & entry["report_amount"].isna()
-                entry.loc[mask, "report_amount"] = entry.loc[mask, "amount"]
-                entry["report_amount"] = self.round_to_precision(
-                    entry["report_amount"], reporting_currency,
-                )
-                if entry["report_amount"].isna().any():
-                    raise ValueError("Reporting currency missing.")
-                mask = (entry["currency"] == reporting_currency)
-                if mask.any():
-                    entry.loc[mask, "amount"] = entry.loc[mask, "report_amount"] / fx_rate
-                    entry.loc[mask, "currency"] = currency
-                entry["amount"] = self.round_to_precision(entry["amount"], entry["currency"])
-                entry = self._add_balancing_leg(entry, fx_rate=fx_rate,
-                                                account=transitory_account, currency=currency)
-                balance = entry["report_amount"] - np.array(
-                    self.round_to_precision(entry["amount"] * fx_rate, reporting_currency)
-                )
-                balance = np.array(self.round_to_precision(balance, reporting_currency))
-                if all(balance == 0.0):
-                    result = entry
-                else:
-                    entry["report_amount"] = entry["report_amount"] - balance
-                    fx_adjust = entry.copy()
-                    fx_adjust["currency"] = reporting_currency
-                    fx_adjust["report_amount"] = balance
-                    fx_adjust["amount"] = fx_adjust["report_amount"]
-                    fx_adjust["id"] = fx_adjust["id"] + ":fx"
-                    fx_adjust["description"] = (
-                        "Currency adjustments: " + fx_adjust["description"]
-                    )
-                    fx_adjust = fx_adjust[fx_adjust["report_amount"] != 0]
-                    fx_adjust = self._add_balancing_leg(
-                        fx_adjust, fx_rate=1,
-                        account=transitory_account, currency=reporting_currency
-                    )
 
-                    result = pd.concat(
-                        [self.journal.standardize(entry),
-                         self.journal.standardize(fx_adjust)], ignore_index=True
-                    )
-                result["amount"] = self.round_to_precision(
-                    result["amount"], result["currency"]
+            # Step 1: Save original desired report_amounts for foreign accounts
+            mask = (entry["currency"] == reporting_currency) & entry["report_amount"].isna()
+            entry.loc[mask, "report_amount"] = entry.loc[mask, "amount"]
+            entry["report_amount"] = self.round_to_precision(
+                entry["report_amount"], reporting_currency,
+            )
+            if entry["report_amount"].isna().any():
+                raise ValueError("Reporting currency missing.")
+
+            original_reports = entry[entry["account"] != transitory_account].copy()
+
+            # Step 2: Convert reporting-currency entries to foreign currency using smart splitting
+            # This finds foreign currency amounts that balance BOTH currencies after rounding
+            entry = self._smart_convert_to_foreign(
+                entry, fx_rate, currency, transitory_account, reporting_currency
+            )
+
+            # Step 3: Calculate what CashCtrl will ACTUALLY store
+            entry["report_amount"] = self.round_to_precision(
+                entry["amount"] * fx_rate, reporting_currency
+            )
+
+            result = self.journal.standardize(entry)
+
+            # Step 4: Calculate rounding corrections for each foreign account
+            currency_precision = self.precision_vectorized(
+                [reporting_currency], [entry["date"].iloc[0]]
+            )[0]
+            rounding_entries = []
+            accounts_df = self.accounts.list()
+
+            for account in original_reports["account"].unique():
+                if pd.isna(account) or account == transitory_account:
+                    continue
+
+                orig_mask = original_reports["account"] == account
+                original_sum = original_reports.loc[orig_mask, "report_amount"].sum()
+
+                cashctrl_mask = entry["account"] == account
+                cashctrl_sum = entry.loc[cashctrl_mask, "report_amount"].sum()
+
+                rounding_error = self.round_to_precision(
+                    cashctrl_sum - original_sum, reporting_currency
                 )
-                result["report_amount"] = self.round_to_precision(
-                    result["report_amount"], reporting_currency
-                )
-                multiplier = (
-                    result["account"].notna().astype(int)
-                    - result["contra"].notna().astype(int)
-                )
-                amount = np.where(
-                    result["currency"] == reporting_currency,
-                    result["amount"], result["report_amount"]
-                )
-                rounding_error = (multiplier * amount).sum(skipna=False)
-                currency_precision = self.precision_vectorized(
-                    [currency], [entry["date"].iloc[0]]
-                )[0]
+
                 if abs(rounding_error) > currency_precision / 2:
-                    # Rounding after converting foreign currency amounts to reporting
-                    # currency amounts by multipying with FX rate leads to rounding
-                    # differences that sum up to a net rounding difference equal or
-                    # larger than currency precision (0.01 for CHF, EUR, USD, etc.).
-                    # -> We compensate this rounding difference by creating
-                    #    transactions that have rounding differences with the same
-                    #    amount but opposite sign.
-                    # 1. Create a transaction with one cent rounding difference
-                    rounding_compensation = entry.to_dict("records")[0]
-                    txn_id = rounding_compensation["id"] + ":rounding"
-                    sign = np.sign(rounding_error)
-                    rounding_compensation |= {
+                    adjustment = self.round_to_precision(-rounding_error, reporting_currency)
+                    rounding_id = entry["id"].iloc[0] + ":rounding"
+                    rounding_date = entry["date"].iloc[0]
+
+                    # Get account's native currency to avoid fallback issues
+                    account_currency = accounts_df.loc[
+                        accounts_df["account"] == account, "currency"
+                    ].iloc[0]
+
+                    if account_currency == reporting_currency:
+                        # Reporting currency account - use USD directly
+                        rounding_currency = reporting_currency
+                        rounding_amount = adjustment
+                    else:
+                        # Foreign currency account - convert adjustment to account's currency
+                        # Use the transaction's FX rate
+                        rounding_currency = currency
+                        foreign_precision = self.precision_vectorized(
+                            [currency], [entry["date"].iloc[0]]
+                        )[0]
+                        rounding_amount = self.round_to_precision(
+                            adjustment / fx_rate, currency
+                        )
+                        # Ensure the converted amount gives correct report_amount after recalc
+                        if rounding_amount == 0 and adjustment != 0:
+                            rounding_amount = foreign_precision if adjustment > 0 else -foreign_precision
+
+                    if adjustment > 0:
+                        acc, contra = account, transitory_account
+                    else:
+                        acc, contra = transitory_account, account
+                        rounding_amount = abs(rounding_amount)
+
+                    rounding_entries.append({
+                        "id": rounding_id,
+                        "date": rounding_date,
                         "description": "Compensation of CashCtrl rounding differences",
-                        "account": transitory_account,
-                        "currency": currency,
-                        "amount": [sign * x for x in [-0.01, -0.01, 0.02]],
-                        "report_amount": [sign * x for x in [-0.01, -0.01, 0.01]],
-                    }
-                    rounding_compensation = self.journal.standardize(
-                        pd.DataFrame(rounding_compensation)
-                    )
-                    # 2. Duplicate this transaction as often as needed to compensate
-                    #    the full rounding error
-                    rounding_compensation = [
-                        rounding_compensation.assign(id=f"{txn_id}-{i}")
-                        for i in range(abs(round(rounding_error / currency_precision)))
-                    ]
-                    result = pd.concat(
-                        [result, *rounding_compensation], ignore_index=True
-                    )
-                return self.journal.standardize(result)
+                        "account": acc,
+                        "contra": contra,
+                        "currency": rounding_currency,
+                        "amount": rounding_amount,
+                        "report_amount": abs(adjustment),
+                    })
+
+            if rounding_entries:
+                rounding_df = pd.DataFrame(rounding_entries)
+                rounding_df = self.journal.standardize(rounding_df)
+                result = pd.concat([result, rounding_df], ignore_index=True)
+
+            # Step 5: Check if TOTAL transaction is balanced, fix transitory if needed
+            # This handles cases where smart splitting introduced its own rounding error
+            result_multiplier = (
+                result["account"].notna().astype(int) - result["contra"].notna().astype(int)
+            )
+            total_imbalance = self.round_to_precision(
+                (result["report_amount"] * result_multiplier).sum(), reporting_currency
+            )
+
+            if abs(total_imbalance) > currency_precision / 2:
+                # Find a reporting-currency account to balance against
+                # We need a reporting-currency account to avoid currency fallback issues
+                accounts_df = self.accounts.list()
+                reporting_accounts = original_reports.merge(
+                    accounts_df[['account', 'currency']],
+                    on='account',
+                    how='left'
+                )
+                reporting_accounts = reporting_accounts[
+                    reporting_accounts['currency_y'] == reporting_currency
+                ]
+
+                if len(reporting_accounts) > 0:
+                    balance_account = reporting_accounts["account"].iloc[0]
+
+                    if total_imbalance > 0:
+                        # Transaction has too much debit - credit transitory
+                        acc, contra = balance_account, transitory_account
+                        adjustment = total_imbalance
+                    else:
+                        # Transaction has too much credit - debit transitory
+                        acc, contra = transitory_account, balance_account
+                        adjustment = -total_imbalance
+
+                    rounding_id = entry["id"].iloc[0] + ":rounding"
+                    rounding_date = entry["date"].iloc[0]
+                    total_rounding = pd.DataFrame([{
+                        "id": rounding_id,
+                        "date": rounding_date,
+                        "description": "Compensation of CashCtrl rounding differences",
+                        "account": acc,
+                        "contra": contra,
+                        "currency": reporting_currency,
+                        "amount": adjustment,
+                        "report_amount": adjustment,
+                    }])
+                    total_rounding = self.journal.standardize(total_rounding)
+                    result = pd.concat([result, total_rounding], ignore_index=True)
+                # If no reporting-currency account, skip - transitory will have small residual
+
+            return self.journal.standardize(result)
 
         else:
             raise ValueError("Expecting at least one `entry` row.")
 
-    def _add_balancing_leg(self, entry, fx_rate, account, currency):
+    def _smart_convert_to_foreign(
+        self, entry, fx_rate, currency, transitory_account, reporting_currency
+    ):
+        """Convert reporting-currency entries to foreign currency using smart splitting.
+
+        This method converts USD clearing entries to foreign currency AND adds
+        a balancing leg, choosing amounts that make BOTH currencies balance
+        after CashCtrl's recalculation (amount * fx_rate).
+
+        The key insight: instead of naively converting USD→foreign and rounding,
+        we search for a clearing/balancing split that gives exact USD balance.
+        """
         multiplier = entry["account"].notna().astype(int) - entry["contra"].notna().astype(int)
-        balance = self.round_to_precision(-1.0 * (entry["amount"] * multiplier).sum(), currency)
-        if balance != 0:
+
+        # Identify entries that need conversion (reporting currency entries)
+        usd_mask = entry["currency"] == reporting_currency
+
+        if not usd_mask.any():
+            # No conversion needed, just add balancing leg
+            return self._add_balancing_leg(entry, fx_rate, transitory_account, currency)
+
+        # Calculate total foreign amount in the original entries
+        foreign_mask = entry["currency"] == currency
+        total_foreign_orig = (entry.loc[foreign_mask, "amount"] * multiplier[foreign_mask]).sum()
+
+        # Convert USD entries to foreign currency (naive conversion first)
+        entry.loc[usd_mask, "amount"] = entry.loc[usd_mask, "report_amount"] / fx_rate
+        entry.loc[usd_mask, "currency"] = currency
+        currency_precision = self.precision_vectorized([currency], [entry["date"].iloc[0]])[0]
+        entry["amount"] = self.round_to_precision(entry["amount"], entry["currency"])
+
+        # Calculate what USD CashCtrl will compute for original entries
+        # (This is fixed - we can't change the original entries)
+        foreign_usd = self.round_to_precision(
+            total_foreign_orig * fx_rate, reporting_currency
+        )
+
+        # Calculate total foreign amount after conversion
+        total_foreign_now = (entry["amount"] * multiplier).sum()
+
+        # What balancing amount do we need for foreign currency to balance?
+        balance_foreign = self.round_to_precision(-total_foreign_now, currency)
+
+        if balance_foreign == 0:
+            # No balancing needed
+            return entry
+
+        # Smart splitting: find clearing/balancing amounts that give exact USD balance
+        # We need: total_usd = 0 after CashCtrl recalculates everything
+
+        # Search for optimal split of balance_foreign into (clearing_adjust, balancing)
+        # where clearing_adjust adjusts an existing entry and balancing is a new entry
+        best_split = None
+        best_diff = float('inf')
+
+        # Try different splits
+        for balancing in range(int(-50 / currency_precision), int(51 / currency_precision)):
+            balancing_amount = balancing * currency_precision
+            clearing_amount = balance_foreign - balancing_amount
+
+            # USD that CashCtrl will calculate
+            clearing_usd = self.round_to_precision(clearing_amount * fx_rate, reporting_currency)
+            balancing_usd = self.round_to_precision(balancing_amount * fx_rate, reporting_currency)
+
+            # Also need to consider the USD from converted entries
+            converted_usd = 0
+            for idx in entry.index[usd_mask]:
+                converted_usd += self.round_to_precision(
+                    entry.loc[idx, "amount"] * fx_rate, reporting_currency
+                ) * multiplier[idx]
+
+            total_usd = foreign_usd + converted_usd + clearing_usd + balancing_usd
+            diff = abs(total_usd)
+
+            if diff < best_diff:
+                best_diff = diff
+                best_split = (clearing_amount, balancing_amount, clearing_usd, balancing_usd)
+
+            if diff < 0.001:
+                break
+
+        clearing_amount, balancing_amount, _, _ = best_split
+
+        # Add clearing entry to transitory
+        if abs(clearing_amount) >= currency_precision / 2:
+            clearing_leg = entry.head(1).copy()
+            clearing_leg["currency"] = currency
+            clearing_leg["description"] = "Clearing to transitory"
+            clearing_leg["amount"] = clearing_amount
+            clearing_leg["account"] = transitory_account
+            entry = pd.concat([
+                self.journal.standardize(entry),
+                self.journal.standardize(clearing_leg),
+            ])
+
+        # Add balancing entry to transitory (separate entry for the split)
+        if abs(balancing_amount) >= currency_precision / 2:
             balancing_leg = entry.head(1).copy()
             balancing_leg["currency"] = currency
             balancing_leg["description"] = "Balancing foreign currency amount"
-            balancing_leg["amount"] = balance
+            balancing_leg["amount"] = balancing_amount
+            balancing_leg["account"] = transitory_account
+            entry = pd.concat([
+                self.journal.standardize(entry),
+                self.journal.standardize(balancing_leg),
+            ])
+
+        return entry
+
+    def _add_balancing_leg(self, entry, fx_rate, account, currency):
+        """Add balancing leg to ensure foreign currency amounts balance.
+
+        CashCtrl requires foreign currency (e.g., JPY) amounts to balance within
+        a collective transaction. This adds a single clearing entry to transitory.
+
+        Note: CashCtrl uses a SINGLE FX rate per transaction. The report_amount
+        is recalculated as amount * fx_rate. Any USD imbalance is handled by
+        :rounding entries created in _add_fx_adjustment.
+        """
+        multiplier = entry["account"].notna().astype(int) - entry["contra"].notna().astype(int)
+        reporting_currency = self.reporting_currency
+
+        # Calculate foreign amount needed to balance
+        balance_foreign = self.round_to_precision(
+            -1.0 * (entry["amount"] * multiplier).sum(), currency
+        )
+
+        if balance_foreign != 0:
+            balancing_leg = entry.head(1).copy()
+            balancing_leg["currency"] = currency
+            balancing_leg["description"] = "Balancing foreign currency amount"
+            balancing_leg["amount"] = balance_foreign
             balancing_leg["account"] = account
+            # report_amount will be recalculated by CashCtrl as amount * fx_rate
             balancing_leg["report_amount"] = self.round_to_precision(
-                balancing_leg["amount"] * fx_rate, self.reporting_currency,
+                balance_foreign * fx_rate, reporting_currency
             )
-            entry = pd.concat(
-                [
-                    self.journal.standardize(entry),
-                    self.journal.standardize(balancing_leg),
-                ]
-            )
+            entry = pd.concat([
+                self.journal.standardize(entry),
+                self.journal.standardize(balancing_leg),
+            ])
         return entry
