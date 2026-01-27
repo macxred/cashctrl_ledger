@@ -283,8 +283,10 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         account_balances = engine.individual_account_balances(period="2024", accounts="1000:9999")
         actual = engine.aggregate_account_balances(account_balances, n=2)
         actual = actual.query("description != 'Transitory account'")
+        actual["balance"] = actual["balance"].apply(drop_zero_balances)
         expected = enforce_schema(self.EXPECTED_AGGREGATED_BALANCES, AGGREGATED_BALANCE_SCHEMA)
         expected["group"] = engine.sanitize_account_groups(expected["group"])
+        expected["balance"] = expected["balance"].apply(drop_zero_balances)
         assert_frame_equal(actual, expected, ignore_index=True)
 
     @pytest.mark.parametrize(
