@@ -45,8 +45,18 @@ jobs:
         with:
           python-version: "3.x"
 
+      - name: Determine pyledger branch
+        id: pyledger-branch
+        run: |
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          if [[ "$BRANCH" == polars* ]]; then
+            echo "ref=polars" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install pyledger
-        run: pip install git+https://x-access-token:${{ secrets.PYLEDGER_CI_ACCESS_TOKEN }}@github.com/macxred/pyledger.git@main
+        run: pip install git+https://x-access-token:${{ secrets.PYLEDGER_CI_ACCESS_TOKEN }}@github.com/macxred/pyledger.git@${{ steps.pyledger-branch.outputs.ref }}
 
       - name: Install dependencies
         run: pip install pytest setuptools .
