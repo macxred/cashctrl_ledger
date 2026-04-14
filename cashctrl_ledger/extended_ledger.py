@@ -112,11 +112,12 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
           using the designated `transitory_account`.
 
         Args:
-            journal: The journal DataFrame with transactions to be processed.
+            journal (pd.DataFrame | pl.DataFrame): The journal DataFrame with
+                transactions to be processed.
             pandas: If True, return pandas DataFrame; otherwise polars.
 
         Returns:
-            The modified journal DataFrame.
+            pd.DataFrame | pl.DataFrame: The modified journal DataFrame.
         """
         journal = self.journal.standardize(
             ensure_polars(journal, "ExtendedCashCtrlLedger.sanitize_journal"),
@@ -132,13 +133,11 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 currency=null_rows['currency'].to_list(),
                 date=null_rows['date'].to_list(),
             )
-            report_col = journal['report_amount'].to_list()
-            null_indices = mask.arg_true().to_list()
-            for i, idx in enumerate(null_indices):
-                report_col[idx] = filled[i]
-            journal = journal.with_columns(
-                report_amount=pl.Series(report_col, dtype=pl.Float64),
+            col = journal['report_amount'].fill_nan(None)
+            col = col.scatter(
+                mask.arg_true(), pl.Series(filled, dtype=pl.Float64),
             )
+            journal = journal.with_columns(report_amount=col)
 
         # Number of currencies other than reporting currency
         reporting_currency = self.reporting_currency
@@ -148,7 +147,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         )
         multi_ids = n_currency.filter(pl.col("n") > 1)["id"].to_list()
 
-        # Split entries with multiple currencies into separate entries
+        # Split entries with multiple currencies into separate entries for each currency
         if len(multi_ids) > 0:
             multi_currency = self.journal.standardize(
                 journal.filter(pl.col("id").is_in(multi_ids)), pandas=False,
@@ -161,11 +160,10 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         else:
             df = journal
 
-        # Ensure foreign currencies can be mapped, correct with FX adjustments
+        # Ensure foreign currencies can be mapped, correct with FX adjustments otherwise
         transitory_account = self.transitory_account
         result = []
-        for txn_id in df["id"].unique(maintain_order=True).to_list():
-            txn = df.filter(pl.col("id") == txn_id)
+        for txn in df.partition_by("id", maintain_order=True):
             new_txn = self._add_fx_adjustment(
                 txn,
                 transitory_account=transitory_account,
@@ -188,27 +186,25 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         pandas: bool = True,
     ) -> pd.DataFrame | pl.DataFrame:
         """
-        Splits multi-currency transactions into individual transactions
-        for each currency.
+        Splits multi-currency transactions into individual transactions for each currency.
 
-        CashCtrl restricts collective transactions to a single currency beyond
-        the reporting currency. This method splits multi-currency transactions
-        into several transactions compatible with CashCtrl, each involving a
-        single currency and possibly the reporting currency. If there is a
-        residual balance in any currency, it is recorded in the
-        `transitory_account`. The total of all entries in the transitory
+        CashCtrl restricts collective transactions to a single currency beyond the reporting
+        currency. This method splits multi-currency transactions into several transactions
+        compatible with CashCtrl, each involving a single currency and possibly
+        the reporting currency. If there is a residual balance in any currency, it is
+        recorded in the `transitory_account`. The total of all entries in the transitory
         account across these transactions will balance to zero.
 
         Args:
-            journal: The journal DataFrame containing transactions to be split.
-            transitory_account: The account number for recording balancing
-                entries. If not provided, the instance's transitory_account
-                will be used.
+            journal (pd.DataFrame | pl.DataFrame): The journal DataFrame containing
+                transactions to be split.
+            transitory_account (int, optional): The account number for recording balancing
+                entries. If not provided, the instance's `transitory_account` will be used.
             pandas: If True, return pandas DataFrame; otherwise polars.
 
         Returns:
-            Modified journal entries with split transactions and any necessary
-                balancing entries.
+            pd.DataFrame | pl.DataFrame: Modified journal entries with split transactions
+                and any necessary balancing entries.
         """
         journal = ensure_polars(
             journal, "ExtendedCashCtrlLedger.split_multi_currency_transactions",
@@ -265,24 +261,21 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
         reporting_currency: str,
     ) -> pl.DataFrame:
         """
-        Adjusts journal entries to conform with CashCtrl's eight-digit FX
-        rate precision.
+        Adjusts journal entries to conform with CashCtrl's eight-digit FX rate precision.
 
-        This method ensures that the reporting currency amounts in a journal
-        entry match CashCtrl's precision limit for foreign exchange rates of
-        eight digits after the decimal point. If an adjustment is needed due
-        to rounding differences, it adds a balancing journal entry using the
-        `transitory_account`, so the financial result remains consistent.
+        This method ensures that the reporting currency amounts in a journal entry match
+        CashCtrl's precision limit for foreign exchange rates of eight digits after
+        the decimal point. If an adjustment is needed due to rounding differences,
+        it adds a balancing journal entry using the `transitory_account`, so the
+        financial result remains consistent.
 
         Args:
-            entry: The journal entry or entries to be adjusted.
-            transitory_account: The account number for recording balancing
-                transactions.
-            reporting_currency: The reporting currency against which
-                adjustments are made.
+            entry (pl.DataFrame): The journal entry or entries to be adjusted.
+            transitory_account (int): The account number for recording balancing transactions.
+            reporting_currency (str): The reporting currency against which adjustments are made.
 
         Returns:
-            The adjusted journal entries and any necessary balancing entries.
+            pl.DataFrame: The adjusted journal entries and any necessary balancing entries.
         """
         if len(entry) == 1:
             # Individual transaction: one row in the journal data frame
@@ -359,15 +352,13 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                 # Convert reporting currency rows to foreign currency
                 is_reporting = entry["currency"] == reporting_currency
                 if is_reporting.any():
-                    report_amounts = entry["report_amount"]
-                    amounts = entry["amount"].to_list()
-                    currencies = entry["currency"].to_list()
-                    for i in is_reporting.arg_true().to_list():
-                        amounts[i] = report_amounts[i] / fx_rate
-                        currencies[i] = currency
                     entry = entry.with_columns(
-                        amount=pl.Series(amounts, dtype=pl.Float64),
-                        currency=pl.Series(currencies, dtype=pl.String),
+                        amount=pl.when(is_reporting)
+                        .then(pl.col("report_amount") / fx_rate)
+                        .otherwise(pl.col("amount")),
+                        currency=pl.when(is_reporting)
+                        .then(pl.lit(currency))
+                        .otherwise(pl.col("currency")),
                     )
                 entry = entry.with_columns(
                     amount=pl.Series(self.round_to_precision(
@@ -449,14 +440,13 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
                     [currency], [entry["date"][0]],
                 )[0]
                 if abs(rounding_error) > currency_precision / 2:
-                    # Rounding after converting foreign currency amounts to
-                    # reporting currency amounts by multipying with FX rate
-                    # leads to rounding differences that sum up to a net
-                    # rounding difference equal or larger than currency
-                    # precision (0.01 for CHF, EUR, USD, etc.).
+                    # Rounding after converting foreign currency amounts to reporting
+                    # currency amounts by multipying with FX rate leads to rounding
+                    # differences that sum up to a net rounding difference equal or
+                    # larger than currency precision (0.01 for CHF, EUR, USD, etc.).
                     # -> We compensate this rounding difference by creating
-                    #    transactions that have rounding differences with the
-                    #    same amount but opposite sign.
+                    #    transactions that have rounding differences with the same
+                    #    amount but opposite sign.
                     # 1. Create a transaction with one cent rounding difference
                     first_row = entry.row(0, named=True)
                     txn_id = str(first_row["id"]) + ":rounding"

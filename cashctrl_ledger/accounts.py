@@ -3,7 +3,7 @@
 from typing import Dict, List
 import pandas as pd
 import polars as pl
-from pyledger.schema import enforce_schema, ensure_polars, to_polars
+from pyledger.schema import enforce_schema, ensure_polars, to_pandas, to_polars
 from .cashctrl_accounting_entity import CashCtrlAccountingEntity
 
 
@@ -29,11 +29,10 @@ class Account(CashCtrlAccountingEntity):
         )
 
         if pandas:
-            from pyledger.schema import to_pandas
             return to_pandas(result, self._schema)
         return result
 
-    def add(self, data: pd.DataFrame | pl.DataFrame) -> None:
+    def add(self, data: pd.DataFrame | pl.DataFrame):
         incoming = self.standardize(
             ensure_polars(data, "Account.add"), pandas=False,
         )
@@ -51,14 +50,12 @@ class Account(CashCtrlAccountingEntity):
                 "name": row["description"],
                 "taxId": None if row["tax_code"] is None
                 else self._client.tax_code_to_id(row["tax_code"]),
-                "categoryId": self._client.account_category_to_id(
-                    "/" + row["group"].strip("/")
-                ),
+                "categoryId": self._client.account_category_to_id(row["group"]),
             }
             self._client.post("account/create.json", data=payload)
         self._client.list_accounts.cache_clear()
 
-    def modify(self, data: pd.DataFrame | pl.DataFrame) -> None:
+    def modify(self, data: pd.DataFrame | pl.DataFrame):
         data = ensure_polars(data, "Account.modify")
         schema_cols = self._schema["column"].to_list()
         id_cols = self._schema.filter(pl.col("id"))["column"].to_list()
@@ -80,9 +77,7 @@ class Account(CashCtrlAccountingEntity):
             # Specify required fields for CashCtrl
             payload = {"id": self._client.account_to_id(row["account"])}
             group = row["group"] if "group" in incoming.columns else existing["group"][0]
-            payload["categoryId"] = self._client.account_category_to_id(
-                "/" + group.strip("/")
-            )
+            payload["categoryId"] = self._client.account_category_to_id(group)
 
             # Specify optional fields for CashCtrl
             if "account" in incoming.columns:
@@ -104,9 +99,9 @@ class Account(CashCtrlAccountingEntity):
         )
         ids = []
         for account in incoming["account"].to_list():
-            remote_id = self._client.account_to_id(account, allow_missing)
-            if remote_id is not None:
-                ids.append(str(remote_id))
+            id = self._client.account_to_id(account, allow_missing)
+            if id is not None:
+                ids.append(str(id))
         if len(ids):
             self._client.post("account/delete.json", {"ids": ", ".join(ids)})
             self._client.list_accounts.cache_clear()
@@ -123,7 +118,8 @@ class Account(CashCtrlAccountingEntity):
         - Mirroring accounts with non-existing root categories raises an error.
 
         Args:
-            target: DataFrame with an account chart in the pyledger format.
+            target (pd.DataFrame | pl.DataFrame): DataFrame with an account chart
+                in the pyledger format.
             delete (bool, optional): If True, deletes remote accounts not present in the target.
         """
         current = self.list(pandas=False)
