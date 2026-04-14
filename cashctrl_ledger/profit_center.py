@@ -2,7 +2,7 @@
 
 import pandas as pd
 import polars as pl
-from pyledger.schema import enforce_schema, ensure_polars, to_polars
+from pyledger.schema import enforce_schema, ensure_polars, to_pandas, to_polars
 from .cashctrl_accounting_entity import CashCtrlAccountingEntity
 
 
@@ -15,18 +15,17 @@ class ProfitCenter(CashCtrlAccountingEntity):
             "profit_center": profit_centers["name"],
         })
 
-        duplicated = result.filter(
+        duplicates = result.filter(
             result["profit_center"].is_duplicated()
         )["profit_center"].unique().to_list()
-        if duplicated:
+        if duplicates:
             raise ValueError(
                 "Duplicated profit centers in the remote system: "
-                f"'{', '.join(map(str, duplicated))}'"
+                f"'{', '.join(map(str, duplicates))}'"
             )
         result = self.standardize(result, pandas=False)
 
         if pandas:
-            from pyledger.schema import to_pandas
             return to_pandas(result, self._schema)
         return result
 
@@ -66,11 +65,11 @@ class ProfitCenter(CashCtrlAccountingEntity):
         )
         ids = []
         for profit_center in incoming["profit_center"].to_list():
-            remote_id = self._client.profit_center_to_id(
+            id = self._client.profit_center_to_id(
                 profit_center, allow_missing=allow_missing
             )
-            if remote_id:
-                ids.append(str(remote_id))
+            if id:
+                ids.append(str(id))
         if len(ids):
             self._client.post("account/costcenter/delete.json", {"ids": ", ".join(ids)})
             self._client.list_profit_centers.cache_clear()

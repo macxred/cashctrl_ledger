@@ -3,7 +3,7 @@
 import re
 import pandas as pd
 import polars as pl
-from pyledger.schema import enforce_schema, ensure_polars, to_polars
+from pyledger.schema import enforce_schema, ensure_polars, to_pandas, to_polars
 from .cashctrl_accounting_entity import CashCtrlAccountingEntity
 
 
@@ -47,15 +47,14 @@ class TaxCode(CashCtrlAccountingEntity):
             "is_inclusive": ~tax_rates["isGrossCalcType"],
         })
 
-        duplicated = result.filter(result["id"].is_duplicated())["id"].unique().to_list()
-        if duplicated:
+        duplicates = result.filter(result["id"].is_duplicated())["id"].unique().to_list()
+        if duplicates:
             raise ValueError(
-                f"Duplicated tax codes in the remote system: '{', '.join(map(str, duplicated))}'"
+                f"Duplicated tax codes in the remote system: '{', '.join(map(str, duplicates))}'"
             )
         result = self.standardize(result, pandas=False)
 
         if pandas:
-            from pyledger.schema import to_pandas
             return to_pandas(result, self._schema)
         return result
 
@@ -113,9 +112,9 @@ class TaxCode(CashCtrlAccountingEntity):
         )
         ids = []
         for code in incoming["id"].to_list():
-            remote_id = self._client.tax_code_to_id(code, allow_missing=allow_missing)
-            if remote_id:
-                ids.append(str(remote_id))
+            id = self._client.tax_code_to_id(code, allow_missing=allow_missing)
+            if id:
+                ids.append(str(id))
         if len(ids):
             self._client.post("tax/delete.json", {"ids": ", ".join(ids)})
             self._client.list_tax_rates.cache_clear()

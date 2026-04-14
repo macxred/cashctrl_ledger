@@ -167,7 +167,9 @@ class CashCtrlLedger(LedgerEngine):
             accounts_pl = ensure_polars(accounts, "CashCtrlLedger.restore")
             if "group" in accounts_pl.columns:
                 accounts_pl = accounts_pl.with_columns(
-                    group=self.sanitize_account_groups(accounts_pl["group"])
+                    group=self.sanitize_account_groups(
+                        accounts_pl["group"], pandas=False,
+                    )
                 )
             self.accounts.mirror(
                 accounts_pl.with_columns(tax_code=pl.lit(None).cast(pl.String)),
@@ -265,17 +267,21 @@ class CashCtrlLedger(LedgerEngine):
         cannot be deleted.
 
         Args:
-            groups: A pandas or polars Series containing account group paths.
+            groups (pd.Series | pl.Series): A pandas or polars Series containing account group
+                paths.
             pandas: If True and input is pandas, return pandas Series.
 
         Returns:
-            Sanitized account group series.
+            pd.Series | pl.Series: Sanitized account group series.
         """
-        is_pandas = isinstance(groups, pd.Series)
+        original_index = None
+        if isinstance(groups, pd.Series):
+            original_index = groups.index
+            groups = pl.Series(groups.name, groups.to_list(), dtype=pl.String)
         values = groups.to_list()
         result = []
         for g in values:
-            if g is None or (is_pandas and pd.isna(g)):
+            if g is None:
                 result.append(None)
                 continue
             stripped = g.lstrip("/")
@@ -284,8 +290,10 @@ class CashCtrlLedger(LedgerEngine):
             rest = stripped[len(first_node):]
             result.append("/" + matched + rest)
 
-        if is_pandas:
-            return pd.Series(result, index=groups.index, dtype="string[python]")
+        if pandas:
+            return pd.Series(
+                result, index=original_index, dtype="string[python]",
+            )
         return pl.Series(groups.name, result, dtype=pl.String)
 
     def sanitize_accounts(
@@ -294,7 +302,7 @@ class CashCtrlLedger(LedgerEngine):
     ) -> pd.DataFrame | pl.DataFrame:
         df = ensure_polars(df, "CashCtrlLedger.sanitize_accounts")
         df = df.with_columns(
-            group=self.sanitize_account_groups(df["group"])
+            group=self.sanitize_account_groups(df["group"], pandas=False)
         )
         return super().sanitize_accounts(df, tax_codes=tax_codes, pandas=pandas)
 
@@ -305,7 +313,11 @@ class CashCtrlLedger(LedgerEngine):
             period (datetime.date | str): Target period for the report.
 
         Returns:
-            pl.DataFrame: With columns: amount, report_amount, account, currency.
+            pl.DataFrame: With these columns:
+                - amount (float): Account balance.
+                - report_amount (float): Reporting balance.
+                - account (str): Account name.
+                - currency (str): Currency code.
         """
         prefixes = tuple(ACCOUNT_CATEGORIES_NEED_TO_NEGATE)
 
@@ -330,7 +342,7 @@ class CashCtrlLedger(LedgerEngine):
                 params={"elementId": element_id, "startDate": datetime.date.min, "endDate": end},
             )
             return enforce_schema(
-                to_polars(pd.DataFrame(extract_nodes(resp["data"]))), REPORT_ELEMENT,
+                pl.DataFrame(extract_nodes(resp["data"])), REPORT_ELEMENT,
             )
 
         def fetch_balances(end) -> pl.DataFrame:
@@ -466,7 +478,8 @@ class CashCtrlLedger(LedgerEngine):
             pandas (bool): If True, return pandas DataFrame.
 
         Returns:
-            DataFrame following the `LedgerEngine.JOURNAL_SCHEMA` column schema.
+            pd.DataFrame | pl.DataFrame: A DataFrame following the
+                `LedgerEngine.JOURNAL_SCHEMA` column schema.
 
         Raises:
             ValueError: If the fiscal period does not exist or no current period is defined.
@@ -551,8 +564,11 @@ class CashCtrlLedger(LedgerEngine):
             _reporting_amount=pl.col("amount") * pl.col("currencyRate"),
         )
 
-        def resolve_profit_center(raw_id) -> str | None:
-            """Resolve a profit center name from an integer or a list."""
+        def resolve_profit_center(raw_id: int | str | None) -> str | None:
+            """Resolve a profit center name from an integer or a list.
+            If the input is malformed, ambiguous (e.g. multiple IDs), or resolution fails,
+            a warning is logged and None is returned.
+            """
             result = None
             if raw_id is None:
                 return result
@@ -646,6 +662,7 @@ class CashCtrlLedger(LedgerEngine):
 
             # Use reporting currency if the row was tagged with REPORTING_CURRENCY_TAG,
             # else use transaction-level currency, and fallback to account currency.
+            # This recovers the original row-level currency intent lost during Cashctrl export.
             collective = collective.with_columns(
                 _currency=pl.when(
                     pl.col("associateName").fill_null("") == REPORTING_CURRENCY_TAG
@@ -715,20 +732,22 @@ class CashCtrlLedger(LedgerEngine):
         starts exactly one day after the previous one ends.
 
         Returns:
-            pd.DataFrame | pl.DataFrame: Fiscal periods with FISCAL_PERIOD_SCHEMA.
+            pd.DataFrame | pl.DataFrame: A DataFrame of fiscal periods with
+                FISCAL_PERIOD_SCHEMA.
 
         Raises:
             Exception: If any gap is detected between consecutive fiscal periods.
         """
         fiscal_periods = self._client.list_fiscal_periods()
-        fp = enforce_schema(to_polars(pd.DataFrame(fiscal_periods)), FISCAL_PERIOD_SCHEMA)
+        fp = enforce_schema(pl.DataFrame(fiscal_periods), FISCAL_PERIOD_SCHEMA)
 
         # Calculate the gap between consecutive periods (next start - current end)
-        starts = fp["start"].to_list()
-        ends = fp["end"].to_list()
-        for i in range(len(starts) - 1):
-            gap = starts[i + 1] - ends[i]
-            if gap != datetime.timedelta(days=1):
+        if len(fp) > 1:
+            gaps = (
+                fp["start"].shift(-1).slice(0, len(fp) - 1)
+                - fp["end"].slice(0, len(fp) - 1)
+            )
+            if (gaps != datetime.timedelta(days=1)).any():
                 raise ValueError("Gaps between fiscal periods.")
 
         if pandas:
@@ -802,8 +821,7 @@ class CashCtrlLedger(LedgerEngine):
         ids = []
         incoming = self.journal.standardize(data, pandas=False)
         self.ensure_fiscal_periods_exist(incoming["date"].min(), incoming["date"].max())
-        for id in incoming["id"].unique(maintain_order=True).to_list():
-            entry = incoming.filter(pl.col("id") == id)
+        for entry in incoming.partition_by("id", maintain_order=True):
             payload = self._map_journal_entry(entry)
             res = self._client.post("journal/create.json", data=payload)
             ids.append(str(res["insertId"]))
@@ -942,6 +960,7 @@ class CashCtrlLedger(LedgerEngine):
         files = to_polars(self._client.list_files())
         file_paths = files["path"].to_list()
 
+        # Update attachments to align with the target attachments
         for row in journal.iter_rows(named=True):
             id = row["id"]
             reference = row["reference"]
@@ -1066,9 +1085,9 @@ class CashCtrlLedger(LedgerEngine):
         reporting_amount = fx_entries["report_amount"]
         amount = fx_entries["amount"]
         tolerance = (amount * fx_rate_precision).abs().clip(precision / 2, float("inf"))
-        sign = pl.Series(
-            [(-1 if x < 0 else 1) for x in reporting_amount.to_list()], dtype=pl.Int8,
-        )
+        sign = pl.select(
+            pl.when(reporting_amount < 0).then(pl.lit(-1)).otherwise(pl.lit(1))
+        ).to_series().cast(pl.Int8)
         lower_bound = reporting_amount - tolerance * sign
         upper_bound = reporting_amount + tolerance * sign
         min_fx_rate = (lower_bound / amount).max()
@@ -1175,21 +1194,21 @@ class CashCtrlLedger(LedgerEngine):
                 )
 
             # Transaction-level attributes
-            dates = entry["date"].drop_nulls().unique().to_list()
-            documents = entry["document"].drop_nulls().unique().to_list()
-            if len(dates) == 0:
+            date = entry["date"].drop_nulls().unique().to_list()
+            document = entry["document"].drop_nulls().unique().to_list()
+            if len(date) == 0:
                 raise ValueError("Date is not specified in collective booking.")
-            elif len(dates) > 1:
+            elif len(date) > 1:
                 raise ValueError("Date needs to be unique in a collective booking.")
-            if len(documents) > 1:
+            if len(document) > 1:
                 raise ValueError(
                     "CashCtrl allows only one reference in a collective booking."
                 )
             payload = {
-                "dateAdded": dates[0].strftime("%Y-%m-%d")
-                if isinstance(dates[0], (datetime.date, datetime.datetime)) else str(dates[0]),
+                "dateAdded": date[0].strftime("%Y-%m-%d")
+                if isinstance(date[0], (datetime.date, datetime.datetime)) else str(date[0]),
                 "currencyId": self._client.currency_to_id(currency),
-                "reference": documents[0] if len(documents) == 1 else None,
+                "reference": document[0] if len(document) == 1 else None,
                 "currencyRate": fx_rate,
                 "items": items,
             }
@@ -1208,8 +1227,8 @@ class CashCtrlLedger(LedgerEngine):
             str: The reporting currency code.
         """
         currencies = to_polars(self._client.list_currencies())
-        is_reporting = currencies["isDefault"].cast(pl.Boolean)
-        reporting = currencies.filter(is_reporting)
+        is_reporting_currency = currencies["isDefault"].cast(pl.Boolean)
+        reporting = currencies.filter(is_reporting_currency)
         if len(reporting) == 1:
             return reporting["code"][0]
         elif len(reporting) == 0:
@@ -1223,13 +1242,13 @@ class CashCtrlLedger(LedgerEngine):
         currencies = to_polars(self._client.list_currencies())
         matching = currencies.filter(pl.col("code") == currency)
         if len(matching) > 0:
-            target = matching.row(0, named=True)
+            target_currency = matching.row(0, named=True)
             payload = {
-                "id": target["id"],
+                "id": target_currency["id"],
                 "code": currency,
                 "isDefault": True,
-                "description": target["description"],
-                "rate": target["rate"]
+                "description": target_currency["description"],
+                "rate": target_currency["rate"]
             }
             self._client.post("currency/update.json", data=payload)
         else:

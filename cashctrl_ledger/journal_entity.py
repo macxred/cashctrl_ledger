@@ -4,6 +4,7 @@ import pandas as pd
 import polars as pl
 from typing import Callable
 from pyledger import JournalEntity
+from pyledger.schema import to_pandas
 from .cashctrl_accounting_entity import CashCtrlAccountingEntity
 
 
@@ -29,12 +30,15 @@ class Journal(JournalEntity, CashCtrlAccountingEntity):
         Initializes the journal class.
 
         Args:
-            list: A callable that lists journal entries and returns a DataFrame.
-            add: A callable that adds journal entries from a DataFrame.
-            modify: A callable that modifies journal entries based on a DataFrame.
-            delete: A callable that deletes journal entries specified in a DataFrame.
-            standardize: A callable that standardizes journal entries.
-            *args, **kwargs: Additional arguments passed to the superclass.
+            list (Callable[..., pd.DataFrame | pl.DataFrame]):
+                A callable that lists journal entries and returns a DataFrame.
+            add (Callable[[pd.DataFrame | pl.DataFrame], None]):
+                A callable that adds journal entries from a DataFrame.
+            modify (Callable[[pd.DataFrame | pl.DataFrame], None]):
+                A callable that modifies journal entries based on a DataFrame.
+            delete (Callable[[pd.DataFrame | pl.DataFrame, bool], None]):
+                A callable that deletes journal entries specified in a DataFrame.
+             *args, **kwargs: Additional arguments passed to the superclass.
         """
         super().__init__(*args, **kwargs)
         self._list = list
@@ -64,6 +68,5 @@ class Journal(JournalEntity, CashCtrlAccountingEntity):
         data = super().standardize(data, keep_extra_columns, pandas=False)
         result = self._standardize(data)
         if pandas:
-            from pyledger.schema import to_pandas
             return to_pandas(result, self._schema)
         return result
