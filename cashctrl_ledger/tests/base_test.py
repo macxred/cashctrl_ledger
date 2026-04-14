@@ -32,7 +32,9 @@ class BaseTestCashCtrl(BaseTest):
             assets_path="settings/assets.csv",
         )
         engine.dump_to_zip(tmp_path / "ledger.zip")
-        self.ACCOUNTS = engine.sanitize_accounts(df=self.ACCOUNTS, tax_codes=self.TAX_CODES)
+        BaseTestCashCtrl.ACCOUNTS = engine.sanitize_accounts(
+            df=self.ACCOUNTS, tax_codes=self.TAX_CODES,
+        )
 
         yield engine
 
