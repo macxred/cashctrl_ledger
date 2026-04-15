@@ -1,8 +1,8 @@
 """Unit tests for listing, attaching and detaching remote files."""
 
-from io import StringIO
+import polars as pl
 from cashctrl_ledger import CashCtrlLedger
-import pandas as pd
+from pyledger.tests import read_csv
 import pytest
 
 JOURNAL_CSV = """
@@ -13,7 +13,7 @@ JOURNAL_CSV = """
     4, 2024-05-24, 2100,   2200,       CHF,    100,  pytest single transaction 1,  file1.txt
     5, 2024-05-24, 2100,   2200,       CHF,    100,  pytest single transaction 1,  file_invalid.txt
 """
-JOURNAL = pd.read_csv(StringIO(JOURNAL_CSV), skipinitialspace=True)
+JOURNAL = read_csv(JOURNAL_CSV)
 
 
 @pytest.fixture(scope="module")
@@ -52,7 +52,7 @@ def files(mock_directory):
 @pytest.fixture(scope="module")
 def journal_ids():
     """Populate remote journal with three new entries and return their ids in a list."""
-    entry = pd.DataFrame({
+    entry = pl.DataFrame({
         "date": ["2024-05-24"],
         "account": [2270],
         "contra": [2210],
@@ -76,7 +76,7 @@ def journal_attached_ids():
     """
     cashctrl = CashCtrlLedger()
     journal_ids = [
-        cashctrl.journal.add(JOURNAL.query(f"id == {id}"))[0]
+        cashctrl.journal.add(JOURNAL.filter(pl.col("id") == id))[0]
         for id in JOURNAL["id"]
     ]
 
