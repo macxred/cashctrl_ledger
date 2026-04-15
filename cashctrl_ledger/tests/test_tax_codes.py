@@ -31,7 +31,7 @@ class TestTaxCodes(BaseTestCashCtrl, BaseTestTaxCodes):
 
     def test_add_tax_code_with_not_valid_account_raise_error(self, engine):
         engine.accounts.delete([{"account": 8888}], allow_missing=True)
-        assert 8888 not in engine.accounts.list()["account"].values
+        assert 8888 not in engine.accounts.list(pandas=False)["account"].to_list()
         with pytest.raises(ValueError):
             engine.accounts.add({
                 "code": "TestCode", "text": "VAT 20%",
@@ -40,7 +40,7 @@ class TestTaxCodes(BaseTestCashCtrl, BaseTestTaxCodes):
 
     def test_update_tax_code_with_not_valid_account_raise_error(self, engine):
         engine.accounts.delete([{"account": 8888}], allow_missing=True)
-        assert 8888 not in engine.accounts.list()["account"].values
+        assert 8888 not in engine.accounts.list(pandas=False)["account"].to_list()
         with pytest.raises(ValueError):
             engine.tax_codes.modify({
                 "code": "TestCode", "text": "VAT 20%",
