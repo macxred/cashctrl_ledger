@@ -1,14 +1,11 @@
 """Unit tests for journal accessor, mutator, and mirror methods."""
 
 import pytest
-import pandas as pd
+import polars as pl
 from requests import RequestException
-# flake8: noqa: F401
+# flake8: noqa: E501
 from base_test import BaseTestCashCtrl
-from pyledger.tests import BaseTestJournal
-from consistent_df import assert_frame_equal
-from io import StringIO
-from pyledger.tests import BaseTest
+from pyledger.tests import BaseTest, BaseTestJournal, assert_frame_equal, read_csv
 
 
 class TestJournal(BaseTestCashCtrl, BaseTestJournal):
@@ -16,7 +13,7 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
     # transforms internally, causing mismatch between expected and actual in tests
     # possibly in currency conversion.
     # Need to fix later.
-    JOURNAL = BaseTest.JOURNAL.query("id not in ['10', '22']").copy()
+    JOURNAL = BaseTest.JOURNAL.filter(~pl.col("id").is_in(["10", "22"]))
 
     @pytest.fixture()
     def engine(self, initial_engine):
@@ -28,7 +25,7 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
     @pytest.fixture()
     def restore_fiscal_periods(self, engine):
         initial_ids = engine._client.list_fiscal_periods()["id"]
-        initial_ledger = engine.journal.list()
+        initial_ledger = engine.journal.list(pandas=False)
 
         yield
 
@@ -52,7 +49,7 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
 
     def test_journal_accessor_mutators(self, restored_engine):
         # Journal entries need to be sanitized before adding to the CashCtrl
-        self.JOURNAL = restored_engine.sanitize_journal(self.JOURNAL)
+        self.JOURNAL = restored_engine.sanitize_journal(self.JOURNAL, pandas=False)
         super().test_journal_accessor_mutators(restored_engine, ignore_row_order=True)
 
     @pytest.mark.skip(reason="CashCtrl allows to create same entries.")
@@ -60,23 +57,20 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
         pass
 
     def test_add_journal_with_illegal_attributes(self, restored_engine):
-        journal_entry = self.JOURNAL.query("id == '2'")
+        journal_entry = self.JOURNAL.filter(pl.col("id") == "2")
 
         # Add with non existent Tax code should raise an error
-        target = journal_entry.copy()
-        target["tax_code"] = "Test_Non_Existent_TAX_code"
+        target = journal_entry.with_columns(tax_code=pl.lit("Test_Non_Existent_TAX_code"))
         with pytest.raises(ValueError, match="No id found for tax code"):
             restored_engine.journal.add(target)
 
         # Add with non existent account should raise an error
-        target = journal_entry.copy()
-        target["account"] = 33333
+        target = journal_entry.with_columns(account=pl.lit(33333))
         with pytest.raises(ValueError, match="No id found for account"):
             restored_engine.journal.add(target)
 
         # Add with non existent currency should raise an error
-        target = journal_entry.copy()
-        target["currency"] = "Non_Existent_Currency"
+        target = journal_entry.with_columns(currency=pl.lit("Non_Existent_Currency"))
         with pytest.raises(ValueError, match="No id found for currency"):
             restored_engine.journal.add(target)
 
@@ -86,27 +80,25 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
         )
 
     def test_update_journal_entry_with_illegal_attributes(self, restored_engine):
-        journal_entry = self.JOURNAL.query("id == '2'")
+        journal_entry = self.JOURNAL.filter(pl.col("id") == "2")
         id = restored_engine.journal.add(journal_entry)[0]
 
         # Updating a journal entry with non existent tax code should raise an error
-        target = journal_entry.copy()
-        target["id"] = id
-        target["tax_code"] = "Test_Non_Existent_TAX_code"
+        target = journal_entry.with_columns(
+            id=pl.lit(id), tax_code=pl.lit("Test_Non_Existent_TAX_code"),
+        )
         with pytest.raises(ValueError, match="No id found for tax code"):
             restored_engine.journal.modify(target)
 
         # Updating a journal entry with non existent account code should raise an error
-        target = journal_entry.copy()
-        target["id"] = id
-        target["account"] = 333333
+        target = journal_entry.with_columns(id=pl.lit(id), account=pl.lit(333333))
         with pytest.raises(ValueError, match="No id found for account"):
             restored_engine.journal.modify(target)
 
         # Updating a journal entry with non existent currency code should raise an error
-        target = journal_entry.copy()
-        target["id"] = id
-        target["currency"] = "Non_Existent_Currency"
+        target = journal_entry.with_columns(
+            id=pl.lit(id), currency=pl.lit("Non_Existent_Currency"),
+        )
         with pytest.raises(ValueError, match="No id found for currency"):
             restored_engine.journal.modify(target)
 
@@ -125,54 +117,62 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
         expected = (
             "CashCtrl allows only the reporting currency plus a single foreign currency"
         )
-        entry = BaseTestJournal.JOURNAL.query("id == '23'")
+        entry = BaseTestJournal.JOURNAL.filter(pl.col("id") == "23")
         with pytest.raises(ValueError, match=expected):
             restored_engine.journal.add(entry)
 
     def test_split_multi_currency_transactions(self, engine):
         transitory_account = 9999
-        txn = engine.journal.standardize(BaseTestJournal.JOURNAL.query("id == '10'"))
+        txn = engine.journal.standardize(
+            BaseTestJournal.JOURNAL.filter(pl.col("id") == "10"), pandas=False,
+        )
         spit_txn = engine.split_multi_currency_transactions(
-            txn, transitory_account=transitory_account
+            txn, transitory_account=transitory_account, pandas=False,
         )
         is_reporting_currency = spit_txn["currency"] == engine.reporting_currency
-        spit_txn.loc[is_reporting_currency, "report_amount"] = spit_txn.loc[
-            is_reporting_currency, "amount"
-        ]
+        spit_txn = spit_txn.with_columns(
+            report_amount=pl.when(pl.lit(is_reporting_currency))
+            .then(pl.col("amount"))
+            .otherwise(pl.col("report_amount"))
+        )
         assert len(spit_txn) == len(txn) + 2, "Expecting two new lines when transaction is split"
-        assert sum(spit_txn["account"] == transitory_account) == 2, (
+        assert (spit_txn["account"] == transitory_account).sum() == 2, (
             "Expecting two transactions on transitory account"
         )
-        assert all(spit_txn.groupby("id")["report_amount"].sum() == 0), (
-            "Expecting split transactions to be balanced"
-        )
-        assert spit_txn.query("account == @transitory_account")["report_amount"].sum() == 0, (
-            "Expecting transitory account to be balanced"
-        )
+        assert (spit_txn.group_by("id").agg(pl.col("report_amount").sum())[
+            "report_amount"
+        ] == 0).all(), "Expecting split transactions to be balanced"
+        assert spit_txn.filter(pl.col("account") == transitory_account)[
+            "report_amount"
+        ].sum() == 0, "Expecting transitory account to be balanced"
 
     def test_split_several_multi_currency_transactions(self, engine):
         transitory_account = 9999
-        txn = engine.journal.standardize(BaseTestJournal.JOURNAL.query("id in ['10', '23']"))
+        txn = engine.journal.standardize(
+            BaseTestJournal.JOURNAL.filter(pl.col("id").is_in(["10", "23"])), pandas=False,
+        )
         spit_txn = engine.split_multi_currency_transactions(
-            txn, transitory_account=transitory_account
+            txn, transitory_account=transitory_account, pandas=False,
         )
         is_reporting_currency = spit_txn["currency"] == engine.reporting_currency
-        spit_txn.loc[is_reporting_currency, "report_amount"] = spit_txn.loc[
-            is_reporting_currency, "amount"
-        ]
-        id_currency_pairs = (txn["id"] + txn["currency"]).nunique()
+        spit_txn = spit_txn.with_columns(
+            report_amount=pl.when(pl.lit(is_reporting_currency))
+            .then(pl.col("amount"))
+            .otherwise(pl.col("report_amount"))
+        )
+        id_currency_pairs = (txn["id"] + txn["currency"]).n_unique()
         assert len(spit_txn) == len(txn) + id_currency_pairs, (
             "Expecting one new line per currency and transaction"
         )
-        assert sum(spit_txn["account"] == transitory_account) == id_currency_pairs, (
+        assert (spit_txn["account"] == transitory_account).sum() == id_currency_pairs, (
             "Expecting one transaction on transitory account per id and currency"
         )
-        assert all(spit_txn.groupby("id")["report_amount"].sum() == 0), (
-            "Expecting split transactions to be balanced"
-        )
-        assert spit_txn.query("account == @transitory_account")["report_amount"].sum() == 0, (
-            "Expecting transitory account to be balanced"
-        )
+        assert (spit_txn.group_by("id").agg(pl.col("report_amount").sum())[
+            "report_amount"
+        ] == 0).all(), "Expecting split transactions to be balanced"
+        assert spit_txn.filter(pl.col("account") == transitory_account)[
+            "report_amount"
+        ].sum() == 0, "Expecting transitory account to be balanced"
 
     @pytest.mark.skip(reason="Temporary skipping to fix later.")
     def test_list_journal_with_fiscal_periods(self, restored_engine, restore_fiscal_periods):
@@ -183,40 +183,40 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
             3, 2025-01-24,    1000,   4000,      USD,     3000.00,         ,  Sell candies
             4, 2026-01-24,    1000,   4000,      USD,     4000.00,         ,  Sell chocolate
         """
-        journal_df = restored_engine.sanitize_journal(
-            pd.read_csv(StringIO(JOURNAL_CSV), skipinitialspace=True)
-        )
+        journal_df = restored_engine.sanitize_journal(read_csv(JOURNAL_CSV), pandas=False)
         restored_engine.journal.mirror(target=journal_df, delete=True)
 
         # Test listing journal entries for specific fiscal periods
-        for year in journal_df["date"].dt.year.unique():
+        for year in journal_df["date"].dt.year().unique().to_list():
             assert_frame_equal(
-                restored_engine.journal.list(fiscal_period=str(year)),
-                journal_df.query("date.dt.year == @year"),
-                ignore_columns=["id"], check_like=True, ignore_index=True
+                restored_engine.journal.list(fiscal_period=str(year), pandas=False),
+                journal_df.filter(pl.col("date").dt.year() == year),
+                ignore_columns=["id"], check_like=True, ignore_row_order=True,
             )
 
         # Test retrieving all journal entries
-        assert_frame_equal(restored_engine.journal.list(), journal_df,
-            ignore_columns=["id"], check_like=True, ignore_index=True
+        assert_frame_equal(
+            restored_engine.journal.list(pandas=False), journal_df,
+            ignore_columns=["id"], check_like=True, ignore_row_order=True,
         )
 
         # Test journal entries retrieval for current fiscal period
-        fiscal_periods = restored_engine.fiscal_period_list()
-        new_fiscal_period = fiscal_periods.query("isCurrent == False").iloc[0]
+        fiscal_periods = restored_engine.fiscal_period_list(pandas=False)
+        new_fiscal_period = fiscal_periods.filter(~pl.col("isCurrent")).row(0, named=True)
         restored_engine._client.post(
-            "fiscalperiod/switch.json", data={"id": new_fiscal_period["id"].item()}
+            "fiscalperiod/switch.json", data={"id": new_fiscal_period["id"]}
         )
         restored_engine._client.list_fiscal_periods.cache_clear()
-        new_fiscal_period_name = int(new_fiscal_period["name"]) # noqa: F841
-        expected_df = journal_df.query("date.dt.year == @new_fiscal_period_name")
-        assert_frame_equal(restored_engine.journal.list("current"), expected_df,
-            ignore_columns=["id"], check_like=True, ignore_index=True
+        new_fiscal_period_name = int(new_fiscal_period["name"])
+        expected_df = journal_df.filter(pl.col("date").dt.year() == new_fiscal_period_name)
+        assert_frame_equal(
+            restored_engine.journal.list("current", pandas=False), expected_df,
+            ignore_columns=["id"], check_like=True, ignore_row_order=True,
         )
 
         # Test journal entries retrieval for invalid fiscal period raise an error
         with pytest.raises(ValueError, match="No id found for fiscal period"):
-            restored_engine.journal.list("test_fiscal_period")
+            restored_engine.journal.list("test_fiscal_period", pandas=False)
 
     def test_multi_currency_journal_transitory_balance(self, engine, restore_transitory_account):
         """Test that multi-currency journal entries can be mirrored without imbalance errors.
@@ -302,10 +302,10 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
                   ,    1904,       ,      CAD,     989.37,        621.10, Nettozins Festgeldanlage 3
         """
 
-        accounts = pd.read_csv(StringIO(ACCOUNTS_CSV), skipinitialspace=True)
-        assets = pd.read_csv(StringIO(ASSETS_CSV), skipinitialspace=True)
-        price_history = pd.read_csv(StringIO(PRICE_CSV), skipinitialspace=True)
-        journal = pd.read_csv(StringIO(JOURNAL_CSV), skipinitialspace=True)
+        accounts = read_csv(ACCOUNTS_CSV)
+        assets = read_csv(ASSETS_CSV)
+        price_history = read_csv(PRICE_CSV)
+        journal = read_csv(JOURNAL_CSV)
 
         engine.reporting_currency = "CHF"
         engine.transitory_account = 1999
@@ -317,5 +317,5 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
         )
 
         # Check that transitory account (1999) balances to zero
-        balance = engine.individual_account_balances(accounts=1999, period="2024")
-        assert balance.query("account == 1999")["report_balance"].iloc[0] == 0.0
+        balance = engine.individual_account_balances(accounts=1999, period="2024", pandas=False)
+        assert balance.filter(pl.col("account") == 1999)["report_balance"][0] == 0.0

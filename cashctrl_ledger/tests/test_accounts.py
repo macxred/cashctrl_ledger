@@ -1,20 +1,23 @@
 """Unit tests for accounts accessor and mutator methods."""
 
-from io import StringIO
-import pandas as pd
+import polars as pl
 import pytest
 from pyledger import MemoryLedger
-from pyledger.tests import BaseTestAccounts
-from pyledger.constants import ACCOUNT_BALANCE_SCHEMA, AGGREGATED_BALANCE_SCHEMA
+from pyledger.tests import BaseTestAccounts, assert_frame_equal, read_csv
+from pyledger.schema import enforce_schema
+from pyledger.constants import ACCOUNT_BALANCE_SCHEMA_PL, AGGREGATED_BALANCE_SCHEMA_PL
 from base_test import BaseTestCashCtrl
 from requests.exceptions import RequestException
-from consistent_df import assert_frame_equal, enforce_schema
 from cashctrl_ledger.constants import ACCOUNT_ROOT_CATEGORIES
 from cashctrl_ledger import CashCtrlLedger
 
 
-def drop_zero_balances(balance_dict):
-    return {k: v for k, v in balance_dict.items() if v != 0.0}
+def drop_zero_balances(df: pl.DataFrame) -> pl.DataFrame:
+    return df.with_columns(
+        balance=pl.col("balance").list.eval(
+            pl.element().filter(pl.element().struct.field("amount") != 0.0)
+        ).fill_null([])
+    )
 
 
 class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
@@ -26,7 +29,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         return initial_engine
 
     @pytest.fixture()
-    def complete_journal(self) -> pd.DataFrame:
+    def complete_journal(self) -> pl.DataFrame:
         source = MemoryLedger()
         source.restore(
             accounts=self.ACCOUNTS, configuration=self.CONFIGURATION, tax_codes=self.TAX_CODES,
@@ -35,17 +38,17 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         )
         journal, _ = source.complete_journal(
             self.JOURNAL, target_balances=self.TARGET_BALANCE,
-            revaluations=self.REVALUATIONS, loans=None
+            revaluations=self.REVALUATIONS, loans=None, pandas=False,
         )
-        journal = journal.query("origin != 'tax'")
+        journal = journal.filter(pl.col("origin") != "tax")
         return journal
 
     def test_account_accessor_mutators(self, restored_engine):
-        self.ACCOUNTS = restored_engine.sanitize_accounts(self.ACCOUNTS)
+        self.ACCOUNTS = restored_engine.sanitize_accounts(self.ACCOUNTS, pandas=False)
         super().test_account_accessor_mutators(restored_engine, ignore_row_order=True)
 
     def test_mirror_accounts(self, restored_engine):
-        self.ACCOUNTS = restored_engine.sanitize_accounts(self.ACCOUNTS)
+        self.ACCOUNTS = restored_engine.sanitize_accounts(self.ACCOUNTS, pandas=False)
         super().test_mirror_accounts(restored_engine)
 
     def test_add_existing_account_raise_error(self, engine):
@@ -148,11 +151,9 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
             /Balance/Node,            9993,      EUR,         , Transitory Account EUR
             /Balance/Node/Subnode,    9994,      CHF,         , Transitory Account CHF
         """
-        ACCOUNTS = engine.sanitize_accounts(
-            pd.read_csv(StringIO(ACCOUNT_CSV), skipinitialspace=True)
-        )
+        ACCOUNTS = engine.sanitize_accounts(read_csv(ACCOUNT_CSV), pandas=False)
 
-        initial_accounts = engine.accounts.list()
+        initial_accounts = engine.accounts.list(pandas=False)
         initial_categories = engine._client.list_categories("account", include_system=True)
         initial_categories = initial_categories["path"].to_list()
         expected_categories = ACCOUNTS["group"].to_list()
@@ -162,20 +163,21 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
 
         # Ensure target categories not present on remote are created when mirroring
         engine.accounts.mirror(ACCOUNTS, delete=True)
-        accounts = engine.accounts.list()
+        accounts = engine.accounts.list(pandas=False)
         categories = engine._client.list_categories("account", include_system=True)
         categories = categories["path"].to_list()
-        assert not accounts[accounts["group"].str.startswith("/Balance")].empty, (
+        assert len(accounts.filter(pl.col("group").str.starts_with("/Balance"))) > 0, (
             "Accounts with '/Balance' root category were not created"
         )
-        expected = pd.concat(
-            [ACCOUNTS, accounts.query("account not in @ACCOUNTS['account']")], ignore_index=True
+        expected = pl.concat(
+            [ACCOUNTS, accounts.filter(~pl.col("account").is_in(ACCOUNTS["account"].to_list()))],
+            how="diagonal",
         )
         assert_frame_equal(expected, accounts, ignore_row_order=True, check_like=True)
 
         # Ensure orphaned categories except root nodes are deleted when mirroring
         engine.accounts.mirror(initial_accounts, delete=True)
-        accounts = engine.accounts.list()
+        accounts = engine.accounts.list(pandas=False)
         categories = engine._client.list_categories("account", include_system=True)
         categories = categories["path"].to_list()
         assert_frame_equal(initial_accounts, accounts)
@@ -187,11 +189,11 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         )
 
         # Ensure orphaned categories except default root nodes are deleted when mirroring
-        engine.accounts.mirror(pd.DataFrame({}), delete=True)
-        accounts = engine.accounts.list()
+        engine.accounts.mirror(pl.DataFrame({}), delete=True)
+        accounts = engine.accounts.list(pandas=False)
         categories = engine._client.list_categories("account", include_system=True)
         categories = categories["path"].to_list()
-        assert accounts.empty, "Mirror empty accounts should erase all of them"
+        assert len(accounts) == 0, "Mirror empty accounts should erase all of them"
         root_categories = ["/" + category for category in ACCOUNT_ROOT_CATEGORIES]
         assert set(root_categories) == set(categories), (
             "Mirroring empty state should leave only root categories"
@@ -199,7 +201,7 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
 
     def test_mirror_accounts_new_root_category_raises_error(self, engine):
         """CashCtrl does not allow to add new root categories."""
-        ACCOUNT = pd.DataFrame([{
+        ACCOUNT = pl.DataFrame([{
             "group": "/NewRoot",
             "account": 9995,
             "currency": "USD",
@@ -213,20 +215,20 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         in the CashCtrlLedger package can not be restored and should be manually booked.
         """
         engine.transitory_account = 9999
-        accounts = pd.concat(
-            [self.ACCOUNTS, engine.accounts.list()], ignore_index=True
-        ).drop_duplicates(["account"])
+        accounts = pl.concat(
+            [self.ACCOUNTS, engine.accounts.list(pandas=False)], how="diagonal",
+        ).unique(subset=["account"], maintain_order=True)
         engine.restore(
             accounts=accounts, configuration=self.CONFIGURATION, tax_codes=self.TAX_CODES,
             journal=complete_journal, assets=self.ASSETS, price_history=self.PRICES,
             profit_centers=self.PROFIT_CENTERS,
         )
         columns_to_drop = ["period", "account", "profit_center"]
-        balances = engine.account_balances(self.EXPECTED_BALANCES)
-        expected_balances = self.EXPECTED_BALANCES.drop(columns=columns_to_drop)
-        expected_balances["balance"] = expected_balances["balance"].apply(drop_zero_balances)
-        balances["balance"] = balances["balance"].apply(drop_zero_balances)
-        assert_frame_equal(balances, expected_balances, ignore_index=True, check_like=True)
+        balances = engine.account_balances(self.EXPECTED_BALANCES, pandas=False)
+        expected_balances = self.EXPECTED_BALANCES.drop(columns_to_drop)
+        expected_balances = drop_zero_balances(expected_balances)
+        balances = drop_zero_balances(balances)
+        assert_frame_equal(balances, expected_balances, check_like=True)
 
     def test_individual_account_balances(self, engine, complete_journal):
         """This method overrides base implementation since revaluations
@@ -235,9 +237,9 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         to comply with CashCtrl requirements.
         """
         engine.transitory_account = 9999
-        accounts = pd.concat(
-            [self.ACCOUNTS, engine.accounts.list()], ignore_index=True
-        ).drop_duplicates(["account"])
+        accounts = pl.concat(
+            [self.ACCOUNTS, engine.accounts.list(pandas=False)], how="diagonal",
+        ).unique(subset=["account"], maintain_order=True)
         engine.restore(
             accounts=accounts, configuration=self.CONFIGURATION, tax_codes=self.TAX_CODES,
             journal=complete_journal, assets=self.ASSETS, price_history=self.PRICES,
@@ -245,23 +247,30 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         )
 
         # Extract unique test cases
-        df = self.EXPECTED_INDIVIDUAL_BALANCES.copy()
+        df = self.EXPECTED_INDIVIDUAL_BALANCES.clone()
         argument_cols = ["period", "accounts", "profit_center"]
-        df[argument_cols] = df[argument_cols].ffill()
-        cases = df.drop_duplicates(subset=argument_cols).sort_values("period")
+        df = df.with_columns(*[pl.col(c).forward_fill() for c in argument_cols])
+        cases = df.unique(subset=argument_cols, maintain_order=True).sort("period")
 
         # Test account balances without specified profit centers
-        cases_without_profit_centers = cases.query("profit_center.isna()")[argument_cols]
-        for period, accounts, _ in cases_without_profit_centers.itertuples(index=False):
-            expected = df.query(
-                "period == @period and accounts == @accounts and profit_center.isna()"
-            ).drop(columns=argument_cols)
-            expected = enforce_schema(expected, ACCOUNT_BALANCE_SCHEMA)
-            expected["group"] = engine.sanitize_account_groups(expected["group"])
-            actual = engine.individual_account_balances(period=period, accounts=accounts)
-            actual["balance"] = actual["balance"].apply(drop_zero_balances)
-            expected["balance"] = expected["balance"].apply(drop_zero_balances)
-            assert_frame_equal(expected, actual, ignore_index=True, check_like=True)
+        cases_without_profit_centers = cases.filter(pl.col("profit_center").is_null())
+        for row in cases_without_profit_centers.select(argument_cols).iter_rows(named=True):
+            period, accounts = row["period"], row["accounts"]
+            expected = df.filter(
+                (pl.col("period") == period)
+                & (pl.col("accounts") == accounts)
+                & pl.col("profit_center").is_null()
+            ).drop(argument_cols)
+            expected = enforce_schema(expected, ACCOUNT_BALANCE_SCHEMA_PL)
+            expected = expected.with_columns(
+                group=engine.sanitize_account_groups(expected["group"], pandas=False)
+            )
+            actual = engine.individual_account_balances(
+                period=period, accounts=accounts, pandas=False,
+            )
+            actual = drop_zero_balances(actual)
+            expected = drop_zero_balances(expected)
+            assert_frame_equal(expected, actual, check_like=True)
 
     def test_aggregate_account_balances(self, engine, complete_journal):
         """This method overrides base implementation since revaluations
@@ -270,24 +279,28 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
         to comply with CashCtrl requirements.
         """
         engine.transitory_account = 9999
-        accounts = pd.concat(
-            [self.ACCOUNTS, engine.accounts.list()], ignore_index=True
-        ).drop_duplicates(["account"])
-        complete_journal = complete_journal.query("origin != 'target_balance'")
+        accounts = pl.concat(
+            [self.ACCOUNTS, engine.accounts.list(pandas=False)], how="diagonal",
+        ).unique(subset=["account"], maintain_order=True)
+        complete_journal = complete_journal.filter(pl.col("origin") != "target_balance")
         engine.restore(
             accounts=accounts, configuration=self.CONFIGURATION, tax_codes=self.TAX_CODES,
             journal=complete_journal, assets=self.ASSETS, price_history=self.PRICES,
             profit_centers=self.PROFIT_CENTERS
         )
 
-        account_balances = engine.individual_account_balances(period="2024", accounts="1000:9999")
-        actual = engine.aggregate_account_balances(account_balances, n=2)
-        actual = actual.query("description != 'Transitory account'")
-        actual["balance"] = actual["balance"].apply(drop_zero_balances)
-        expected = enforce_schema(self.EXPECTED_AGGREGATED_BALANCES, AGGREGATED_BALANCE_SCHEMA)
-        expected["group"] = engine.sanitize_account_groups(expected["group"])
-        expected["balance"] = expected["balance"].apply(drop_zero_balances)
-        assert_frame_equal(actual, expected, ignore_index=True)
+        account_balances = engine.individual_account_balances(
+            period="2024", accounts="1000:9999", pandas=False,
+        )
+        actual = engine.aggregate_account_balances(account_balances, n=2, pandas=False)
+        actual = actual.filter(pl.col("description") != "Transitory account")
+        actual = drop_zero_balances(actual)
+        expected = enforce_schema(self.EXPECTED_AGGREGATED_BALANCES, AGGREGATED_BALANCE_SCHEMA_PL)
+        expected = expected.with_columns(
+            group=engine.sanitize_account_groups(expected["group"], pandas=False)
+        )
+        expected = drop_zero_balances(expected)
+        assert_frame_equal(actual, expected, check_like=True)
 
     @pytest.mark.parametrize(
         "input_groups, expected_groups",
@@ -310,11 +323,11 @@ class TestAccounts(BaseTestCashCtrl, BaseTestAccounts):
     )
     def test_sanitize_account_groups(self, input_groups, expected_groups):
         engine = CashCtrlLedger()
-        input_series = pd.Series(input_groups, dtype="string[python]")
-        expected_series = pd.Series(expected_groups, dtype="string[python]")
-        output_series = engine.sanitize_account_groups(input_series)
+        input_series = pl.Series(input_groups, dtype=pl.String)
+        expected_series = pl.Series(expected_groups, dtype=pl.String)
+        output_series = engine.sanitize_account_groups(input_series, pandas=False)
         assert output_series.equals(expected_series), (
-            f"Expected {expected_series.tolist()} but got {output_series.tolist()}"
+            f"Expected {expected_series.to_list()} but got {output_series.to_list()}"
         )
 
     # TODO: adapt this test
