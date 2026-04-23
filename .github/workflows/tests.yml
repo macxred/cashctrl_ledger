@@ -49,15 +49,7 @@ jobs:
         run: pip install git+https://x-access-token:${{ secrets.PYLEDGER_CI_ACCESS_TOKEN }}@github.com/macxred/pyledger.git@main
 
       - name: Install dependencies
-        run: pip install coverage pytest setuptools .
+        run: pip install pytest setuptools .
 
-      - name: Run tests with coverage
-        run: coverage run -m pytest -W error
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # v6.0.0
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.xml
-          flags: unittests
-          name: codecov-upload
+      - name: Run tests
+        run: pytest -W error
