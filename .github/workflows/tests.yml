@@ -52,4 +52,4 @@ jobs:
         run: pip install pytest setuptools .
 
       - name: Run tests
-        run: pytest -W error
+        run: python -m pytest -W error
