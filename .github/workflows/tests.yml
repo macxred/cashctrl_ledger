@@ -36,12 +36,12 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.ref }}
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.x"
 
@@ -49,15 +49,7 @@ jobs:
         run: pip install git+https://x-access-token:${{ secrets.PYLEDGER_CI_ACCESS_TOKEN }}@github.com/macxred/pyledger.git@main
 
       - name: Install dependencies
-        run: pip install coverage pytest setuptools .
+        run: pip install pytest setuptools .
 
-      - name: Run tests with coverage
-        run: coverage run -m pytest -W error
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.xml
-          flags: unittests
-          name: codecov-upload
+      - name: Run tests
+        run: python -m pytest -W error
