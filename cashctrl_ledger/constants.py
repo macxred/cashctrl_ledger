@@ -9,7 +9,7 @@ JOURNAL_ITEM_COLUMNS = {
     "description": "string[python]",
     "debit": "float64",
     "credit": "float64",
-    "taxName": "string[python]",
+    "taxCode": "string[python]",
     "associateName": "string[python]",
     "allocations": "object",
 }

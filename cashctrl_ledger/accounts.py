@@ -4,6 +4,7 @@ from typing import Dict, List
 import pandas as pd
 from consistent_df import enforce_schema, unnest
 from .cashctrl_accounting_entity import CashCtrlAccountingEntity
+from .tax_code import extract_pyledger_id, cashctrl_tax_code
 
 
 class Account(CashCtrlAccountingEntity):
@@ -11,11 +12,16 @@ class Account(CashCtrlAccountingEntity):
 
     def list(self) -> pd.DataFrame:
         accounts = self._client.list_accounts()
+        tax_rates = self._client.list_tax_rates()
+        tax_code_map = {
+            tr["code"]: extract_pyledger_id(tr["description"], tr["code"])
+            for _, tr in tax_rates.iterrows()
+        }
         result = pd.DataFrame({
             "account": accounts["number"],
             "currency": accounts["currencyCode"],
             "description": accounts["name"],
-            "tax_code": accounts["taxName"],
+            "tax_code": accounts["taxCode"].map(tax_code_map).fillna(accounts["taxCode"]),
             "group": accounts["path"],
         })
         result = self.standardize(result)
@@ -42,7 +48,7 @@ class Account(CashCtrlAccountingEntity):
                 "currencyId": self._client.currency_to_id(row["currency"]),
                 "name": row["description"],
                 "taxId": None if pd.isna(row["tax_code"])
-                else self._client.tax_code_to_id(row["tax_code"]),
+                else self._client.tax_code_to_id(cashctrl_tax_code(row["tax_code"])),
                 "categoryId": self._client.account_category_to_id(row["group"]),
             }
             self._client.post("account/create.json", data=payload)
@@ -80,7 +86,7 @@ class Account(CashCtrlAccountingEntity):
                 payload["name"] = row["description"]
             if "tax_code" in incoming.columns:
                 payload["taxId"] = None if pd.isna(row["tax_code"]) else \
-                    self._client.tax_code_to_id(row["tax_code"])
+                    self._client.tax_code_to_id(cashctrl_tax_code(row["tax_code"]))
             self._client.post("account/update.json", data=payload)
         self._client.list_accounts.cache_clear()
 

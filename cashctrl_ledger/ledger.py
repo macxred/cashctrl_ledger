@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from cashctrl_ledger.profit_center import ProfitCenter
-from .tax_code import TaxCode
+from .tax_code import TaxCode, extract_pyledger_id, cashctrl_tax_code
 from .accounts import Account
 from .journal_entity import Journal
 from pyledger import LedgerEngine, CSVAccountingEntity
@@ -416,6 +416,14 @@ class CashCtrlLedger(LedgerEngine):
             pd.DataFrame: Standardized journal DataFrame following the
                 `LedgerEngine.JOURNAL_SCHEMA` column schema.
         """
+        # Reverse-map CashCtrl tax code strings back to pyledger ids. The adapter
+        # embeds the original pyledger id as a `[id]:...` prefix in description.
+        tax_rates = self._client.list_tax_rates()
+        tax_code_map = {
+            tr["code"]: extract_pyledger_id(tr["description"], tr["code"])
+            for _, tr in tax_rates.iterrows()
+        }
+
         # Individual ledger entries represent a single transaction and
         # map to a single row in the resulting data frame.
         individual = journal[journal["type"] != "COLLECTIVE"]
@@ -488,7 +496,7 @@ class CashCtrlLedger(LedgerEngine):
                 "currency": currency,
                 "amount": self.round_to_precision(amount, currency),
                 "report_amount": self.round_to_precision(reporting_amount, reporting_currency),
-                "tax_code": individual["taxName"],
+                "tax_code": individual["taxCode"].map(tax_code_map).fillna(individual["taxCode"]),
                 "profit_center": profit_centers,
                 "description": individual["title"],
                 "document": individual["reference"],
@@ -558,7 +566,7 @@ class CashCtrlLedger(LedgerEngine):
                 "currency": currency,
                 "amount": self.round_to_precision(foreign_amount, currency),
                 "report_amount": self.round_to_precision(reporting_amount, reporting_currency),
-                "tax_code": collective["taxName"],
+                "tax_code": collective["taxCode"].map(tax_code_map).fillna(collective["taxCode"]),
                 "profit_center": profit_centers,
                 "description": collective["description"],
                 "document": collective["document"],
@@ -946,7 +954,7 @@ class CashCtrlLedger(LedgerEngine):
                 "title": entry["description"].iat[0],
                 "taxId": None
                 if pd.isna(entry["tax_code"].iat[0])
-                else self._client.tax_code_to_id(entry["tax_code"].iat[0]),
+                else self._client.tax_code_to_id(cashctrl_tax_code(entry["tax_code"].iat[0])),
                 "currencyRate": fx_rate,
                 "reference": None
                 if pd.isna(entry["document"].iat[0])
@@ -985,7 +993,7 @@ class CashCtrlLedger(LedgerEngine):
                         "debit": amount if amount >= 0 else None,
                         "taxId": None
                         if pd.isna(row["tax_code"])
-                        else self._client.tax_code_to_id(row["tax_code"]),
+                        else self._client.tax_code_to_id(cashctrl_tax_code(row["tax_code"])),
                         "description": row["description"],
                         # Use the associateId field (not its original purpose) to tag the row if
                         # the original currency is the reporting currency. This helps recover
