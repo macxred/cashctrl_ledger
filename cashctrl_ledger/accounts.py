@@ -13,11 +13,16 @@ class Account(CashCtrlAccountingEntity):
 
     def list(self, pandas: bool = True) -> pd.DataFrame | pl.DataFrame:
         accounts = to_polars(self._client.list_accounts())
+        tax_rates = to_polars(self._client.list_tax_rates())
+        tax_code_map = {
+            tr["code"]: extract_pyledger_id(tr["description"], tr["code"])
+            for tr in tax_rates.iter_rows(named=True)
+        }
         result = pl.DataFrame({
             "account": accounts["number"],
             "currency": accounts["currencyCode"],
             "description": accounts["name"],
-            "tax_code": accounts["taxCode"].map(tax_code_map).fillna(accounts["taxCode"]),
+            "tax_code": accounts["taxCode"].replace(tax_code_map),
             "group": accounts["path"],
         })
         result = self.standardize(result, pandas=False)
@@ -50,7 +55,7 @@ class Account(CashCtrlAccountingEntity):
                 "currencyId": self._client.currency_to_id(row["currency"]),
                 "name": row["description"],
                 "taxId": None if row["tax_code"] is None
-                else self._client.tax_code_to_id(row["tax_code"]),
+                else self._client.tax_code_to_id(cashctrl_tax_code(row["tax_code"])),
                 "categoryId": self._client.account_category_to_id(row["group"]),
             }
             self._client.post("account/create.json", data=payload)
@@ -89,7 +94,7 @@ class Account(CashCtrlAccountingEntity):
                 payload["name"] = row["description"]
             if "tax_code" in incoming.columns:
                 payload["taxId"] = None if row["tax_code"] is None else \
-                    self._client.tax_code_to_id(row["tax_code"])
+                    self._client.tax_code_to_id(cashctrl_tax_code(row["tax_code"]))
             self._client.post("account/update.json", data=payload)
         self._client.list_accounts.cache_clear()
 

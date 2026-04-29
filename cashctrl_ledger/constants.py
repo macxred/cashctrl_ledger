@@ -5,7 +5,7 @@ from pyledger.schema import read_schema as _read_schema_pl
 
 JOURNAL_ITEM_COLUMNS = [
     "accountId", "description", "debit", "credit",
-    "taxName", "associateName",
+    "taxCode", "associateName",
 ]
 
 
