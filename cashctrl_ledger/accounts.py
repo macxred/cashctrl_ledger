@@ -11,7 +11,7 @@ from .tax_code import extract_pyledger_id, cashctrl_tax_code
 class Account(CashCtrlAccountingEntity):
     """Provides account accessors and mutators for CashCtrl."""
 
-    def list(self, pandas: bool = True) -> pd.DataFrame | pl.DataFrame:
+    def list(self, pandas: bool = False) -> pd.DataFrame | pl.DataFrame:
         accounts = to_polars(self._client.list_accounts())
         tax_rates = to_polars(self._client.list_tax_rates())
         tax_code_map = {
