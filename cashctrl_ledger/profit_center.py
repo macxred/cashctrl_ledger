@@ -9,7 +9,7 @@ from .cashctrl_accounting_entity import CashCtrlAccountingEntity
 class ProfitCenter(CashCtrlAccountingEntity):
     """Provides profit center accessors and mutators for CashCtrl."""
 
-    def list(self, pandas: bool = True) -> pd.DataFrame | pl.DataFrame:
+    def list(self, pandas: bool = False) -> pd.DataFrame | pl.DataFrame:
         profit_centers = to_polars(self._client.list_profit_centers())
         result = pl.DataFrame({
             "profit_center": profit_centers["name"],

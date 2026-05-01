@@ -99,7 +99,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
 
     def sanitize_journal(
         self, journal: pd.DataFrame | pl.DataFrame,
-        pandas: bool = True,
+        pandas: bool = False,
     ) -> pd.DataFrame | pl.DataFrame:
         """Modify journal to ensure coherence and compatibility with CashCtrl.
 
@@ -182,8 +182,7 @@ class ExtendedCashCtrlLedger(CashCtrlLedger):
 
     def split_multi_currency_transactions(
         self, journal: pd.DataFrame | pl.DataFrame,
-        transitory_account: int | None = None,
-        pandas: bool = True,
+        transitory_account: int | None = None, pandas: bool = False,
     ) -> pd.DataFrame | pl.DataFrame:
         """
         Splits multi-currency transactions into individual transactions for each currency.
