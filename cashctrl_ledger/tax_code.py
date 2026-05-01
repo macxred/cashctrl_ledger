@@ -59,7 +59,7 @@ class TaxCode(CashCtrlAccountingEntity):
             "rates": [{"percentage": row["rate"] * 100}],
         }
 
-    def list(self, pandas: bool = True) -> pd.DataFrame | pl.DataFrame:
+    def list(self, pandas: bool = False) -> pd.DataFrame | pl.DataFrame:
         tax_rates = to_polars(self._client.list_tax_rates())
         if tax_rates.is_empty():
             result = self.standardize(pl.DataFrame(), pandas=False)

@@ -48,7 +48,7 @@ class Journal(JournalEntity, CashCtrlAccountingEntity):
         self._standardize = standardize
 
     def list(
-        self, fiscal_period: str | None = None, pandas: bool = True,
+        self, fiscal_period: str | None = None, pandas: bool = False,
     ) -> pd.DataFrame | pl.DataFrame:
         return self._list(fiscal_period=fiscal_period, pandas=pandas)
 
@@ -63,7 +63,7 @@ class Journal(JournalEntity, CashCtrlAccountingEntity):
 
     def standardize(
         self, data: pd.DataFrame | pl.DataFrame,
-        keep_extra_columns=False, pandas: bool = True,
+        keep_extra_columns=False, pandas: bool = False,
     ):
         data = super().standardize(data, keep_extra_columns, pandas=False)
         result = self._standardize(data)

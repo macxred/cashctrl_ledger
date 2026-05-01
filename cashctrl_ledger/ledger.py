@@ -258,7 +258,7 @@ class CashCtrlLedger(LedgerEngine):
 
     def sanitize_account_groups(
         self, groups: pd.Series | pl.Series,
-        pandas: bool = True,
+        pandas: bool = False,
     ) -> pd.Series | pl.Series:
         """Ensure account groups start with a leading slash and a valid root node.
 
@@ -298,7 +298,7 @@ class CashCtrlLedger(LedgerEngine):
 
     def sanitize_accounts(
         self, df: pd.DataFrame | pl.DataFrame, tax_codes: pd.DataFrame | pl.DataFrame = None,
-        pandas: bool = True,
+        pandas: bool = False,
     ) -> pd.DataFrame | pl.DataFrame:
         df = ensure_polars(df, "CashCtrlLedger.sanitize_accounts")
         df = df.with_columns(
@@ -390,7 +390,7 @@ class CashCtrlLedger(LedgerEngine):
 
     def account_balances(
         self, df: pd.DataFrame | pl.DataFrame, reporting_currency_only: bool = False,
-        pandas: bool = True, **kwargs,
+        pandas: bool = False, **kwargs,
     ) -> pd.DataFrame | pl.DataFrame:
         df = ensure_polars(df, "CashCtrlLedger.account_balances")
         unique_periods = df["period"].unique(maintain_order=True).to_list()
@@ -466,7 +466,7 @@ class CashCtrlLedger(LedgerEngine):
     # Journal
 
     def _journal_list(
-        self, fiscal_period: str | None = None, pandas: bool = True,
+        self, fiscal_period: str | None = None, pandas: bool = False,
     ) -> pd.DataFrame | pl.DataFrame:
         """Retrieves journal entries from the remote CashCtrl account.
 
@@ -725,7 +725,7 @@ class CashCtrlLedger(LedgerEngine):
         """Not implemented yet."""
         raise NotImplementedError
 
-    def fiscal_period_list(self, pandas: bool = True) -> pd.DataFrame | pl.DataFrame:
+    def fiscal_period_list(self, pandas: bool = False) -> pd.DataFrame | pl.DataFrame:
         """Retrieve fiscal periods.
 
         Retrieve fiscal periods and check that each consecutive period
