@@ -48,7 +48,7 @@ jobs:
       - name: Determine pyledger branch
         id: pyledger-branch
         run: |
-          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          BRANCH="${GITHUB_BASE_REF:-${GITHUB_REF#refs/heads/}}"
           if [[ "$BRANCH" == polars* ]]; then
             echo "ref=polars" >> "$GITHUB_OUTPUT"
           else
