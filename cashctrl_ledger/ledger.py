@@ -112,12 +112,12 @@ class CashCtrlLedger(LedgerEngine):
     def dump_to_zip(self, archive_path: str):
         with zipfile.ZipFile(archive_path, 'w') as archive:
             archive.writestr('configuration.json', json.dumps(self.configuration_list()))
-            archive.writestr('tax_codes.csv', self.tax_codes.list().to_csv(index=False))
-            archive.writestr('accounts.csv', self.accounts.list().to_csv(index=False))
-            archive.writestr('price_history.csv', self.price_history.list().to_csv(index=False))
-            archive.writestr('journal.csv', self.journal.list().to_csv(index=False))
-            archive.writestr('assets.csv', self.assets.list().to_csv(index=False))
-            archive.writestr('profit_centers.csv', self.profit_centers.list().to_csv(index=False))
+            archive.writestr('tax_codes.csv', self.tax_codes.list().write_csv())
+            archive.writestr('accounts.csv', self.accounts.list().write_csv())
+            archive.writestr('price_history.csv', self.price_history.list().write_csv())
+            archive.writestr('journal.csv', self.journal.list().write_csv())
+            archive.writestr('assets.csv', self.assets.list().write_csv())
+            archive.writestr('profit_centers.csv', self.profit_centers.list().write_csv())
 
     def restore_from_zip(self, archive_path: str):
         required_files = {
