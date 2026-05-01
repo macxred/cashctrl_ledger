@@ -13,6 +13,9 @@ name: Unit/Integration Tests
 
 on:
   push:
+    branches:
+      - main
+      - polars
   pull_request:
   schedule:
     - cron: "30 4 * * *"
