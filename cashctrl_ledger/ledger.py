@@ -205,6 +205,19 @@ class CashCtrlLedger(LedgerEngine):
         self.price_history.mirror(None, delete=True)
         self.assets.mirror(None, delete=True)
 
+        # Delete non-current fiscal periods. CashCtrl auto-creates them when
+        # journal entries with new dates land, and persists them across mirror
+        # deletes; without this they leak across tests and bias FX-rate
+        # rounding (current vs historical period interaction).
+        fps = self._client.list_fiscal_periods()
+        spurious = fps[~fps["isCurrent"]]
+        if len(spurious) > 0:
+            self._client.post(
+                "fiscalperiod/delete.json",
+                params={"ids": ",".join(str(i) for i in spurious["id"])},
+            )
+            self._client.list_fiscal_periods.cache_clear()
+
     # ----------------------------------------------------------------------
     # configuration
 
