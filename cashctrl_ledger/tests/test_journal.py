@@ -318,4 +318,19 @@ class TestJournal(BaseTestCashCtrl, BaseTestJournal):
 
         # Check that transitory account (1999) balances to zero
         balance = engine.individual_account_balances(accounts=1999, period="2024", pandas=False)
-        assert balance.filter(pl.col("account") == 1999)["report_balance"][0] == 0.0
+        report_balance = balance.filter(pl.col("account") == 1999)["report_balance"][0]
+        if report_balance != 0.0:
+            # DIAGNOSTIC: dump all state for CI investigation
+            import sys
+            print("\n=== DIAGNOSTIC: -0.1 reproduction ===", file=sys.stderr)
+            print(f"report_balance={report_balance}", file=sys.stderr)
+            print(f"\nbalance frame:\n{balance}", file=sys.stderr)
+            sl = engine.serialized_ledger(pandas=False)
+            print(f"\nserialized_ledger 1999 rows:\n{sl.filter(pl.col('account') == 1999)}", file=sys.stderr)
+            print(f"\njournal as mirrored to CashCtrl:\n{engine.journal.list(pandas=False)}", file=sys.stderr)
+            print(f"\nfiscal periods: {engine._client.list_fiscal_periods()}", file=sys.stderr)
+            print(f"\nassets list: {engine.assets.list(pandas=False)}", file=sys.stderr)
+            print(f"\nprice_history list: {engine.price_history.list(pandas=False)}", file=sys.stderr)
+            print(f"\nprecision lookup: {engine._precision_lookup}", file=sys.stderr)
+            print("=== END DIAGNOSTIC ===\n", file=sys.stderr)
+        assert report_balance == 0.0
