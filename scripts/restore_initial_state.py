@@ -19,9 +19,10 @@ Usage:
     ```
 """
 
+import textwrap
 from io import StringIO
 from cashctrl_ledger import CashCtrlLedger
-import pandas as pd
+import polars as pl
 
 TAX_CODES = """
     id,account,rate,is_inclusive,description
@@ -200,8 +201,8 @@ CONFIGURATION = {
 
 def main():
     cashctrl_ledger = CashCtrlLedger()
-    tax = pd.read_csv(StringIO(TAX_CODES), skipinitialspace=True)
-    accounts = pd.read_csv(StringIO(ACCOUNTS), skipinitialspace=True)
+    tax = pl.read_csv(StringIO(textwrap.dedent(TAX_CODES).strip()).read().encode())
+    accounts = pl.read_csv(StringIO(textwrap.dedent(ACCOUNTS).strip()).read().encode())
     cashctrl_ledger.restore(configuration=CONFIGURATION, tax_codes=tax, accounts=accounts)
 
 
