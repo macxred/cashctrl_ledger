@@ -134,12 +134,12 @@ class CashCtrlLedger(LedgerEngine):
                 )
 
             configuration = json.loads(archive.open('configuration.json').read().decode('utf-8'))
-            journal = pd.read_csv(archive.open('journal.csv'))
-            accounts = pd.read_csv(archive.open('accounts.csv'))
-            tax_codes = pd.read_csv(archive.open('tax_codes.csv'))
-            assets = pd.read_csv(archive.open('assets.csv'))
-            price_history = pd.read_csv(archive.open('price_history.csv'))
-            profit_centers = pd.read_csv(archive.open('profit_centers.csv'))
+            journal = pl.read_csv(archive.open('journal.csv').read())
+            accounts = pl.read_csv(archive.open('accounts.csv').read())
+            tax_codes = pl.read_csv(archive.open('tax_codes.csv').read())
+            assets = pl.read_csv(archive.open('assets.csv').read())
+            price_history = pl.read_csv(archive.open('price_history.csv').read())
+            profit_centers = pl.read_csv(archive.open('profit_centers.csv').read())
             self.restore(
                 configuration=configuration,
                 journal=journal,
