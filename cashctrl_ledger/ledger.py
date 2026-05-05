@@ -1267,7 +1267,7 @@ class CashCtrlLedger(LedgerEngine):
 
     def _on_assets_change(self):
         self._ensure_currencies_exist()
-        self.__class__._assets_as_df.fget.cache_clear()
+        self.__class__._assets_lookup.fget.cache_clear()
 
     def _ensure_currencies_exist(self):
         """Ensure all local asset tickers definitions exist remotely"""
