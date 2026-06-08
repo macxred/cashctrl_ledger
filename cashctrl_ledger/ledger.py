@@ -134,12 +134,26 @@ class CashCtrlLedger(LedgerEngine):
                 )
 
             configuration = json.loads(archive.open('configuration.json').read().decode('utf-8'))
-            journal = pl.read_csv(archive.open('journal.csv').read())
-            accounts = pl.read_csv(archive.open('accounts.csv').read())
-            tax_codes = pl.read_csv(archive.open('tax_codes.csv').read())
-            assets = pl.read_csv(archive.open('assets.csv').read())
-            price_history = pl.read_csv(archive.open('price_history.csv').read())
-            profit_centers = pl.read_csv(archive.open('profit_centers.csv').read())
+            journal = pl.from_pandas(
+                pd.read_csv(archive.open('journal.csv'), skipinitialspace=True), rechunk=False
+            )
+            accounts = pl.from_pandas(
+                pd.read_csv(archive.open('accounts.csv'), skipinitialspace=True), rechunk=False
+            )
+            tax_codes = pl.from_pandas(
+                pd.read_csv(archive.open('tax_codes.csv'), skipinitialspace=True), rechunk=False
+            )
+            assets = pl.from_pandas(
+                pd.read_csv(archive.open('assets.csv'), skipinitialspace=True), rechunk=False
+            )
+            price_history = pl.from_pandas(
+                pd.read_csv(archive.open('price_history.csv'), skipinitialspace=True),
+                rechunk=False,
+            )
+            profit_centers = pl.from_pandas(
+                pd.read_csv(archive.open('profit_centers.csv'), skipinitialspace=True),
+                rechunk=False,
+            )
             self.restore(
                 configuration=configuration,
                 journal=journal,
