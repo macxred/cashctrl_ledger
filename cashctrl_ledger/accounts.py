@@ -2,7 +2,8 @@
 
 from typing import Dict, List
 import pandas as pd
-from consistent_df import enforce_schema, unnest
+import polars as pl
+from pyledger.schema import enforce_schema, ensure_polars, to_pandas, to_polars
 from .cashctrl_accounting_entity import CashCtrlAccountingEntity
 from .tax_code import extract_pyledger_id, cashctrl_tax_code
 
@@ -10,31 +11,37 @@ from .tax_code import extract_pyledger_id, cashctrl_tax_code
 class Account(CashCtrlAccountingEntity):
     """Provides account accessors and mutators for CashCtrl."""
 
-    def list(self) -> pd.DataFrame:
-        accounts = self._client.list_accounts()
-        tax_rates = self._client.list_tax_rates()
+    def list(self, pandas: bool = False) -> pd.DataFrame | pl.DataFrame:
+        accounts = to_polars(self._client.list_accounts())
+        tax_rates = to_polars(self._client.list_tax_rates())
         tax_code_map = {
             tr["code"]: extract_pyledger_id(tr["description"], tr["code"])
-            for _, tr in tax_rates.iterrows()
+            for tr in tax_rates.iter_rows(named=True)
         }
-        result = pd.DataFrame({
+        result = pl.DataFrame({
             "account": accounts["number"],
             "currency": accounts["currencyCode"],
             "description": accounts["name"],
-            "tax_code": accounts["taxCode"].map(tax_code_map).fillna(accounts["taxCode"]),
+            "tax_code": accounts["taxCode"].replace(tax_code_map),
             "group": accounts["path"],
         })
-        result = self.standardize(result)
+        result = self.standardize(result, pandas=False)
         # Fill persistent and multiplier columns with values based on account number
         # (same logic as LedgerEngine.sanitize_accounts) since CashCtrl doesn't store them
-        result["persistent"] = (result["account"] < 3000).astype("boolean")
-        result["multiplier"] = result["account"].apply(
-            lambda acc: 1 if acc < 2000 else -1
-        ).astype("Int64")
+        result = result.with_columns(
+            persistent=(pl.col("account") < 3000),
+            multiplier=pl.when(pl.col("account") < 2000)
+            .then(pl.lit(1, dtype=pl.Int64)).otherwise(pl.lit(-1, dtype=pl.Int64)),
+        )
+
+        if pandas:
+            return to_pandas(result, self._schema)
         return result
 
-    def add(self, data: pd.DataFrame):
-        incoming = self.standardize(pd.DataFrame(data))
+    def add(self, data: pd.DataFrame | pl.DataFrame):
+        incoming = self.standardize(
+            ensure_polars(data, "Account.add"), pandas=False,
+        )
 
         # Update account categories
         self._client.update_categories(
@@ -42,25 +49,26 @@ class Account(CashCtrlAccountingEntity):
             delete=False, ignore_account_root_nodes=True,
         )
 
-        for _, row in incoming.iterrows():
+        for row in incoming.iter_rows(named=True):
             payload = {
                 "number": row["account"],
                 "currencyId": self._client.currency_to_id(row["currency"]),
                 "name": row["description"],
-                "taxId": None if pd.isna(row["tax_code"])
+                "taxId": None if row["tax_code"] is None
                 else self._client.tax_code_to_id(cashctrl_tax_code(row["tax_code"])),
                 "categoryId": self._client.account_category_to_id(row["group"]),
             }
             self._client.post("account/create.json", data=payload)
         self._client.list_accounts.cache_clear()
 
-    def modify(self, data: pd.DataFrame):
-        data = pd.DataFrame(data)
-        cols = set(self._schema["column"]).intersection(data.columns)
-        cols = cols.union(self._schema.query("id")["column"])
-        reduced_schema = self._schema.query("column in @cols")
+    def modify(self, data: pd.DataFrame | pl.DataFrame):
+        data = ensure_polars(data, "Account.modify")
+        schema_cols = self._schema["column"].to_list()
+        id_cols = self._schema.filter(pl.col("id"))["column"].to_list()
+        cols = list(set(schema_cols).intersection(data.columns).union(set(id_cols)))
+        reduced_schema = self._schema.filter(pl.col("column").is_in(cols))
         incoming = enforce_schema(data, reduced_schema, keep_extra_columns=True)
-        current = self.list()
+        current = self.list(pandas=False)
 
         # Update account categories
         if "group" in cols:
@@ -69,12 +77,12 @@ class Account(CashCtrlAccountingEntity):
                 delete=False, ignore_account_root_nodes=True,
             )
 
-        for _, row in incoming.iterrows():
-            existing = current.query("account == @row['account']")
+        for row in incoming.iter_rows(named=True):
+            existing = current.filter(pl.col("account") == row["account"])
 
             # Specify required fields for CashCtrl
             payload = {"id": self._client.account_to_id(row["account"])}
-            group = row["group"] if "group" in incoming.columns else existing["group"].item()
+            group = row["group"] if "group" in incoming.columns else existing["group"][0]
             payload["categoryId"] = self._client.account_category_to_id(group)
 
             # Specify optional fields for CashCtrl
@@ -85,15 +93,18 @@ class Account(CashCtrlAccountingEntity):
             if "description" in incoming.columns:
                 payload["name"] = row["description"]
             if "tax_code" in incoming.columns:
-                payload["taxId"] = None if pd.isna(row["tax_code"]) else \
+                payload["taxId"] = None if row["tax_code"] is None else \
                     self._client.tax_code_to_id(cashctrl_tax_code(row["tax_code"]))
             self._client.post("account/update.json", data=payload)
         self._client.list_accounts.cache_clear()
 
-    def delete(self, id: pd.DataFrame, allow_missing: bool = False) -> None:
-        incoming = enforce_schema(pd.DataFrame(id), self._schema.query("id"))
+    def delete(self, id: pd.DataFrame | pl.DataFrame, allow_missing: bool = False) -> None:
+        incoming = enforce_schema(
+            ensure_polars(id, "Account.delete"),
+            self._schema.filter(pl.col("id")),
+        )
         ids = []
-        for account in incoming["account"]:
+        for account in incoming["account"].to_list():
             id = self._client.account_to_id(account, allow_missing)
             if id is not None:
                 ids.append(str(id))
@@ -101,7 +112,7 @@ class Account(CashCtrlAccountingEntity):
             self._client.post("account/delete.json", {"ids": ", ".join(ids)})
             self._client.list_accounts.cache_clear()
 
-    def mirror(self, target: pd.DataFrame, delete: bool = False):
+    def mirror(self, target: pd.DataFrame | pl.DataFrame, delete: bool = False):
         """Synchronize remote CashCtrl accounts with the target DataFrame.
 
         Updates categories first, then invokes the parent class method.
@@ -113,15 +124,21 @@ class Account(CashCtrlAccountingEntity):
         - Mirroring accounts with non-existing root categories raises an error.
 
         Args:
-            target (pd.DataFrame): DataFrame with an account chart in the pyledger format.
+            target (pd.DataFrame | pl.DataFrame): DataFrame with an account chart
+                in the pyledger format.
             delete (bool, optional): If True, deletes remote accounts not present in the target.
         """
-        current = self.list()
-        target = self.standardize(target)
+        current = self.list(pandas=False)
+        target = self.standardize(
+            ensure_polars(target, "Account.mirror"), pandas=False,
+        )
 
         # Delete superfluous accounts on remote
         if delete:
-            self.delete(current[~current["account"].isin(target["account"])])
+            to_delete = current.filter(
+                ~pl.col("account").is_in(target["account"].to_list())
+            )
+            self.delete(to_delete)
 
         # Update account categories
         self._client.update_categories(
@@ -137,11 +154,19 @@ class Account(CashCtrlAccountingEntity):
         parts = path.strip("/").split("/")
         return ["/" + "/".join(parts[:i]) for i in range(1, len(parts) + 1)]
 
-    def _account_groups(self, df: pd.DataFrame) -> Dict[str, str]:
+    def _account_groups(self, df: pl.DataFrame) -> Dict[str, str]:
         """Find lowest account number associated with each node in the group tree."""
-        if df is None or df.empty:
+        if df is None or len(df) == 0:
             return {}
-        df = df.copy()
-        df["nodes"] = [pd.DataFrame({"items": self._get_nodes_list(path)}) for path in df["group"]]
-        df = unnest(df, key="nodes")
-        return df.groupby("items")["account"].agg("min").to_dict()
+
+        rows = []
+        for row in df.iter_rows(named=True):
+            for node in self._get_nodes_list(row["group"]):
+                rows.append({"items": node, "account": row["account"]})
+
+        expanded = pl.DataFrame(rows)
+        return dict(
+            expanded.group_by("items").agg(
+                account=pl.col("account").min()
+            ).iter_rows()
+        )

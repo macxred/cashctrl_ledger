@@ -1,38 +1,50 @@
 """Provides a class with profit_center accessors and mutators for CashCtrl."""
 
 import pandas as pd
-from consistent_df import enforce_schema
+import polars as pl
+from pyledger.schema import enforce_schema, ensure_polars, to_pandas, to_polars
 from .cashctrl_accounting_entity import CashCtrlAccountingEntity
 
 
 class ProfitCenter(CashCtrlAccountingEntity):
     """Provides profit center accessors and mutators for CashCtrl."""
 
-    def list(self) -> pd.DataFrame:
-        profit_centers = self._client.list_profit_centers()
-        result = pd.DataFrame({
+    def list(self, pandas: bool = False) -> pd.DataFrame | pl.DataFrame:
+        profit_centers = to_polars(self._client.list_profit_centers())
+        result = pl.DataFrame({
             "profit_center": profit_centers["name"],
         })
 
-        duplicates = set(result.loc[result["profit_center"].duplicated(), "profit_center"])
+        duplicates = result.filter(
+            result["profit_center"].is_duplicated()
+        )["profit_center"].unique().to_list()
         if duplicates:
             raise ValueError(
                 "Duplicated profit centers in the remote system: "
                 f"'{', '.join(map(str, duplicates))}'"
             )
-        return self.standardize(result).reset_index(drop=True)
+        result = self.standardize(result, pandas=False)
 
-    def add(self, data: pd.DataFrame) -> None:
-        incoming = self.standardize(pd.DataFrame(data))
-        profit_centers = self._client.list_profit_centers()
-        if profit_centers["number"].empty:
+        if pandas:
+            return to_pandas(result, self._schema)
+        return result
+
+    def add(self, data: pd.DataFrame | pl.DataFrame) -> None:
+        incoming = self.standardize(
+            ensure_polars(data, "ProfitCenter.add"), pandas=False,
+        )
+        profit_centers = to_polars(self._client.list_profit_centers())
+        if len(profit_centers) == 0 or profit_centers["number"].null_count() == len(profit_centers):
             start_number = 1
         else:
             start_number = profit_centers["number"].max() + 1
-        for offset, (_, row) in enumerate(incoming.iterrows()):
-            if row["profit_center"] in profit_centers["name"].values:
+
+        existing_names = profit_centers["name"].to_list()
+        for offset, row in enumerate(incoming.iter_rows(named=True)):
+            if row["profit_center"] in existing_names:
                 raise ValueError(
-                    f"Profit center already exists in the remote system: '{row['profit_center']}'."
+                    f"Profit center already exists in the remote system: "
+                    f"'{row['profit_center']}'."
                 )
             payload = {
                 "name": row["profit_center"],
@@ -41,16 +53,21 @@ class ProfitCenter(CashCtrlAccountingEntity):
             self._client.post("account/costcenter/create.json", data=payload)
         self._client.list_profit_centers.cache_clear()
 
-    def modify(self, data: pd.DataFrame) -> None:
+    def modify(self, data: pd.DataFrame | pl.DataFrame) -> None:
         raise NotImplementedError(
             "Profit center modification is not supported."
         )
 
-    def delete(self, id: pd.DataFrame, allow_missing: bool = False) -> None:
-        incoming = enforce_schema(pd.DataFrame(id), self._schema.query("id"))
+    def delete(self, id: pd.DataFrame | pl.DataFrame, allow_missing: bool = False) -> None:
+        incoming = enforce_schema(
+            ensure_polars(id, "ProfitCenter.delete"),
+            self._schema.filter(pl.col("id")),
+        )
         ids = []
-        for profit_center in incoming["profit_center"]:
-            id = self._client.profit_center_to_id(profit_center, allow_missing=allow_missing)
+        for profit_center in incoming["profit_center"].to_list():
+            id = self._client.profit_center_to_id(
+                profit_center, allow_missing=allow_missing
+            )
             if id:
                 ids.append(str(id))
         if len(ids):

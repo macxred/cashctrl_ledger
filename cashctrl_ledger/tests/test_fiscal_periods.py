@@ -1,6 +1,8 @@
 """Unit tests for fiscal period operations."""
 
-import pandas as pd
+import datetime
+import polars as pl
+from dateutil.relativedelta import relativedelta
 from cashctrl_ledger import CashCtrlLedger
 import pytest
 
@@ -26,32 +28,32 @@ def engine():
 
 @pytest.fixture
 def restore_journal(engine):
-    initial_journal = engine.journal.list()
+    initial_journal = engine.journal.list(pandas=False)
     yield
     engine.journal.mirror(initial_journal, delete=True)
 
 
 def test_ensure_fiscal_periods_exist(engine):
-    fiscal_periods = engine.fiscal_period_list()
+    fiscal_periods = engine.fiscal_period_list(pandas=False)
     earliest_start = fiscal_periods["start"].min()
     latest_end = fiscal_periods["end"].max()
 
     # Extend 3 years in the past and future
-    past_extension = earliest_start - pd.DateOffset(years=3)
-    future_extension = latest_end + pd.DateOffset(years=3)
-    engine.ensure_fiscal_periods_exist(start=past_extension.date(), end=future_extension.date())
-    updated_fiscal_periods = engine.fiscal_period_list()
+    past_extension = earliest_start - relativedelta(years=3)
+    future_extension = latest_end + relativedelta(years=3)
+    engine.ensure_fiscal_periods_exist(start=past_extension, end=future_extension)
+    updated_fiscal_periods = engine.fiscal_period_list(pandas=False)
 
     assert len(updated_fiscal_periods) - len(fiscal_periods) == 6, (
         "6 new fiscal periods should be created."
     )
 
     first_start = past_extension
-    first_end = (pd.Timestamp(past_extension.year, 12, 31))
+    first_end = datetime.date(past_extension.year, 12, 31)
     # Validate start and end dates for created periods
-    for i, row in updated_fiscal_periods.iterrows():
-        expected_start = first_start + pd.DateOffset(years=i)
-        expected_end = first_end + pd.DateOffset(years=i)
+    for i, row in enumerate(updated_fiscal_periods.iter_rows(named=True)):
+        expected_start = first_start + relativedelta(years=i)
+        expected_end = first_end + relativedelta(years=i)
         assert row["start"] == expected_start, (
             f"Fiscal period start date {row["start"]} does not match expected {expected_start}"
         )
@@ -61,42 +63,44 @@ def test_ensure_fiscal_periods_exist(engine):
 
 
 def test_fiscal_period_list_raises_error_on_gap_between_fiscal_periods(engine):
-    fiscal_periods = engine.fiscal_period_list()
+    fiscal_periods = engine.fiscal_period_list(pandas=False)
     latest_end = fiscal_periods["end"].max()
 
     # Add a fiscal period with a gap
-    gap_start = latest_end + pd.DateOffset(years=1)
-    gap_end = gap_start + pd.DateOffset(years=1)
-    engine.fiscal_period_add(start=gap_start.date(), end=gap_end.date(), name="Test Fiscal Period")
+    gap_start = latest_end + relativedelta(years=1)
+    gap_end = gap_start + relativedelta(years=1)
+    engine.fiscal_period_add(start=gap_start, end=gap_end, name="Test Fiscal Period")
 
     with pytest.raises(ValueError, match="Gaps between fiscal periods."):
-        engine.fiscal_period_list()
+        engine.fiscal_period_list(pandas=False)
 
 
 def test_add_and_modify_journal_entry_creates_missing_fiscal_period(engine, restore_journal):
-    fiscal_periods = engine.fiscal_period_list()
+    fiscal_periods = engine.fiscal_period_list(pandas=False)
     latest_end = fiscal_periods["end"].max()
 
     # Add journal entry with a date outside existing fiscal periods
-    date = latest_end + pd.DateOffset(years=1)
-    entry = pd.DataFrame([{
+    date = latest_end + relativedelta(years=1)
+    entry = pl.DataFrame([{
         "date": date, "account": 1000, "contra": 2000, "currency": "CHF",
         "amount": 100, "description": "test entry",
     }])
     id = engine.journal.add(entry)
 
-    updated_fiscal_periods = engine.fiscal_period_list()
+    updated_fiscal_periods = engine.fiscal_period_list(pandas=False)
     assert len(updated_fiscal_periods) > len(fiscal_periods), (
         "New fiscal period should be created."
     )
 
     # Modify journal entry with a date outside existing fiscal periods
     fiscal_periods = updated_fiscal_periods
-    entry.loc[:, "id"] = id
-    entry.loc[:, "date"] = date + pd.DateOffset(years=1)
+    entry = entry.with_columns(
+        id=pl.lit(id[0]),
+        date=pl.lit(date + relativedelta(years=1)),
+    )
     engine.journal.modify(entry)
 
-    updated_fiscal_periods = engine.fiscal_period_list()
+    updated_fiscal_periods = engine.fiscal_period_list(pandas=False)
     assert len(updated_fiscal_periods) > len(fiscal_periods), (
         "New fiscal period should be created."
     )

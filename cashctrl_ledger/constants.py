@@ -1,18 +1,12 @@
 """This module contains constants used throughout the application."""
 
-import pandas as pd
-from io import StringIO
+from pyledger.schema import read_schema as _read_schema_pl
 
 
-JOURNAL_ITEM_COLUMNS = {
-    "accountId": "int",
-    "description": "string[python]",
-    "debit": "float64",
-    "credit": "float64",
-    "taxCode": "string[python]",
-    "associateName": "string[python]",
-    "allocations": "object",
-}
+JOURNAL_ITEM_COLUMNS = [
+    "accountId", "description", "debit", "credit",
+    "taxCode", "associateName",
+]
 
 
 CONFIGURATION_KEYS = [
@@ -37,20 +31,20 @@ FISCAL_PERIOD_SCHEMA_CSV = """
         start,     datetime64[ns],        True,     False
           end,     datetime64[ns],        True,     False
          name,     string[python],        True,     False
-    isCurrent,               bool,        True,     False
+    isCurrent,            boolean,        True,     False
 """
-FISCAL_PERIOD_SCHEMA = pd.read_csv(StringIO(FISCAL_PERIOD_SCHEMA_CSV), skipinitialspace=True)
+FISCAL_PERIOD_SCHEMA = _read_schema_pl(FISCAL_PERIOD_SCHEMA_CSV)
 
 
 REPORT_ELEMENT_SCHEMA_CSV = """
        column,              dtype,   mandatory,     id
-   endAmount2,            float64,       False,     False
- dcEndAmount2,            float64,       False,     False
+   endAmount2,            Float64,       False,     False
+ dcEndAmount2,            Float64,       False,     False
     accountId,              Int64,       False,     True
  currencyCode,     string[python],       False,     False
          path,     string[python],       False,     False
 """
-REPORT_ELEMENT = pd.read_csv(StringIO(REPORT_ELEMENT_SCHEMA_CSV), skipinitialspace=True)
+REPORT_ELEMENT = _read_schema_pl(REPORT_ELEMENT_SCHEMA_CSV)
 
 
 ACCOUNT_ROOT_CATEGORIES = ["Assets", "Balance", "Expense", "Liabilities & Equity", "Revenue"]
