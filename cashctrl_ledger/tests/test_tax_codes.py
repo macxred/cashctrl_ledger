@@ -8,7 +8,8 @@ from base_test import BaseTestCashCtrl
 class TestTaxCodes(BaseTestCashCtrl, BaseTestTaxCodes):
 
     @pytest.fixture(scope="class")
-    def engine(self, initial_engine):
+    @classmethod
+    def engine(cls, initial_engine):
         initial_engine.clear()
         return initial_engine
 

@@ -48,10 +48,11 @@ class TestDumpRestoreClear(BaseTestCashCtrl, BaseTestDumpRestoreClear):
     JOURNAL = BaseTestCashCtrl.JOURNAL.query("id.isin(['2', '5', '6', '7'])")
 
     @pytest.fixture(scope="class")
-    def engine(self, initial_engine):
+    @classmethod
+    def engine(cls, initial_engine):
         # Temporarily set the transitory account to the first listed account for simpler testing
         initial_transitory_account = initial_engine.transitory_account
-        initial_engine.transitory_account = self.ACCOUNTS.iloc[0]["account"].item()
+        initial_engine.transitory_account = cls.ACCOUNTS.iloc[0]["account"].item()
 
         yield initial_engine
 
